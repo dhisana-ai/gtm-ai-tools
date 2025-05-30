@@ -3,3 +3,5 @@ openai
 playwright==1.42.0
 playwright-stealth
 aiohttp
+
+beautifulsoup4
