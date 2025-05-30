@@ -34,10 +34,11 @@ Or using the Taskfile with a mounted volume to access the output file locally:
 
 ```bash
 task run:command -- python utils/linkedin_search_to_csv.py \
-    "site:linkedin.com/in growth hacker" results.csv -n 20
+    "site:linkedin.com/in growth hacker" /workspace/results.csv -n 20
 ```
-
-This creates `results.csv` in your current directory containing a `user_linkedin_url` column that you can access directly on your host machine.
+The Taskfile mounts the `output/` directory from your host to `/workspace`
+inside the container. By writing to `/workspace/results.csv` you will find the
+file at `output/results.csv` locally. Inspect it with `cat output/results.csv`.
 ## Find Company Info
 
 `find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERAPI_API_KEY` environment variable for Google queries.
