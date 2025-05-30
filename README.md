@@ -15,6 +15,7 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
 
 - Ensure Docker is installed. See [Installing Docker](docs/install_docker.md).
 - Obtain API keys and add them to `.env`. See [API key setup](docs/api_keys.md).
+- Install Git and clone this repository. See [Git setup](docs/doc.md).
 
 
 ## Running with Docker
