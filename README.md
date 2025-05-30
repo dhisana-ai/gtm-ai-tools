@@ -37,3 +37,5 @@ This will print the response returned from the OpenAI API using the key provided
 ## Adding new utilities
 
 Place additional stand‑alone scripts inside the `utils/` directory. They will be available inside the Docker image once built.
+
+See [Using the utilities](docs/utils_usage.md) for examples of running the sample scripts.
