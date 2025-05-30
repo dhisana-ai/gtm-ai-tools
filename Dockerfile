@@ -32,6 +32,7 @@ RUN python -m playwright install chromium && \
 
 # ─── 4️⃣  Copy your functions code ───────────────────────────────────
 COPY . /home/site/wwwroot
+WORKDIR /home/site/wwwroot
 
 # ─── 5️⃣  ⚠️ Keep running as **root** in local dev so port-80 bind works
 #          In production you can switch back to www-data if you prefer.
