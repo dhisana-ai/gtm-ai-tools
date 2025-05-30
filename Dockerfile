@@ -17,8 +17,11 @@ RUN apt-get update && \
         libcups2 libxss1 libdrm2 libgbm1 \
         libgtk-3-0 libasound2 libx11-xcb1 \
         libxcb1 libxcomposite1 libxdamage1 libxrandr2 \
-        xdg-utils fonts-liberation && \
+    xdg-utils fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Taskfile runner for convenient local usage
+RUN curl -sL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
 
 # ─── 2️⃣  Python deps (add setuptools!) ───────────────────────────────
 COPY requirements.txt /

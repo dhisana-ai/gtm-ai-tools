@@ -1,0 +1,22 @@
+version: '3'
+
+vars:
+  IMAGE: gtm-ai-tools
+
+silent: false
+
+tasks:
+  git:pull:
+    cmds:
+      - git pull
+
+  docker:build:
+    cmds:
+      - docker build -t ${IMAGE} .
+
+  run:command:
+    desc: Run a command inside the Docker image and capture output
+    cmds:
+      - mkdir -p output
+      - |
+        docker run --env-file .env -v $(pwd)/output:/workspace ${IMAGE} ${CLI_ARGS} | tee output/run.log
