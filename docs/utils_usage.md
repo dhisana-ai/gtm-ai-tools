@@ -39,3 +39,14 @@ docker run --env-file .env -v $(pwd):/workspace gtm-ai-tools \
 ```
 
 This creates `results.csv` in your current directory containing a `user_linkedin_url` column that you can access directly on your host machine.
+## Find Company Info
+
+`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERAPI_API_KEY` environment variable for Google queries.
+
+Run it with the company name and optional location:
+
+```bash
+python utils/find_company_info.py "Dhisana" -l "San Francisco"
+```
+
+The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.

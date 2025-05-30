@@ -1,0 +1,236 @@
+"""Utility to find a company's website, primary domain and LinkedIn URL."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import os
+import re
+import urllib.parse
+from typing import List, Optional
+from urllib.parse import urlparse, urlunparse
+
+import aiohttp
+from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+async def search_google_serpai(
+    query: str,
+    number_of_results: int = 10,
+    offset: int = 0,
+    as_oq: Optional[str] = None,
+) -> List[dict]:
+    """Query Google via SerpAPI and return results as dictionaries."""
+
+    serpapi_key = os.getenv("SERAPI_API_KEY")
+    if not serpapi_key:
+        raise RuntimeError("SERAPI_API_KEY environment variable is not set")
+
+    base_url = "https://serpapi.com/search"
+    page_size = 100
+    start_index = offset
+    all_items: list[dict] = []
+    seen_links: set[str] = set()
+
+    def _extract_block_results(block: str, data: list[dict]) -> list[dict]:
+        mapped: list[dict] = []
+        if block == "organic_results":
+            for it in data:
+                link = it.get("link")
+                if link:
+                    mapped.append(it)
+        elif block == "inline_images":
+            for it in data:
+                link = it.get("source")
+                if link:
+                    mapped.append({
+                        "title": it.get("title"),
+                        "link": link,
+                        "type": "inline_image",
+                        "source_name": it.get("source_name"),
+                        "thumbnail": it.get("thumbnail"),
+                    })
+        elif block == "news_results":
+            for it in data:
+                link = it.get("link")
+                if link:
+                    mapped.append(it)
+        return mapped
+
+    async with aiohttp.ClientSession() as session:
+        while len(all_items) < number_of_results:
+            to_fetch = min(page_size, number_of_results - len(all_items))
+            params = {
+                "engine": "google",
+                "api_key": serpapi_key,
+                "q": query,
+                "num": to_fetch,
+                "start": start_index,
+                "location": "United States",
+            }
+            if as_oq:
+                params["as_oq"] = as_oq
+
+            async with session.get(base_url, params=params) as resp:
+                resp.raise_for_status()
+                result = await resp.json()
+
+            page_items: list[dict] = []
+            for block_name in ("organic_results", "inline_images", "news_results"):
+                data = result.get(block_name) or []
+                page_items.extend(_extract_block_results(block_name, data))
+
+            new_added = 0
+            for it in page_items:
+                link = it["link"]
+                if link not in seen_links:
+                    seen_links.add(link)
+                    all_items.append(it)
+                    new_added += 1
+                    if len(all_items) >= number_of_results:
+                        break
+            if new_added == 0:
+                break
+
+            start_index += to_fetch
+
+    return all_items[:number_of_results]
+
+
+def extract_company_page(url: str) -> str:
+    """Return the canonical LinkedIn company page URL."""
+    if not url:
+        return ""
+    normalized = re.sub(r"(https?://)?([\w\-]+\.)?linkedin\.com", "https://www.linkedin.com", url)
+    match = re.match(r"https://www.linkedin.com/company/([\w\-]+)", normalized)
+    if match:
+        return f"https://www.linkedin.com/company/{match.group(1)}"
+    return ""
+
+
+async def find_organization_linkedin_url(
+    company_name: str,
+    company_location: Optional[str] = None,
+) -> str:
+    """Find the LinkedIn URL for a company using Google search."""
+
+    if not company_name:
+        return ""
+
+    if company_location:
+        queries = [
+            f'site:linkedin.com/company "{company_name}" {company_location} -intitle:"jobs" ',
+            f'site:linkedin.com/company {company_name} {company_location} -intitle:"jobs" ',
+        ]
+    else:
+        queries = [
+            f'site:linkedin.com/company "{company_name}" -intitle:"jobs" ',
+            f'site:linkedin.com/company {company_name} -intitle:"jobs" '
+        ]
+
+    for query in queries:
+        results = await search_google_serpai(query.strip(), 3)
+        for item in results:
+            link = item.get("link", "")
+            if not link:
+                continue
+            parsed = urlparse(link)
+            if "linkedin.com/company" in (parsed.netloc + parsed.path):
+                return extract_company_page(link)
+    return ""
+
+
+async def get_external_links(url: str) -> List[str]:
+    """Return external links found on the given page."""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+    try:
+        async with aiohttp.ClientSession(headers=headers) as session:
+            async with session.get(url, allow_redirects=True) as response:
+                if response.status == 200:
+                    content = await response.text()
+                    soup = BeautifulSoup(content, "html.parser")
+                    links: List[str] = []
+                    for tag in soup.find_all("a", href=True):
+                        href = tag["href"]
+                        if href.startswith("http") and not href.startswith(url):
+                            links.append(href)
+                    return links
+    except Exception:
+        logger.exception("Failed to fetch external links")
+    return []
+
+
+async def get_company_website_from_linkedin_url(linkedin_url: str) -> str:
+    """Attempt to extract a company's website from its LinkedIn page."""
+    if not linkedin_url:
+        return ""
+    links = await get_external_links(linkedin_url)
+    for link in links:
+        if "trk=about_website" in link:
+            parsed_link = urllib.parse.urlparse(link)
+            query_params = urllib.parse.parse_qs(parsed_link.query)
+            if "url" in query_params:
+                encoded_url = query_params["url"][0]
+                return urllib.parse.unquote(encoded_url)
+    return ""
+
+
+async def find_company_website(company_name: str, company_location: Optional[str] = None) -> str:
+    """Search Google for the company's official website."""
+    if company_location:
+        query = f'"{company_name}" {company_location} official website'
+    else:
+        query = f'"{company_name}" official website'
+
+    results = await search_google_serpai(query, 5)
+    for item in results:
+        link = item.get("link", "")
+        if not link:
+            continue
+        if any(domain in link for domain in ["linkedin.com", "facebook.com", "instagram.com", "twitter.com"]):
+            continue
+        return link
+    return ""
+
+
+def extract_domain(url: str) -> str:
+    """Extract the domain from a URL."""
+    if not url:
+        return ""
+    parsed = urlparse(url)
+    return parsed.netloc.lower()
+
+
+async def find_company_details(company_name: str, company_location: Optional[str] = None) -> dict:
+    """Return website, primary domain and LinkedIn URL for a company."""
+    linkedin_url = await find_organization_linkedin_url(company_name, company_location)
+    website = await get_company_website_from_linkedin_url(linkedin_url)
+    if not website:
+        website = await find_company_website(company_name, company_location)
+    domain = extract_domain(website)
+    return {
+        "company_website": website,
+        "company_domain": domain,
+        "linkedin_url": linkedin_url,
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Find company website, domain and LinkedIn URL using Google search",
+    )
+    parser.add_argument("company_name", help="Name of the company to search for")
+    parser.add_argument("-l", "--location", help="Optional company location")
+    args = parser.parse_args()
+
+    result = asyncio.run(find_company_details(args.company_name, args.location))
+    print(json.dumps(result, indent=2))
+
+
+if __name__ == "__main__":
+    main()
