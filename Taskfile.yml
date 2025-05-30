@@ -19,4 +19,5 @@ tasks:
     cmds:
       - mkdir -p output
       - |
-        docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} ${CLI_ARGS} | tee output/run.log
+        echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} {{.CLI_ARGS}}
+        docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} {{.CLI_ARGS}} 2>&1 | tee output/run.log
