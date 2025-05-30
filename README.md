@@ -11,6 +11,12 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
 - `requirements.txt` – Python dependencies for the utilities.
 - `.env` – Environment variables consumed by the utilities.
 
+## Prerequisites
+
+- Ensure Docker is installed. See [Installing Docker](docs/install_docker.md).
+- Obtain API keys and add them to `.env`. See [API key setup](docs/api_keys.md).
+
+
 ## Running with Docker
 
 1. Build the Docker image:
