@@ -19,7 +19,7 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
 docker build -t gtm-ai-tools .
 ```
 
-2. Run a utility inside the container. The example below runs `openai_sample.py` and loads environment variables from `.env`. The image sets the working directory to `/home/site/wwwroot`, so scripts inside the `utils/` directory can be referenced relatively:
+2. Run a utility inside the container. The example below runs `openai_sample.py` and loads environment variables from `.env`. The script demonstrates the **Responses API** and the image sets the working directory to `/home/site/wwwroot`, so scripts inside the `utils/` directory can be referenced relatively:
 
 ```bash
 docker run --env-file .env gtm-ai-tools python utils/openai_sample.py "Hello!"
