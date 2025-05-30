@@ -21,15 +21,10 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
     response = client.responses.create(
-        model="gpt-4.1-mini",
-        input=[
-            {"role": "system", "content": "You are a concise, helpful assistant."},
-            {"role": "user", "content": args.prompt},
-        ],
-        text={"format": "markdown"},
-        store=False,
+        model="gpt-4.1",
+        input=args.prompt,
     )
-    print(response.choices[0].message.content)
+    print(response.output_text)
 
 
 if __name__ == "__main__":
