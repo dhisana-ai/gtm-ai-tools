@@ -30,12 +30,12 @@ Example usage fetching 20 results:
 python utils/linkedin_search_to_csv.py "site:linkedin.com/in growth hacker" results.csv -n 20
 ```
 
-Or inside Docker:
+Or inside Docker with volume mount to access the output file locally:
 
 ```bash
-docker run --env-file .env gtm-ai-tools \
+docker run --env-file .env -v $(pwd):/workspace gtm-ai-tools \
     python utils/linkedin_search_to_csv.py \
-    "site:linkedin.com/in growth hacker" results.csv -n 20
+    "site:linkedin.com/in growth hacker" /workspace/results.csv -n 20
 ```
 
-This creates `results.csv` containing a `user_linkedin_url` column.
+This creates `results.csv` in your current directory containing a `user_linkedin_url` column that you can access directly on your host machine.
