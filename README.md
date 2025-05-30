@@ -18,21 +18,38 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
 - Install Git and clone this repository. See [Git setup](docs/doc.md).
 
 
-## Running with Docker
+## Running the utilities
 
-1. Build the Docker image:
-
-```bash
-docker build -t gtm-ai-tools .
-```
-
-2. Run a utility inside the container. The example below runs `openai_sample.py` and loads environment variables from `.env`. The script demonstrates the **Responses API** and the image sets the working directory to `/home/site/wwwroot`, so scripts inside the `utils/` directory can be referenced relatively:
+This project ships with a `Taskfile.yml` for simplified commands. The
+[`task`](https://taskfile.dev) tool is installed inside the Docker image and can
+be installed locally using the official script:
 
 ```bash
-docker run --env-file .env gtm-ai-tools python utils/openai_sample.py "Hello!"
+curl -sL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
 ```
 
-This will print the response returned from the OpenAI API using the key provided in the `.env` file.
+Common actions:
+
+1. Build the Docker image
+
+   ```bash
+   task docker:build
+   ```
+
+2. Update the repository
+
+   ```bash
+   task git:pull
+   ```
+
+3. Run a utility inside the container
+
+   ```bash
+   task run:command -- python utils/openai_sample.py "Hello!"
+   ```
+
+   The output of the command is saved to `output/run.log` in your working
+   directory.
 
 ## Adding new utilities
 
