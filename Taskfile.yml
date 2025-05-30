@@ -21,3 +21,5 @@ tasks:
       - |
         echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} {{.CLI_ARGS}}
         docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} {{.CLI_ARGS}} 2>&1 | tee output/run.log
+      - mkdir -p /tmp/outputs
+      - cp -a output/* /tmp/outputs/ 2>/dev/null || true

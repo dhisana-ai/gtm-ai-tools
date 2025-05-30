@@ -60,6 +60,9 @@ task run:command -- python utils/linkedin_search_to_csv.py \
 ```
 
 After the run you will find `results.csv` inside the `output/` directory.
+The Taskfile also copies any files created in `output/` to `/tmp/outputs`,
+creating that directory if it does not already exist. This provides a stable
+location for retrieving results outside the project tree.
 
 ## Adding new utilities
 
