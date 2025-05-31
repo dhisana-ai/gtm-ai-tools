@@ -112,3 +112,20 @@ task run:command -- push_lead_to_dhisana_webhook \
     "Jane Doe" --linkedin_url https://www.linkedin.com/in/janedoe \
     --email jane@example.com --tags prospect --notes "Met at conference"
 ```
+
+## Push Company to Dhisana Webhook
+
+`push_company_to_dhisana_webhook.py` sends an organization's details to a
+Dhisana webhook. Provide the organization name and optionally the primary
+domain, LinkedIn URL, tags and notes. The script uses the
+`DHISANA_API_KEY` environment variable for authentication. The webhook URL is
+read from `DHISANA_COMPANY_INPUT_URL` or can be supplied with `--webhook_url`.
+
+Example usage:
+
+```bash
+task run:command -- push_company_to_dhisana_webhook \
+    "Acme Corp" --primary_domain acme.com \
+    --linkedin_url https://www.linkedin.com/company/acme \
+    --tags prospect --notes "From event"
+```
