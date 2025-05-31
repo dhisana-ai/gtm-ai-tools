@@ -4,6 +4,30 @@ This repository provides a curated set of utilities for GTM (go-to-market) engin
 
 The project is contributed to and maintained by the **[Dhisana AI](https://www.dhisana.ai)** team. Community contributions are welcome!
 
+
+## Quick Start (5 minutes)
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/dhisana-ai/gtm-ai-tools.git
+   cd gtm-ai-tools
+   ```
+2. **Build the Docker image** (or run `task docker:build`)
+   ```bash
+   docker build -t gtm-ai-tools .
+   ```
+3. **Add your API keys** to `.env` (see [API key setup](docs/api_keys.md))
+   ```bash
+   OPENAI_API_KEY=...
+   SERPER_API_KEY=...
+   DHISANA_API_KEY=...
+   ```
+4. **Launch the web app**
+   ```bash
+   docker run --env-file .env -p 8080:8080 gtm-ai-tools
+   ```
+5. Open <http://localhost:8080> and start running utilities.
+
 ## Repository structure
 
 - `utils/` – Stand‑alone Python utilities.
@@ -87,7 +111,7 @@ python -m utils.find_users_by_name_and_keywords input.csv output.csv
 
 ## Adding new utilities
 
-Place additional stand‑alone scripts inside the `utils/` directory. They will be available inside the Docker image once built.
+Place additional stand-alone scripts inside the `utils/` directory. After rebuilding the Docker image, start the container again and your tool will appear in the **Run a Utility** menu of the web app. Each script should include a short docstring describing its purpose.
 
 See [Using the utilities](docs/utils_usage.md) for examples of running the sample scripts.
 
@@ -131,3 +155,17 @@ The homepage now offers two options:
 2. **Build My Own Workflow** – describe a workflow in free text. The current
    implementation simply previews the text or flashes that the workflow would
    run; additional functionality can be added later.
+
+## Utility reference
+
+- [OpenAI Sample](docs/utils_usage.md#openai-sample) – example using the OpenAI API.
+- [Search LinkedIn URLs](docs/utils_usage.md#search-linkedin-urls) – gather profile URLs from Google.
+- [Find Company Info](docs/utils_usage.md#find-company-info) – locate a company's website and LinkedIn page.
+- [Find User by Name and Keywords](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a LinkedIn profile by name.
+- [Find User by Job Title and Company](docs/utils_usage.md#find-user-by-job-title-and-company) – search by title at a company.
+- [Find Users by Name and Keywords](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
+- [Push Lead to Dhisana Webhook](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send a lead record to Dhisana.
+- [Push Company to Dhisana Webhook](docs/utils_usage.md#push-company-to-dhisana-webhook) – send a company record to Dhisana.
+- [Fetch HTML with Playwright](utils/fetch_html_playwright.py) – fetch page HTML using Playwright.
+- [Extract from Webpage](utils/extract_from_webpage.py) – extract leads and companies using LLMs.
+
