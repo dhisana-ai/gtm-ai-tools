@@ -11,8 +11,39 @@
     {% endif %}
   {% endwith %}
 
-  <h2>Build &amp; Run Your Workflow</h2>
+  <h2>Run a Utility</h2>
+  <form method="post" enctype="multipart/form-data" class="mb-4">
+    <input type="hidden" name="mode" value="util">
+    <div class="mb-3">
+      <label class="form-label">Utility</label>
+      <select class="form-select" name="util_name">
+        {% for u in utils %}
+          <option value="{{ u }}">{{ u }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="mb-3">
+      <input class="form-control" type="text" name="params" placeholder="Parameters">
+    </div>
+    <div class="mb-3">
+      <input class="form-control" type="file" name="csv_file">
+    </div>
+    <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+  </form>
+
+  {% if util_output %}
+    <h3>Output</h3>
+    <pre class="bg-light p-3 border">{{ util_output }}</pre>
+  {% endif %}
+  {% if download_name %}
+    <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
+  {% endif %}
+
+  <hr>
+
+  <h2>Build My Own Workflow</h2>
   <form method="post" class="mb-3">
+    <input type="hidden" name="mode" value="workflow">
     <div class="mb-3">
       <textarea class="form-control" name="workflow" rows="6" placeholder="Describe what you want to build">{{ workflow }}</textarea>
     </div>
