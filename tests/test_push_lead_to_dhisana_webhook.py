@@ -33,13 +33,18 @@ def test_push_lead(monkeypatch):
         mod.push_lead_to_dhisana_webhook(
             "John Doe",
             linkedin_url="https://linkedin.com/in/johndoe",
+            tags="vip",
+            notes="important",
             webhook_url="http://hook",
         )
     )
     assert result is True
     assert session.calls[0][0] == "http://hook"
     assert session.calls[0][1]["X-API-Key"] == "key"
-    assert session.calls[0][2][0]["user_linkedin_url"] == "https://linkedin.com/in/johndoe"
+    payload = session.calls[0][2][0]
+    assert payload["user_linkedin_url"] == "https://linkedin.com/in/johndoe"
+    assert payload["tags"] == "vip"
+    assert payload["notes"] == "important"
 
 def test_skip_if_no_data(monkeypatch):
     session = DummySession()

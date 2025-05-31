@@ -18,13 +18,16 @@ async def push_lead_to_dhisana_webhook(
     full_name: str,
     linkedin_url: str = "",
     email: str = "",
+    tags: str = "",
+    notes: str = "",
     webhook_url: Optional[str] = None,
 ) -> bool:
     """Send lead details to the Dhisana webhook.
 
     Returns ``True`` when a request was made. If neither ``linkedin_url`` nor
     ``email`` is provided the function returns ``False`` without calling the
-    webhook.
+    webhook. ``tags`` and ``notes`` are optional strings that will be included
+    in the payload if provided.
     """
 
     if not linkedin_url and not email:
@@ -47,6 +50,8 @@ async def push_lead_to_dhisana_webhook(
             "full_name": full_name,
             "email": email,
             "user_linkedin_url": linkedin_url,
+            "tags": tags,
+            "notes": notes,
         }
     ]
 
@@ -66,6 +71,8 @@ def main() -> None:
     parser.add_argument("full_name", help="Lead's full name")
     parser.add_argument("--linkedin_url", default="", help="LinkedIn profile URL")
     parser.add_argument("--email", default="", help="Email address")
+    parser.add_argument("--tags", default="", help="Comma separated tags")
+    parser.add_argument("--notes", default="", help="Additional notes")
     parser.add_argument(
         "--webhook_url",
         help="Webhook URL (defaults to DHISANA_WEBHOOK_URL)",
@@ -74,7 +81,12 @@ def main() -> None:
 
     asyncio.run(
         push_lead_to_dhisana_webhook(
-            args.full_name, args.linkedin_url, args.email, args.webhook_url
+            args.full_name,
+            args.linkedin_url,
+            args.email,
+            args.tags,
+            args.notes,
+            args.webhook_url,
         )
     )
 
