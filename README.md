@@ -89,3 +89,19 @@ python -m utils.find_users_by_name_and_keywords input.csv output.csv
 Place additional stand‑alone scripts inside the `utils/` directory. They will be available inside the Docker image once built.
 
 See [Using the utilities](docs/utils_usage.md) for examples of running the sample scripts.
+
+## OpenAI Codex CLI
+
+The Docker image now comes with the [OpenAI Codex CLI](https://github.com/openai/codex)
+installed globally via `npm`. Codex helps you explore and refactor code using
+natural language prompts.
+
+1. Ensure your `OPENAI_API_KEY` is set in `.env` or exported in your shell.
+2. Start the CLI in auto‑edit mode using the wrapper script:
+
+   ```bash
+   codex-auto "Explain this repo"
+   ```
+
+Codex will read files in the current directory, propose edits and apply them
+automatically while still asking before running shell commands.

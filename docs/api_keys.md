@@ -30,4 +30,4 @@ SERPER_API_KEY=your_serper_key
 DHISANA_API_KEY=your_dhisana_key
 ```
 
-Save the file. The utilities will read these variables when run.
+Save the file. The utilities and the Codex CLI will read these variables when run.
