@@ -103,12 +103,12 @@ The resulting CSV contains `full_name`, `user_linkedin_url` and
 
 ## Push Lead to Dhisana Webhook
 
-`push_lead_to_dhisana_webhook.py` sends a lead's details to a Dhisana webhook endpoint. Provide the full name and optionally the LinkedIn URL and email address. The script uses the `DHISANA_API_KEY` environment variable for authentication. The webhook URL is read from `DHISANA_WEBHOOK_URL` or can be supplied with `--webhook_url`.
+`push_lead_to_dhisana_webhook.py` sends a lead's details to a Dhisana webhook endpoint. Provide the full name and optionally the LinkedIn URL, email address, tags, and notes. The script uses the `DHISANA_API_KEY` environment variable for authentication. The webhook URL is read from `DHISANA_WEBHOOK_URL` or can be supplied with `--webhook_url`.
 
 Example usage:
 
 ```bash
 task run:command -- push_lead_to_dhisana_webhook \
     "Jane Doe" --linkedin_url https://www.linkedin.com/in/janedoe \
-    --email jane@example.com
+    --email jane@example.com --tags prospect --notes "Met at conference"
 ```
