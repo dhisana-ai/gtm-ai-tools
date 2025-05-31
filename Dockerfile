@@ -27,7 +27,7 @@ RUN apt-get update && \
 RUN npm install -g @openai/codex && \
     ln -s /usr/bin/node /usr/local/bin/node && \
     rm -rf /root/.npm && \
-    chmod +x /usr/local/bin/codex
+    codex_path=$(command -v codex) && chmod +x "$codex_path"
 COPY scripts/codex-auto.sh /usr/local/bin/codex-auto
 
 # Install Taskfile runner for convenient local usage
