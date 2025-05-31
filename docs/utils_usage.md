@@ -22,7 +22,7 @@ The script prints the text from the `responses.create` call.
 
 ## Search LinkedIn URLs
 
-`linkedin_search_to_csv.py` queries Google through SerpAPI to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERAPI_API_KEY` environment variable.
+`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERPER_API_KEY` environment variable.
 
 Example usage fetching 20 results:
 
@@ -43,7 +43,7 @@ After the command finishes, everything in `output/` is also copied to
 `/tmp/outputs` for convenience.
 ## Find Company Info
 
-`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERAPI_API_KEY` environment variable for Google queries.
+`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERPER_API_KEY` environment variable for Google queries.
 
 Run it with the company name and optional location:
 
