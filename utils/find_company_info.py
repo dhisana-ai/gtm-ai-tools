@@ -22,43 +22,41 @@ logging.basicConfig(
 )
 
 
-async def search_google_serpai(
+async def search_google_serper(
     query: str,
     number_of_results: int = 10,
     offset: int = 0,
     as_oq: Optional[str] = None,
 ) -> List[dict]:
-    """Query Google via SerpAPI and return results as dictionaries."""
+    """Query Google via Serper.dev and return results as dictionaries."""
 
-    serpapi_key = os.getenv("SERAPI_API_KEY")
-    if not serpapi_key:
-        raise RuntimeError("SERAPI_API_KEY environment variable is not set")
+    serper_key = os.getenv("SERPER_API_KEY")
+    if not serper_key:
+        raise RuntimeError("SERPER_API_KEY environment variable is not set")
 
-    base_url = "https://serpapi.com/search"
-    page_size = 100
-    start_index = offset
+    base_url = "https://google.serper.dev/search"
+    page = offset + 1
     all_items: list[dict] = []
     seen_links: set[str] = set()
 
     def _extract_block_results(block: str, data: list[dict]) -> list[dict]:
         mapped: list[dict] = []
-        if block == "organic_results":
+        if block == "organic":
             for it in data:
                 link = it.get("link")
                 if link:
                     mapped.append(it)
-        elif block == "inline_images":
+        elif block == "images":
             for it in data:
-                link = it.get("source")
+                link = it.get("imageUrl") or it.get("link") or it.get("source")
                 if link:
                     mapped.append({
                         "title": it.get("title"),
                         "link": link,
-                        "type": "inline_image",
-                        "source_name": it.get("source_name"),
-                        "thumbnail": it.get("thumbnail"),
+                        "type": "image",
+                        "thumbnail": it.get("thumbnailUrl") or it.get("thumbnail"),
                     })
-        elif block == "news_results":
+        elif block == "news":
             for it in data:
                 link = it.get("link")
                 if link:
@@ -67,24 +65,22 @@ async def search_google_serpai(
 
     async with aiohttp.ClientSession() as session:
         while len(all_items) < number_of_results:
-            to_fetch = min(page_size, number_of_results - len(all_items))
-            params = {
-                "engine": "google",
-                "api_key": serpapi_key,
-                "q": query,
-                "num": to_fetch,
-                "start": start_index,
-                "location": "United States",
+            payload = {
+                "q": query if not as_oq else f"{query} {as_oq}",
+                "gl": "us",
+                "hl": "en",
+                "autocorrect": True,
+                "page": page,
+                "type": "search",
             }
-            if as_oq:
-                params["as_oq"] = as_oq
+            headers = {"X-API-KEY": serper_key, "Content-Type": "application/json"}
 
-            async with session.get(base_url, params=params) as resp:
+            async with session.post(base_url, headers=headers, json=payload) as resp:
                 resp.raise_for_status()
                 result = await resp.json()
 
             page_items: list[dict] = []
-            for block_name in ("organic_results", "inline_images", "news_results"):
+            for block_name in ("organic", "images", "news"):
                 data = result.get(block_name) or []
                 page_items.extend(_extract_block_results(block_name, data))
 
@@ -100,7 +96,7 @@ async def search_google_serpai(
             if new_added == 0:
                 break
 
-            start_index += to_fetch
+            page += 1
 
     return all_items[:number_of_results]
 
@@ -145,7 +141,7 @@ async def find_organization_linkedin_url(
     for query in queries:
         query = query.strip()
         logger.info("Querying Google: %s", query)
-        results = await search_google_serpai(query, 3)
+        results = await search_google_serper(query, 3)
         for item in results:
             link = item.get("link", "")
             if not link:
@@ -205,7 +201,7 @@ async def find_company_website(company_name: str, company_location: Optional[str
         query = f'"{company_name}" official website'
     logger.info("Searching company website with query: %s", query)
 
-    results = await search_google_serpai(query, 5)
+    results = await search_google_serper(query, 5)
     for item in results:
         link = item.get("link", "")
         if not link:
