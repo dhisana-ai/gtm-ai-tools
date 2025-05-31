@@ -9,7 +9,7 @@ This page provides usage instructions for the sample scripts included in the `ut
 Run it with the Taskfile:
 
 ```bash
-task run:command -- openai_sample "Hello!"
+task run:command openai_sample "Hello!"
 ```
 
 The script prints the text from the `responses.create` call.
@@ -21,7 +21,7 @@ The script prints the text from the `responses.create` call.
 Example usage fetching 20 results:
 
 ```bash
-task run:command -- linkedin_search_to_csv \
+task run:command linkedin_search_to_csv \
     "site:linkedin.com/in growth hacker" /workspace/results.csv -n 20
 ```
 The Taskfile mounts the `output/` directory from your host to `/workspace`
@@ -36,7 +36,7 @@ After the command finishes, everything in `output/` is also copied to
 Run it with the company name and optional location:
 
 ```bash
-task run:command -- find_company_info "Dhisana" -l "San Francisco"
+task run:command find_company_info "Dhisana" -l "San Francisco"
 ```
 
 The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.
@@ -48,7 +48,7 @@ The script prints a JSON object containing `company_website`, `company_domain` a
 Run it with a name and keywords:
 
 ```bash
-task run:command -- find_a_user_by_name_and_keywords \
+task run:command find_a_user_by_name_and_keywords \
     "Jane Doe" "growth marketing"
 ```
 
@@ -63,7 +63,7 @@ using Google search through Serper.dev and writes the results to a new CSV file.
 Run it with an input and output file:
 
 ```bash
-task run:command -- find_users_by_name_and_keywords \
+task run:command find_users_by_name_and_keywords \
     /workspace/input.csv /workspace/output.csv
 ```
 

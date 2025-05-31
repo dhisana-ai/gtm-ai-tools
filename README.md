@@ -45,7 +45,7 @@ Common actions:
 3. Run a utility inside the container
 
    ```bash
-   task run:command -- openai_sample "Hello!"
+   task run:command openai_sample "Hello!"
    ```
 
    The output of the command is saved to `output/run.log` in your working
@@ -55,7 +55,7 @@ To keep files produced by a command, write them to `/workspace` inside the
 container. The `output/` directory on your host maps to this path. For example:
 
 ```bash
-task run:command -- linkedin_search_to_csv \
+task run:command linkedin_search_to_csv \
     "site:linkedin.com/in growth hacker" /workspace/results.csv -n 20
 ```
 

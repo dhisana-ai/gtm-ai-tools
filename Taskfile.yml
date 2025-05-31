@@ -23,7 +23,7 @@ tasks:
           set -- {{.CLI_ARGS}}
           cmd="$1"
           shift
-          echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} -- python utils/${cmd}.py "$@"
-          docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} -- python utils/${cmd}.py "$@" 2>&1 | tee output/run.log
+          echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python utils/${cmd}.py "$@"
+          docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python utils/${cmd}.py "$@" 2>&1 | tee output/run.log
       - mkdir -p /tmp/outputs
       - cp -a output/* /tmp/outputs/ 2>/dev/null || true
