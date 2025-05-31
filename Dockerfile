@@ -47,8 +47,10 @@ RUN python -m playwright install chromium && \
 COPY . /home/site/wwwroot
 WORKDIR /home/site/wwwroot
 
+EXPOSE 8080
+
 # ─── 5️⃣  ⚠️ Keep running as **root** in local dev so port-80 bind works
 #          In production you can switch back to www-data if you prefer.
 # USER www-data
 
-CMD ["bash"]
+CMD ["python", "-m", "app"]

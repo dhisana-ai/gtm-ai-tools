@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Dhisana AI Agent</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    header img { height: 30px; vertical-align: middle; }
+    nav a { margin-right: 15px; }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="https://www.dhisana.ai">
+      <img src="https://www.dhisana.ai/assets/images/color-logo-no-background.svg" alt="Dhisana" />
+      Dhisana AI Agent
+    </a>
+  </header>
+  <nav>
+    <a href="{{ url_for('index') }}">Build &amp; Run Your Workflow</a>
+    <a href="{{ url_for('settings') }}">Settings</a>
+  </nav>
+
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <ul>
+      {% for m in messages %}
+        <li>{{ m }}</li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+  {% endwith %}
+
+  <h2>Build &amp; Run Your Workflow</h2>
+  <form method="post">
+    <textarea name="workflow" rows="6" cols="60" placeholder="Describe what you want to build">{{ workflow }}</textarea><br>
+    <button type="submit" name="action" value="build">Build</button>
+    <button type="submit" name="action" value="preview">Preview</button>
+    <button type="submit" name="action" value="run">Run</button>
+  </form>
+
+  {% if preview %}
+  <h3>Preview</h3>
+  <pre>{{ preview }}</pre>
+  {% endif %}
+</body>
+</html>

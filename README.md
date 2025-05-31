@@ -10,6 +10,7 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
 - `Dockerfile` – Container image definition for running the utilities in an Azure Functions compatible environment with Playwright support.
 - `requirements.txt` – Python dependencies for the utilities.
 - `.env` – Environment variables consumed by the utilities.
+- `app/` – Simple Flask web app launched when the Docker container starts.
 
 ## Prerequisites
 
@@ -106,3 +107,17 @@ natural language prompts.
 
 Codex will read files in the current directory, propose edits and apply them
 automatically while still asking before running shell commands.
+
+## Web application
+
+Building the Docker image will also install a lightweight Flask web app located
+in the `app/` directory. When the container starts without any command
+arguments, the web interface launches automatically on port `8080`:
+
+```bash
+docker run -p 8080:8080 gtm-ai-tools
+```
+
+Open <http://localhost:8080> in your browser to access the app which provides a
+simple interface for describing and running workflows as well as editing your
+environment variables.
