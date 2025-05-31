@@ -58,6 +58,22 @@ task run:command -- find_a_user_by_name_and_keywords \
 
 The script prints the resulting JSON to stdout.
 
+## Find User by Job Title and Company
+
+`find_user_by_job_title.py` searches Google via Serper.dev for a LinkedIn profile
+matching a specific job title at a company. Provide the job title, the company
+name and optional extra keywords. The returned profile URL is normalized to the
+`https://www.linkedin.com/in/<id>` format.
+
+Run it with a title, company and keywords:
+
+```bash
+task run:command -- find_user_by_job_title \
+    "CEO" "Costco" retail
+```
+
+The script prints the resulting JSON to stdout.
+
 ## Find Users by Name and Keywords
 
 `find_users_by_name_and_keywords.py` reads a CSV containing `full_name` and
