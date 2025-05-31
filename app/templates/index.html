@@ -17,8 +17,8 @@
     <div class="mb-3">
       <label class="form-label">Utility</label>
       <select class="form-select" name="util_name">
-        {% for u in utils %}
-          <option value="{{ u }}">{{ u }}</option>
+        {% for name, desc in utils %}
+          <option value="{{ name }}">{{ desc }}</option>
         {% endfor %}
       </select>
     </div>
