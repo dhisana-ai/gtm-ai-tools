@@ -6,16 +6,10 @@ This page provides usage instructions for the sample scripts included in the `ut
 
 `openai_sample.py` sends a prompt to OpenAI and prints the response returned from the API. The script requires the `OPENAI_API_KEY` environment variable.
 
-Run it from the project root (or inside the container) with a prompt:
+Run it with the Taskfile:
 
 ```bash
-python utils/openai_sample.py "Hello!"
-```
-
-Or using the Taskfile after building the image:
-
-```bash
-task run:command -- python utils/openai_sample.py "Hello!"
+task run:command openai_sample "Hello!"
 ```
 
 The script prints the text from the `responses.create` call.
@@ -27,13 +21,7 @@ The script prints the text from the `responses.create` call.
 Example usage fetching 20 results:
 
 ```bash
-python utils/linkedin_search_to_csv.py "site:linkedin.com/in growth hacker" results.csv -n 20
-```
-
-Or using the Taskfile with a mounted volume to access the output file locally:
-
-```bash
-task run:command -- python utils/linkedin_search_to_csv.py \
+task run:command linkedin_search_to_csv \
     "site:linkedin.com/in growth hacker" /workspace/results.csv -n 20
 ```
 The Taskfile mounts the `output/` directory from your host to `/workspace`
@@ -48,7 +36,7 @@ After the command finishes, everything in `output/` is also copied to
 Run it with the company name and optional location:
 
 ```bash
-task run:command -- python utils/find_company_info.py "Dhisana" -l "San Francisco"
+task run:command find_company_info "Dhisana" -l "San Francisco"
 ```
 
 The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.
@@ -60,13 +48,7 @@ The script prints a JSON object containing `company_website`, `company_domain` a
 Run it with a name and keywords:
 
 ```bash
-python utils/find_a_user_by_name_and_keywords.py "Jane Doe" "growth marketing"
-```
-
-Or using the Taskfile inside the container:
-
-```bash
-task run:command -- python utils/find_a_user_by_name_and_keywords.py \
+task run:command find_a_user_by_name_and_keywords \
     "Jane Doe" "growth marketing"
 ```
 
@@ -81,13 +63,7 @@ using Google search through Serper.dev and writes the results to a new CSV file.
 Run it with an input and output file:
 
 ```bash
-python utils/find_users_by_name_and_keywords.py input.csv output.csv
-```
-
-Or using the Taskfile inside the container:
-
-```bash
-task run:command -- python utils/find_users_by_name_and_keywords.py \
+task run:command find_users_by_name_and_keywords \
     /workspace/input.csv /workspace/output.csv
 ```
 
