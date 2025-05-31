@@ -52,3 +52,22 @@ task run:command -- python utils/find_company_info.py "Dhisana" -l "San Francisc
 ```
 
 The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.
+
+## Find User by Name and Keywords
+
+`find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object containing the full name, the LinkedIn profile URL and the search keywords used.
+
+Run it with a name and keywords:
+
+```bash
+python utils/find_a_user_by_name_and_keywords.py "Jane Doe" "growth marketing"
+```
+
+Or using the Taskfile inside the container:
+
+```bash
+task run:command -- python utils/find_a_user_by_name_and_keywords.py \
+    "Jane Doe" "growth marketing"
+```
+
+The script prints the resulting JSON to stdout.
