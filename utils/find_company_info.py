@@ -28,10 +28,20 @@ def extract_company_page(url: str) -> str:
     """Return the canonical LinkedIn company page URL."""
     if not url:
         return ""
-    normalized = re.sub(r"(https?://)?([\w\-]+\.)?linkedin\.com", "https://www.linkedin.com", url)
-    match = re.match(r"https://www.linkedin.com/company/([\w\-]+)", normalized)
-    if match:
-        return f"https://www.linkedin.com/company/{match.group(1)}"
+
+    normalized = re.sub(
+        r"(https?://)?([\w\-]+\.)?linkedin\.com",
+        "https://www.linkedin.com",
+        url,
+    )
+
+    parsed = urlparse(normalized)
+    parts = parsed.path.strip("/").split("/")
+
+    if len(parts) >= 2 and parts[0] == "company":
+        slug = parts[1]
+        return f"https://www.linkedin.com/company/{slug}"
+
     return ""
 
 
