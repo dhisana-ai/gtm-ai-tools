@@ -64,6 +64,26 @@ The Taskfile also copies any files created in `output/` to `/tmp/outputs`,
 creating that directory if it does not already exist. This provides a stable
 location for retrieving results outside the project tree.
 
+To use files from an arbitrary directory on your host, mount that directory when
+starting the container. For example to read `/tmp/input.csv` and produce
+`/tmp/output.csv`:
+
+```bash
+docker run --env-file .env -v /tmp:/tmp gtm-ai-tools \
+    python -m utils.find_users_by_name_and_keywords \
+    /tmp/input.csv /tmp/output.csv
+```
+
+### Running utilities locally
+
+You can also execute any of the scripts directly on your machine without using
+Docker. Invoke the module with Python and provide normal file paths. For
+example:
+
+```bash
+python -m utils.find_users_by_name_and_keywords input.csv output.csv
+```
+
 ## Adding new utilities
 
 Place additional stand‑alone scripts inside the `utils/` directory. They will be available inside the Docker image once built.

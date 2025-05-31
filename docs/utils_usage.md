@@ -61,11 +61,30 @@ The script prints the resulting JSON to stdout.
 `search_keywords` columns. For each row it looks up the person's LinkedIn profile
 using Google search through Serper.dev and writes the results to a new CSV file.
 
-Run it with an input and output file:
+Run it with an input and output file. When using the Docker based `task` command
+the paths should point inside the container (the local `output/` directory is
+mounted at `/workspace`):
 
 ```bash
 task run:command -- find_users_by_name_and_keywords \
     /workspace/input.csv /workspace/output.csv
+```
+
+If you want to pass paths that are outside the project directory, mount the
+directory when invoking Docker and reference the files by that path inside the
+container:
+
+```bash
+docker run --env-file .env -v /tmp:/tmp gtm-ai-tools \
+    python -m utils.find_users_by_name_and_keywords \
+    /tmp/input.csv /tmp/output.csv
+```
+
+To execute the script directly on your machine without Docker simply call it
+with normal file paths:
+
+```bash
+python -m utils.find_users_by_name_and_keywords input.csv output.csv
 ```
 
 The resulting CSV contains `full_name`, `user_linkedin_url` and
