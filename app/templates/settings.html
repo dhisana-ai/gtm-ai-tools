@@ -1,42 +1,25 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Dhisana AI Agent - Settings</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    header img { height: 30px; vertical-align: middle; }
-    nav a { margin-right: 15px; }
-  </style>
-</head>
-<body>
-  <header>
-    <a href="https://www.dhisana.ai">
-      <img src="https://www.dhisana.ai/assets/images/color-logo-no-background.svg" alt="Dhisana" />
-      Dhisana AI Agent
-    </a>
-  </header>
-  <nav>
-    <a href="{{ url_for('index') }}">Build &amp; Run Your Workflow</a>
-    <a href="{{ url_for('settings') }}">Settings</a>
-  </nav>
+{% extends 'base.html' %}
 
+{% block content %}
   {% with messages = get_flashed_messages() %}
     {% if messages %}
-      <ul>
-      {% for m in messages %}
-        <li>{{ m }}</li>
-      {% endfor %}
-      </ul>
+      <div class="alert alert-info" role="alert">
+        {% for m in messages %}
+          <div>{{ m }}</div>
+        {% endfor %}
+      </div>
     {% endif %}
   {% endwith %}
 
   <h2>Settings</h2>
   <form method="post">
     {% for key, value in env_vars.items() %}
-      <label>{{ key }}: <input type="text" name="{{ key }}" value="{{ value }}"></label><br>
+      <div class="mb-3">
+        <label class="form-label">{{ key }}
+          <input class="form-control" type="text" name="{{ key }}" value="{{ value }}">
+        </label>
+      </div>
     {% endfor %}
-    <button type="submit">Save</button>
+    <button class="btn btn-primary" type="submit">Save</button>
   </form>
-</body>
-</html>
+{% endblock %}
