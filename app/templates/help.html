@@ -1,0 +1,23 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <h2>Help &amp; Documentation</h2>
+  <p class="mb-3">This page provides a quick overview of how to use the Dhisana AI Agent web app.</p>
+
+  <h4>Getting Started</h4>
+  <ol>
+    <li>Open the <strong>Settings</strong> page and fill in your API keys.</li>
+    <li>Visit <a href="https://github.com/dhisana-ai/gtm-ai-tools#quick-start-5-minutes" target="_blank">Setup &amp; Run instructions</a> for installing dependencies and launching the app.</li>
+  </ol>
+
+  <h4>Running Utilities</h4>
+  <p>Use the <strong>Run a Utility</strong> section on the homepage to execute one of the available tools. Select a utility, provide parameters and optional CSV input, then click <em>Run</em>.</p>
+  <ul>
+    {% for name, desc in utils %}
+      <li><strong>{{ name }}</strong> – {{ desc }}</li>
+    {% endfor %}
+  </ul>
+
+  <h4>Building Workflows</h4>
+  <p>The <strong>Build My Own Workflow</strong> section lets you describe a workflow in plain text. Currently it previews your text or flashes that the workflow would run.</p>
+{% endblock %}

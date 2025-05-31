@@ -115,6 +115,13 @@ def settings():
     return render_template('settings.html', env_vars=env_vars)
 
 
+@app.route('/help')
+def help_page():
+    """Display simple help information about the app and utilities."""
+    utils_list = _list_utils()
+    return render_template('help.html', utils=utils_list)
+
+
 @app.route('/download/<path:filename>')
 def download_file(filename: str):
     """Send a file from the temporary directory."""
