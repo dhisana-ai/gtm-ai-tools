@@ -17,8 +17,16 @@ RUN apt-get update && \
         libcups2 libxss1 libdrm2 libgbm1 \
         libgtk-3-0 libasound2 libx11-xcb1 \
         libxcb1 libxcomposite1 libxdamage1 libxrandr2 \
+        nodejs npm \
     xdg-utils fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
+
+# Install OpenAI Codex CLI and convenience wrapper
+RUN npm install -g @openai/codex && \
+    ln -s /usr/bin/nodejs /usr/local/bin/node && \
+    rm -rf /root/.npm && \
+    chmod +x /usr/local/bin/codex
+COPY scripts/codex-auto.sh /usr/local/bin/codex-auto
 
 # Install Taskfile runner for convenient local usage
 RUN curl -sL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin

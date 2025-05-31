@@ -129,3 +129,15 @@ task run:command -- push_company_to_dhisana_webhook \
     --linkedin_url https://www.linkedin.com/company/acme \
     --tags prospect --notes "From event"
 ```
+
+## OpenAI Codex CLI
+
+The Docker image includes the Codex CLI for conversational code edits. Once your
+`OPENAI_API_KEY` is set, start it in auto-edit mode with:
+
+```bash
+codex-auto "Explain this repo"
+```
+
+Codex proposes edits and applies them to files in the repository while still
+prompting before executing shell commands.
