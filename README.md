@@ -93,7 +93,8 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 ## OpenAI Codex CLI
 
 The Docker image now comes with the [OpenAI Codex CLI](https://github.com/openai/codex)
-installed globally via `npm`. Codex helps you explore and refactor code using
+installed globally via `npm`. Codex requires **Node.js 22** or later, so the image installs
+Node from the official NodeSource repository. Codex helps you explore and refactor code using
 natural language prompts.
 
 1. Ensure your `OPENAI_API_KEY` is set in `.env` or exported in your shell.
