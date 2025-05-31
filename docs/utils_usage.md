@@ -69,22 +69,13 @@ mounted at `/workspace`):
 task run:command -- find_users_by_name_and_keywords \
     /workspace/input.csv /workspace/output.csv
 ```
-
 If you want to pass paths that are outside the project directory, mount the
 directory when invoking Docker and reference the files by that path inside the
 container:
 
 ```bash
-docker run --env-file .env -v /tmp:/tmp gtm-ai-tools \
-    python -m utils.find_users_by_name_and_keywords \
+task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
     /tmp/input.csv /tmp/output.csv
-```
-
-To execute the script directly on your machine without Docker simply call it
-with normal file paths:
-
-```bash
-python -m utils.find_users_by_name_and_keywords input.csv output.csv
 ```
 
 The resulting CSV contains `full_name`, `user_linkedin_url` and

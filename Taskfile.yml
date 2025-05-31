@@ -19,11 +19,26 @@ tasks:
     cmds:
       - mkdir -p output
       - |
-          set -e
-          set -- {{.CLI_ARGS}}
-          cmd="$1"
-          shift
-          echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@"
-          docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@" 2>&1 | tee output/run.log
+        set -e
+        set -- {{.CLI_ARGS}}
+        cmd="$1"
+        shift
+        echo Running: docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@"
+        docker run --env-file .env -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@" 2>&1 | tee output/run.log
+      - mkdir -p /tmp/outputs
+      - cp -a output/* /tmp/outputs/ 2>/dev/null || true
+
+  run:command_local_mapping:
+    desc: Run a utility with local path mapping
+    cmds:
+      - mkdir -p output
+      - |
+        set -e
+        set -- {{.CLI_ARGS}}
+        input_path_prefix="$1"
+        cmd="$2"
+        shift 2
+        echo Running: docker run --env-file .env -v ${input_path_prefix}:${input_path_prefix} -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@"
+        docker run --env-file .env -v ${input_path_prefix}:${input_path_prefix} -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@" 2>&1 | tee output/run.log
       - mkdir -p /tmp/outputs
       - cp -a output/* /tmp/outputs/ 2>/dev/null || true
