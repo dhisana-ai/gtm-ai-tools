@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import aiohttp
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
@@ -88,7 +89,22 @@ async def search_google_serper(
 
 
 def extract_user_linkedin_page(url: str) -> str:
-    """Return the canonical LinkedIn profile URL without query parameters."""
-    parsed = urlparse(url)
-    clean = parsed._replace(query="", fragment="")
-    return urlunparse(clean)
+    """Return the canonical LinkedIn profile URL."""
+    if not url:
+        return ""
+
+    # Replace different schemes or subdomains with the standard one
+    normalized = re.sub(
+        r"(https?://)?([\w\-]+\.)?linkedin\.com",
+        "https://www.linkedin.com",
+        url,
+    )
+
+    parsed = urlparse(normalized)
+    parts = parsed.path.strip("/").split("/")
+
+    if len(parts) >= 2 and parts[0] in {"in", "pub"}:
+        slug = parts[1]
+        return f"https://www.linkedin.com/in/{slug}"
+
+    return ""
