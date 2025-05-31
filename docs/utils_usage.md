@@ -71,3 +71,25 @@ task run:command -- python utils/find_a_user_by_name_and_keywords.py \
 ```
 
 The script prints the resulting JSON to stdout.
+
+## Find Users by Name and Keywords
+
+`find_users_by_name_and_keywords.py` reads a CSV containing `full_name` and
+`search_keywords` columns. For each row it looks up the person's LinkedIn profile
+using Google search through Serper.dev and writes the results to a new CSV file.
+
+Run it with an input and output file:
+
+```bash
+python utils/find_users_by_name_and_keywords.py input.csv output.csv
+```
+
+Or using the Taskfile inside the container:
+
+```bash
+task run:command -- python utils/find_users_by_name_and_keywords.py \
+    /workspace/input.csv /workspace/output.csv
+```
+
+The resulting CSV contains `full_name`, `user_linkedin_url` and
+`search_keywords` for each entry.
