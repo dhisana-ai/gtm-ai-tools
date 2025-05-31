@@ -124,8 +124,8 @@ environment variables.
 
 The homepage now offers two options:
 
-1. **Run a Utility** – select any script from the `utils/` directory and provide
-   its command‑line parameters. If a script requires a CSV input you can upload
+1. **Run a Utility** – choose an available tool by its description and provide
+   the command‑line parameters. If a utility requires a CSV input you can upload
    the file directly in the form. When a utility produces a CSV output a
    download link will be displayed. Plain text output is shown in the page.
 2. **Build My Own Workflow** – describe a workflow in free text. The current

@@ -22,14 +22,25 @@ def load_env():
     return dotenv_values(ENV_FILE)
 
 
-def _list_utils() -> list[str]:
-    """Return available utility modules from the utils package."""
+def _list_utils() -> list[tuple[str, str]]:
+    """Return available utilities as ``(name, description)`` tuples."""
     utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")
-    items = []
-    for name in os.listdir(utils_dir):
-        if name.endswith(".py"):
-            items.append(name[:-3])
-    return sorted(items)
+    items: list[tuple[str, str]] = []
+    for file_name in os.listdir(utils_dir):
+        if not file_name.endswith(".py"):
+            continue
+        base = file_name[:-3]
+        if base == "common":
+            continue
+        desc = base
+        try:
+            module = __import__(f"utils.{base}", fromlist=["__doc__"])
+            if module.__doc__:
+                desc = module.__doc__.strip().splitlines()[0]
+        except Exception:
+            pass
+        items.append((base, desc))
+    return sorted(items, key=lambda x: x[0])
 
 
 @app.route('/', methods=['GET', 'POST'])
