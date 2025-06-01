@@ -178,6 +178,10 @@ download link will be displayed. Plain text output is shown in the page.
 - [Create HubSpot Contact](docs/utils_usage.md#create-hubspot-contact) – add a new contact if one doesn't exist.
 - [Update HubSpot Contact](docs/utils_usage.md#update-hubspot-contact) – modify contact properties.
 - [Add HubSpot Note](docs/utils_usage.md#add-hubspot-note) – attach a note to a contact.
+- [Get Salesforce Contact](docs/utils_usage.md#get-salesforce-contact) – retrieve a CRM contact.
+- [Create Salesforce Contact](docs/utils_usage.md#create-salesforce-contact) – add a new contact if one doesn't exist.
+- [Update Salesforce Contact](docs/utils_usage.md#update-salesforce-contact) – modify contact fields.
+- [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
 - [Fetch HTML with Playwright](utils/fetch_html_playwright.py) – fetch page HTML using Playwright.
 - [Extract from Webpage](utils/extract_from_webpage.py) – extract leads and companies using LLMs.
 

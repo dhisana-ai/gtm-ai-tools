@@ -74,6 +74,24 @@ UTILITY_PARAMETERS = {
         {"name": "--id", "label": "Contact ID"},
         {"name": "properties", "label": "key=value pairs"},
     ],
+    "salesforce_add_note": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "--note", "label": "Note"},
+    ],
+    "salesforce_create_contact": [
+        {"name": "--email", "label": "Email"},
+        {"name": "--first_name", "label": "First name"},
+        {"name": "--last_name", "label": "Last name"},
+        {"name": "--phone", "label": "Phone"},
+    ],
+    "salesforce_get_contact": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "--email", "label": "Email"},
+    ],
+    "salesforce_update_contact": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "properties", "label": "key=value pairs"},
+    ],
     "linkedin_search_to_csv": [
         {
             "name": "query",
