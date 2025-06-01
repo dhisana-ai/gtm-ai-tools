@@ -18,7 +18,7 @@
       <label class="form-label">Utility</label>
       <select class="form-select" name="util_name" id="util-select">
         {% for name, desc in utils %}
-          <option value="{{ name }}" {% if name == default_util %}selected{% endif %}>{{ desc }}</option>
+          <option value="{{ name }}" {% if name == default_util %}selected{% endif %}>{{ loop.index }}. {{ desc }}</option>
         {% endfor %}
       </select>
     </div>
