@@ -192,6 +192,42 @@ task run:command -- hubspot_update_contact --id 1234 firstname=Jane phone=555-12
 task run:command -- hubspot_add_note --id 1234 --note "Followed up via email"
 ```
 
+## Salesforce Contact Utilities
+
+The following scripts use `SALESFORCE_INSTANCE_URL` and `SALESFORCE_ACCESS_TOKEN` to interact with Salesforce CRM.
+
+### Get Salesforce Contact
+
+`salesforce_get_contact.py` fetches a contact by ID or email address.
+
+```bash
+task run:command -- salesforce_get_contact --email user@example.com
+```
+
+### Create Salesforce Contact
+
+`salesforce_create_contact.py` checks if a contact with the given email exists and creates one if not.
+
+```bash
+task run:command -- salesforce_create_contact --email user@example.com --first_name Jane
+```
+
+### Update Salesforce Contact
+
+`salesforce_update_contact.py` updates fields for a contact ID. Provide `key=value` pairs to set properties.
+
+```bash
+task run:command -- salesforce_update_contact --id 003xx phone=555-1234
+```
+
+### Add Salesforce Note
+
+`salesforce_add_note.py` attaches a note to an existing contact by ID.
+
+```bash
+task run:command -- salesforce_add_note --id 003xx --note "Followed up"
+```
+
 ### Send Email via SMTP
 
 `send_email_smtp.py` sends a message using SMTP credentials from the environment. Provide the recipient address and optional subject, body and sender details.
