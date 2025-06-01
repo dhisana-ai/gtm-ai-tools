@@ -1,6 +1,6 @@
 import sys
 from types import SimpleNamespace
-from utils import openai_sample as mod
+from utils import call_openai_llm as mod
 
 class DummyClient:
     def __init__(self, api_key=None):
@@ -9,7 +9,7 @@ class DummyClient:
 def test_openai_main(monkeypatch, capsys):
     monkeypatch.setattr(mod, "OpenAI", lambda api_key=None: DummyClient())
     monkeypatch.setenv("OPENAI_API_KEY", "x")
-    monkeypatch.setattr(sys, "argv", ["openai_sample.py", "hello"])
+    monkeypatch.setattr(sys, "argv", ["call_openai_llm.py", "hello"])
     mod.main()
     captured = capsys.readouterr()
     assert "hi" in captured.out
