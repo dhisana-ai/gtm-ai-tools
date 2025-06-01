@@ -23,6 +23,7 @@ def main() -> None:
     response = client.responses.create(
         model="gpt-4.1",
         input=args.prompt,
+        tools=[{"type": "web_search_preview"}]
     )
     print(response.output_text)
 
