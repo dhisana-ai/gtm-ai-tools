@@ -17,6 +17,99 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 
+# Mapping of utility parameters for the Run a Utility form. Each utility maps
+# to a list of dictionaries describing the CLI argument name and display label.
+UTILITY_PARAMETERS = {
+    "apollo_info": [
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
+        {"name": "--email", "label": "Email"},
+        {"name": "--company_url", "label": "Company URL"},
+        {"name": "--primary_domain", "label": "Company domain"},
+    ],
+    "call_openai_llm": [{"name": "prompt", "label": "Prompt"}],
+    "check_email_zero_bounce": [{"name": "email", "label": "E-mail"}],
+    "fetch_html_playwright": [
+        {"name": "url", "label": "URL"},
+        {"name": "--proxy_url", "label": "Proxy URL"},
+        {"name": "--captcha_key", "label": "2Captcha key"},
+    ],
+    "find_a_user_by_name_and_keywords": [
+        {"name": "full_name", "label": "Full name"},
+        {"name": "search_keywords", "label": "Search keywords"},
+    ],
+    "find_company_info": [
+        {"name": "company_name", "label": "Company name"},
+        {"name": "--location", "label": "Company location"},
+    ],
+    "find_contact_with_findymail": [
+        {"name": "full_name", "label": "Full name"},
+        {"name": "company_domain", "label": "Company domain"},
+    ],
+    "find_user_by_job_title": [
+        {"name": "job_title", "label": "Job title"},
+        {"name": "company_name", "label": "Company name"},
+        {"name": "search_keywords", "label": "Search keywords"},
+    ],
+    "find_users_by_name_and_keywords": [
+        {"name": "input_file", "label": "Input CSV"},
+        {"name": "output_file", "label": "Output CSV"},
+    ],
+    "hubspot_add_note": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "--note", "label": "Note"},
+    ],
+    "hubspot_create_contact": [
+        {"name": "--email", "label": "Email"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
+        {"name": "--first_name", "label": "First name"},
+        {"name": "--last_name", "label": "Last name"},
+        {"name": "--phone", "label": "Phone"},
+    ],
+    "hubspot_get_contact": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "--email", "label": "Email"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
+    ],
+    "hubspot_update_contact": [
+        {"name": "--id", "label": "Contact ID"},
+        {"name": "properties", "label": "key=value pairs"},
+    ],
+    "linkedin_search_to_csv": [
+        {"name": "query", "label": "Google query"},
+        {"name": "output_file", "label": "Output CSV"},
+        {"name": "--num", "label": "Number of results"},
+    ],
+    "mcp_tool_sample": [{"name": "prompt", "label": "Prompt"}],
+    "push_company_to_dhisana_webhook": [
+        {"name": "company_name", "label": "Organization name"},
+        {"name": "--primary_domain", "label": "Primary domain"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
+        {"name": "--tags", "label": "Tags"},
+        {"name": "--notes", "label": "Notes"},
+        {"name": "--webhook_url", "label": "Webhook URL"},
+    ],
+    "push_lead_to_dhisana_webhook": [
+        {"name": "full_name", "label": "Lead name"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
+        {"name": "--email", "label": "Email"},
+        {"name": "--tags", "label": "Tags"},
+        {"name": "--notes", "label": "Notes"},
+        {"name": "--webhook_url", "label": "Webhook URL"},
+    ],
+    "send_email_smtp": [
+        {"name": "recipient", "label": "Recipient"},
+        {"name": "--subject", "label": "Subject"},
+        {"name": "--body", "label": "Body"},
+        {"name": "--sender_name", "label": "Sender name"},
+        {"name": "--sender_email", "label": "Sender email"},
+        {"name": "--use_starttls", "label": "Use STARTTLS", "type": "boolean"},
+    ],
+    "send_slack_message": [
+        {"name": "message", "label": "Message"},
+        {"name": "--webhook", "label": "Webhook URL"},
+    ],
+}
+
 
 def load_env():
     return dotenv_values(ENV_FILE)
@@ -55,7 +148,6 @@ def run_utility():
     utils_list = _list_utils()
     if request.method == 'POST':
         util_name = request.form.get('util_name', '')
-        params = request.form.get('params', '')
         file = request.files.get('csv_file')
         uploaded = None
         if file and file.filename:
@@ -68,8 +160,17 @@ def run_utility():
             '-m',
             f'utils.{util_name}',
         ]
-        if params:
-            cmd += shlex.split(params)
+        for spec in UTILITY_PARAMETERS.get(util_name, []):
+            name = spec['name']
+            value = request.form.get(name, '').strip()
+            if not value:
+                continue
+            if spec.get('type') == 'boolean':
+                cmd.append(name)
+            elif name.startswith('-'):
+                cmd.extend([name, value])
+            else:
+                cmd.append(value)
         if uploaded:
             cmd.append(uploaded)
         env = os.environ.copy()
@@ -80,8 +181,7 @@ def run_utility():
             util_output = proc.stderr or 'Error running command'
         else:
             util_output = proc.stdout
-        args = shlex.split(params)
-        for arg in args:
+        for arg in cmd[3:]:
             if arg.endswith('.csv') and (not uploaded or arg != uploaded):
                 path = os.path.abspath(arg)
                 if os.path.exists(path):
@@ -92,6 +192,8 @@ def run_utility():
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
+        util_params=UTILITY_PARAMETERS,
+        default_util='linkedin_search_to_csv',
     )
 
 

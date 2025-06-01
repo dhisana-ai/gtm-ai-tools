@@ -12,24 +12,54 @@
   {% endwith %}
 
   <h2>Run a Utility</h2>
-  <form method="post" enctype="multipart/form-data" class="mb-4">
+  <form method="post" enctype="multipart/form-data" class="mb-4" id="util-form">
     <input type="hidden" name="mode" value="util">
     <div class="mb-3">
       <label class="form-label">Utility</label>
-      <select class="form-select" name="util_name">
+      <select class="form-select" name="util_name" id="util-select">
         {% for name, desc in utils %}
-          <option value="{{ name }}">{{ desc }}</option>
+          <option value="{{ name }}" {% if name == default_util %}selected{% endif %}>{{ desc }}</option>
         {% endfor %}
       </select>
     </div>
-    <div class="mb-3">
-      <input class="form-control" type="text" name="params" placeholder="Parameters">
-    </div>
+    <div id="params-container"></div>
     <div class="mb-3">
       <input class="form-control" type="file" name="csv_file">
     </div>
     <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
   </form>
+
+  <script>
+    const PARAM_MAP = {{ util_params|tojson }};
+    function renderParams() {
+      const select = document.getElementById('util-select');
+      const container = document.getElementById('params-container');
+      container.innerHTML = '';
+      const util = select.value;
+      const params = PARAM_MAP[util] || [];
+      params.forEach(p => {
+        const div = document.createElement('div');
+        div.className = 'mb-3';
+        const label = document.createElement('label');
+        label.className = 'form-label';
+        label.textContent = p.label;
+        const input = document.createElement('input');
+        input.className = 'form-control';
+        input.name = p.name;
+        if (p.type === 'boolean') {
+          input.type = 'checkbox';
+          input.value = '1';
+        } else {
+          input.type = 'text';
+        }
+        div.appendChild(label);
+        div.appendChild(input);
+        container.appendChild(div);
+      });
+    }
+    document.getElementById('util-select').addEventListener('change', renderParams);
+    document.addEventListener('DOMContentLoaded', renderParams);
+  </script>
 
   {% if util_output %}
     <h3>Output</h3>
