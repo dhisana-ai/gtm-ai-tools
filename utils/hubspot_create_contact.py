@@ -1,4 +1,4 @@
-"""Create a HubSpot contact if one with the same email or LinkedIn URL does not exist."""
+"""Create a HubSpot contact if one with the same email or LinkedIn URL isn't already there."""
 
 from __future__ import annotations
 

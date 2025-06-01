@@ -1,4 +1,4 @@
-"""Utility to find a LinkedIn profile by job title and company."""
+"""Locate a LinkedIn profile by job title at a target company."""
 
 from __future__ import annotations
 

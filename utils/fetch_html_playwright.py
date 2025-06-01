@@ -1,4 +1,7 @@
-"""Utility to fetch HTML content of a URL using Playwright."""
+"""Scrape a web page's HTML using Playwright.
+
+Great for capturing content from any site to feed into lead extraction or
+research workflows."""
 
 from __future__ import annotations
 

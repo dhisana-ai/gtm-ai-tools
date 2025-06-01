@@ -1,4 +1,4 @@
-"""Update properties on a HubSpot contact."""
+"""Update fields on a HubSpot contact."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Add a note to an existing Salesforce contact."""
+"""Attach a note to an existing Salesforce contact."""
 
 from __future__ import annotations
 

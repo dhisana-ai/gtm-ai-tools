@@ -180,16 +180,16 @@ download link will be displayed. Plain text output is shown in the page.
 
 ## Utility reference
 
-- [Call OpenAI LLM](docs/utils_usage.md#call-openai-llm) – example using the OpenAI API.
-- [MCP Tool Sample](docs/utils_usage.md#mcp-tool-sample) – call OpenAI using an MCP server.
-- [Search LinkedIn URLs](docs/utils_usage.md#search-linkedin-urls) – gather profile URLs from Google.
-- [Find Company Info](docs/utils_usage.md#find-company-info) – locate a company's website and LinkedIn page.
-- [Find User by Name and Keywords](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a LinkedIn profile by name.
-- [Find User by Job Title and Company](docs/utils_usage.md#find-user-by-job-title-and-company) – search by title at a company.
-- [Find Users by Name and Keywords](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
-- [Find Email and Phone](docs/utils_usage.md#find-email-and-phone) – look up contact details with Findymail.
-- [Push Lead to Dhisana Webhook](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send a lead record to Dhisana.
-- [Push Company to Dhisana Webhook](docs/utils_usage.md#push-company-to-dhisana-webhook) – send a company record to Dhisana.
+- [OpenAI Tools](docs/utils_usage.md#call-openai-llm) – use LLM prompts and web search to research companies and leads.
+- [MCP Tool Sample](docs/utils_usage.md#mcp-tool-sample) – call OpenAI through an MCP server.
+- [LinkedIn Search to CSV](docs/utils_usage.md#search-linkedin-urls) – gather LinkedIn profile URLs from Google.
+- [Find Company Info](docs/utils_usage.md#find-company-info) – discover a company's website and LinkedIn page.
+- [Find LinkedIn Profile by Name](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a profile using a name and keywords.
+- [Find LinkedIn Profile by Job Title](docs/utils_usage.md#find-user-by-job-title-and-company) – search by title at a target company.
+- [Bulk Find LinkedIn Profiles](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
+- [Find Email and Phone](docs/utils_usage.md#find-email-and-phone) – retrieve contact details with Findymail.
+- [Push Lead to Dhisana](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send lead data to Dhisana for enrichment.
+- [Push Company to Dhisana](docs/utils_usage.md#push-company-to-dhisana-webhook) – send company data to Dhisana.
 - [Get HubSpot Contact](docs/utils_usage.md#get-hubspot-contact) – retrieve a CRM contact.
 - [Create HubSpot Contact](docs/utils_usage.md#create-hubspot-contact) – add a new contact if one doesn't exist.
 - [Update HubSpot Contact](docs/utils_usage.md#update-hubspot-contact) – modify contact properties.
@@ -198,7 +198,7 @@ download link will be displayed. Plain text output is shown in the page.
 - [Create Salesforce Contact](docs/utils_usage.md#create-salesforce-contact) – add a new contact if one doesn't exist.
 - [Update Salesforce Contact](docs/utils_usage.md#update-salesforce-contact) – modify contact fields.
 - [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
-- [Fetch HTML with Playwright](utils/fetch_html_playwright.py) – fetch page HTML using Playwright.
-- [Extract from Webpage](utils/extract_from_webpage.py) – extract leads and companies using LLMs.
+- [Scrape Website HTML (Playwright)](utils/fetch_html_playwright.py) – scrape page HTML for lead extraction.
+- [Extract from Webpage](utils/extract_from_webpage.py) – pull leads and companies from any website.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 

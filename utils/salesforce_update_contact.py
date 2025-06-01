@@ -1,4 +1,4 @@
-"""Update properties on a Salesforce contact."""
+"""Update fields on a Salesforce contact."""
 
 from __future__ import annotations
 

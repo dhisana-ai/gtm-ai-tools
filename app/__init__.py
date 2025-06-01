@@ -21,6 +21,16 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 
+# Optional nicer titles for utilities when displayed in the UI
+UTILITY_TITLES = {
+    "call_openai_llm": "OpenAI Tools",
+    "linkedin_search_to_csv": "LinkedIn Search to CSV",
+    "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
+    "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
+    "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
+    "fetch_html_playwright": "Scrape Website HTML (Playwright)",
+}
+
 # Mapping of utility parameters for the Run a Utility form. Each utility maps
 # to a list of dictionaries describing the CLI argument name and display label.
 UTILITY_PARAMETERS = {
@@ -148,7 +158,7 @@ def load_env():
 
 def _format_title(name: str) -> str:
     """Return a human friendly title from a module name."""
-    return name.replace("_", " ").title()
+    return UTILITY_TITLES.get(name, name.replace("_", " ").title())
 
 
 def _list_utils() -> list[dict[str, str]]:

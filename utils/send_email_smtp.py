@@ -1,4 +1,4 @@
-"""Send a simple e-mail via SMTP."""
+"""Send a simple email via SMTP."""
 
 from __future__ import annotations
 
