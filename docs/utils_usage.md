@@ -177,6 +177,15 @@ task run:command -- hubspot_update_contact --id 1234 firstname=Jane phone=555-12
 task run:command -- hubspot_add_note --id 1234 --note "Followed up via email"
 ```
 
+### Send Email via SMTP
+
+`send_email_smtp.py` sends a message using SMTP credentials from the environment. Provide the recipient address and optional subject, body and sender details.
+
+```bash
+task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body "Hello"
+```
+
+
 ## OpenAI Codex CLI
 
 The Docker image includes the Codex CLI for conversational code edits. Once your

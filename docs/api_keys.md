@@ -38,3 +38,17 @@ HUBSPOT_API_KEY=your_hubspot_key
 ```
 
 Save the file. The utilities and the Codex CLI will read these variables when run.
+# SMTP Credentials
+
+To use the e-mail sending utility you also need SMTP credentials. Add these to your `.env` file:
+
+```bash
+SMTP_SERVER=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=your_username
+SMTP_PASSWORD=your_password
+SMTP_SENDER_EMAIL=you@example.com
+```
+
+`SMTP_PORT` should be the numeric port number for the server. The address set in
+`SMTP_SENDER_EMAIL` is used as the default sender address by the utility.

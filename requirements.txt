@@ -7,3 +7,4 @@ aiohttp
 beautifulsoup4
 flask
 python-dotenv
+aiosmtplib
