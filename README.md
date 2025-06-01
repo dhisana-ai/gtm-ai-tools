@@ -1,6 +1,8 @@
-# gtm-ai-tools
+# Vibe Code Ready GTM AI Tools By Dhisana AI
 
 This repository provides a curated set of utilities for GTM (go-to-market) engineers to automate and streamline common workflows. It includes tools for lead discovery, enrichment and qualification, CRM data hygiene, AI-powered outreach content generation and more—helping teams accelerate pipeline generation and reduce manual effort in GTM operations.
+
+This repo is *vibe code ready*: just describe the workflow you want in natural language and you'll have a custom GTM tool up and running in about five minutes.
 
 The project is contributed to and maintained by the **[Dhisana AI](https://www.dhisana.ai)** team. Community contributions are welcome!
 
@@ -123,7 +125,7 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 ## Vibe coding new workflows
 
 The Codex CLI lets you create new utilities with natural language prompts.
-It runs on your machine, not inside the container.
+It runs on your machine, not inside the container. This repository is vibe code ready—just describe what you want in natural language and you can have your custom workflow ready in 5 min.
 
 1. Install **Node.js 22+** and the CLI:
    ```bash
