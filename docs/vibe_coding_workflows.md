@@ -17,3 +17,12 @@ The CLI runs locally, outside the Docker container.
    git commit -am "Add my tool"
    git push origin my-feature
    ```
+
+4. Rebuild the Docker image and start the web app to access your new utility.
+
+## Example workflow ideas
+
+- Find people by job title at a company.
+- Look up people by name and keywords.
+- Scrape a custom website for leads.
+- Use an LLM to research and summarize a company.

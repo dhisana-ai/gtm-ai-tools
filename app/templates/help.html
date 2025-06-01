@@ -17,4 +17,20 @@
       <li><strong>{{ name }}</strong> – {{ desc }}</li>
     {% endfor %}
   </ul>
+
+  <h4 id="vibe-coding">Vibe Coding New Workflows</h4>
+  <p>You can create additional utilities with the OpenAI Codex CLI.</p>
+  <ol>
+    <li>Install Node.js 22+ and <code>@openai/codex</code>.</li>
+    <li>Run <code>task add_utility -- my_tool "describe what it should do"</code>.</li>
+    <li>Commit your script and push it to GitHub.</li>
+  </ol>
+  <p>Example ideas:</p>
+  <ul>
+    <li>Find people by job title at a company.</li>
+    <li>Look up people by name and keywords.</li>
+    <li>Scrape a custom website for leads.</li>
+    <li>Use an LLM to research a company.</li>
+  </ul>
+  <p>See the <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">vibe coding guide</a> for details.</p>
 {% endblock %}
