@@ -1,5 +1,7 @@
 # Vibe Code Ready GTM AI Tools By Dhisana AI
 
+These tools are free and open source for you to download and use.
+
 This repository provides a curated set of utilities for GTM (go-to-market) engineers to automate and streamline common workflows. It includes tools for lead discovery, enrichment and qualification, CRM data hygiene, AI-powered outreach content generation and more—helping teams accelerate pipeline generation and reduce manual effort in GTM operations.
 
 This repo is *vibe code ready*: just describe the workflow you want in natural language and you'll have a custom GTM tool up and running in about five minutes.
@@ -7,6 +9,10 @@ This repo is *vibe code ready*: just describe the workflow you want in natural l
 The project is contributed to and maintained by the **[Dhisana AI](https://www.dhisana.ai)** team. Community contributions are welcome!
 
 Dhisana AI also provides a managed offering of these workflows and more. It delivers personalized outreach—including LinkedIn outreach—powered by over 100 signals and sources, all hosted as a secure managed service. You can sign up and get started in 10 minutes at <https://www.dhisana.ai>.
+
+Vibe code and add your own GTM workflow in 5 min! [Vibe coding instructions](docs/vibe_coding_workflows.md)
+
+View this project on [GitHub](https://github.com/dhisana-ai/gtm-ai-tools). Signup and get a 24/7 managed version of this service that runs an AI Agent for you in the cloud with all these workflows and more.
 
 
 ## Quick Start
