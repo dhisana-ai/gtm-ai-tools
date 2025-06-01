@@ -51,6 +51,28 @@ if 'openai' not in sys.modules:
     openai.OpenAI = DummyClient
     sys.modules['openai'] = openai
 
+if 'httpx' not in sys.modules:
+    httpx = types.ModuleType('httpx')
+    class DummyAsyncClient:
+        def __init__(self, *a, **kw):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+        async def post(self, *a, **kw):
+            class Resp:
+                def json(self_inner):
+                    return {}
+            return Resp()
+        async def get(self, *a, **kw):
+            class Resp:
+                def json(self_inner):
+                    return {}
+            return Resp()
+    httpx.AsyncClient = DummyAsyncClient
+    sys.modules['httpx'] = httpx
+
 if 'requests' not in sys.modules:
     requests = types.ModuleType('requests')
     def dummy_post(*a, **kw):
@@ -58,5 +80,36 @@ if 'requests' not in sys.modules:
         return Resp()
     requests.post = dummy_post
     sys.modules['requests'] = requests
+
+if 'playwright' not in sys.modules:
+    playwright = types.ModuleType('playwright')
+    async_api = types.ModuleType('async_api')
+    class DummyPlaywright:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+        class Browser:
+            async def new_context(self, *a, **kw):
+                class Ctx:
+                    async def new_page(self):
+                        return type('P', (), {'goto': lambda *a, **kw: None, 'content': lambda: ''})()
+                    async def storage_state(self, path=None):
+                        pass
+                return Ctx()
+            async def close(self):
+                pass
+        def chromium(self):
+            return type('B', (), {'launch': lambda *a, **kw: self.Browser()})()
+    async_api.async_playwright = lambda: DummyPlaywright()
+    async_api.TimeoutError = Exception
+    playwright.async_api = async_api
+    sys.modules['playwright'] = playwright
+    sys.modules['playwright.async_api'] = async_api
+
+if 'playwright_stealth' not in sys.modules:
+    stealth = types.ModuleType('playwright_stealth')
+    stealth.stealth_async = lambda page: None
+    sys.modules['playwright_stealth'] = stealth
 
 import pytest
