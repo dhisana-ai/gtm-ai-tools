@@ -15,11 +15,30 @@
   <form method="post">
     {% for key, value in env_vars.items() %}
       <div class="mb-3">
-        <label class="form-label">{{ key }}
-          <input class="form-control" type="text" name="{{ key }}" value="{{ value }}">
-        </label>
+        <label class="form-label" for="{{ key }}">{{ key }}</label>
+        <div class="input-group">
+          <input class="form-control" type="password" id="{{ key }}" name="{{ key }}" value="{{ value }}">
+          <button class="btn btn-outline-secondary toggle-password" type="button" data-target="{{ key }}">
+            <i class="bi bi-eye"></i>
+          </button>
+        </div>
       </div>
     {% endfor %}
     <button class="btn btn-primary" type="submit">Save</button>
   </form>
+
+  <script>
+    document.querySelectorAll('.toggle-password').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var input = document.getElementById(btn.dataset.target);
+        if (input.type === 'password') {
+          input.type = 'text';
+          btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+        } else {
+          input.type = 'password';
+          btn.innerHTML = '<i class="bi bi-eye"></i>';
+        }
+      });
+    });
+  </script>
 {% endblock %}
