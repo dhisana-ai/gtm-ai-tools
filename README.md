@@ -116,22 +116,34 @@ Place additional stand-alone scripts inside the `utils/` directory. After rebuil
 
 See [Using the utilities](docs/utils_usage.md) for examples of running the sample scripts.
 
-## OpenAI Codex CLI
+## Vibe coding new workflows
 
-The Docker image now comes with the [OpenAI Codex CLI](https://github.com/openai/codex)
-installed globally via `npm`. Codex requires **Node.js 22** or later, so the image installs
-Node from the official NodeSource repository. Codex helps you explore and refactor code using
-natural language prompts.
+The Docker image no longer bundles the OpenAI Codex CLI. To generate a new
+utility with Codex you need Node.js 22+ installed on your local machine:
 
-1. Ensure your `OPENAI_API_KEY` is set in `.env` or exported in your shell.
-2. Start the CLI in auto‑edit mode using the wrapper script:
+```bash
+npm install -g @openai/codex
+```
 
-   ```bash
-   codex-auto "Explain this repo"
-   ```
+Once installed, use the provided `task add_utility` helper outside the
+container:
 
-Codex will read files in the current directory, propose edits and apply them
-automatically while still asking before running shell commands.
+```bash
+task add_utility my_tool "scrape a web page and return the title"
+```
+
+Codex will propose edits and update the repository. A common workflow is:
+
+```bash
+git checkout -b my-feature
+task add_utility ...
+git commit -am "Add new utility"
+git push origin my-feature
+```
+
+See [docs/vibe_coding_workflows.md](docs/vibe_coding_workflows.md) for a more
+detailed walkthrough.
+
 
 ## Web application
 
@@ -144,15 +156,10 @@ docker run -p 8080:8080 gtm-ai-tools
 ```
 
 Open <http://localhost:8080> in your browser to access the app. The interface
-now separates utilities and workflows into two pages:
-
-1. **Run a Utility** – choose an available tool by its description and provide
-   the command‑line parameters. If a utility requires a CSV input you can upload
-   the file directly in the form. When a utility produces a CSV output a
-   download link will be displayed. Plain text output is shown in the page.
-2. **Build My Own Workflow** – supply a name and instructions. The Codex CLI
-   creates a new utility script in the `utils/` directory and adds it to the
-   application.
+shows a **Run a Utility** page where you can choose a tool and provide the
+required command‑line parameters. If a utility requires a CSV input you can
+upload the file directly in the form. When a utility produces a CSV output a
+download link will be displayed. Plain text output is shown in the page.
 
 ## Utility reference
 
