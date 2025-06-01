@@ -4,6 +4,8 @@ This repository provides a curated set of utilities for GTM (go-to-market) engin
 
 The project is contributed to and maintained by the **[Dhisana AI](https://www.dhisana.ai)** team. Community contributions are welcome!
 
+Dhisana AI also provides a managed offering of these workflows and more. It delivers personalized outreach—including LinkedIn outreach—powered by over 100 signals and sources, all hosted as a secure managed service. You can sign up and get started in 10 minutes at <https://www.dhisana.ai>.
+
 
 ## Quick Start
 
