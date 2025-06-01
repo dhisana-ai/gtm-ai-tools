@@ -13,8 +13,8 @@
   <h4>Running Utilities</h4>
   <p>Use the <strong>Run a Utility</strong> page to execute one of the available tools. Select a utility, provide parameters and optional CSV input, then click <em>Run</em>.</p>
   <ul>
-    {% for name, desc in utils %}
-      <li><strong>{{ name }}</strong> – {{ desc }}</li>
+    {% for util in utils %}
+      <li><strong>{{ util.title }}</strong> – {{ util.desc }}</li>
     {% endfor %}
   </ul>
 

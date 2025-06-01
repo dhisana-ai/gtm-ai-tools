@@ -22,11 +22,11 @@
   </p>
   <div class="row">
     <div class="col-md-4 mb-4">
-      {% for name, desc in utils %}
-        <div class="card util-card mb-3" data-util="{{ name }}" role="button" style="cursor:pointer;">
+      {% for util in utils %}
+        <div class="card util-card mb-3" data-util="{{ util.name }}" role="button" style="cursor:pointer;">
           <div class="card-body">
-            <h5 class="card-title mb-1">{{ name }}</h5>
-            <p class="card-text small text-muted">{{ desc }}</p>
+            <h5 class="card-title mb-1">{{ util.title }}</h5>
+            <p class="card-text small text-muted">{{ util.desc }}</p>
           </div>
         </div>
       {% endfor %}

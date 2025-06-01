@@ -146,10 +146,15 @@ def load_env():
     return dotenv_values(ENV_FILE)
 
 
-def _list_utils() -> list[tuple[str, str]]:
-    """Return available utilities as ``(name, description)`` tuples."""
+def _format_title(name: str) -> str:
+    """Return a human friendly title from a module name."""
+    return name.replace("_", " ").title()
+
+
+def _list_utils() -> list[dict[str, str]]:
+    """Return available utilities as ``{"name", "title", "desc"}`` dicts."""
     utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")
-    items: list[tuple[str, str]] = []
+    items: list[dict[str, str]] = []
     for file_name in os.listdir(utils_dir):
         if not file_name.endswith(".py"):
             continue
@@ -163,8 +168,8 @@ def _list_utils() -> list[tuple[str, str]]:
                 desc = module.__doc__.strip().splitlines()[0]
         except Exception:
             pass
-        items.append((base, desc))
-    return sorted(items, key=lambda x: x[0])
+        items.append({"name": base, "title": _format_title(base), "desc": desc})
+    return sorted(items, key=lambda x: x["title"])
 
 
 @app.route('/')
