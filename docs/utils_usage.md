@@ -211,8 +211,8 @@ task run:command -- send_slack_message "Deployment finished"
 
 ## OpenAI Codex CLI
 
-Install the Codex CLI locally to generate new utilities using natural language.
-After installing Node.js 22+ run:
+Install the Codex CLI locally to generate new utilities with natural language prompts.
+After installing **Node.js 22+** run:
 
 ```bash
 npm install -g @openai/codex

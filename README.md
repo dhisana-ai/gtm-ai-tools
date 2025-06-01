@@ -5,7 +5,9 @@ This repository provides a curated set of utilities for GTM (go-to-market) engin
 The project is contributed to and maintained by the **[Dhisana AI](https://www.dhisana.ai)** team. Community contributions are welcome!
 
 
-## Quick Start (5 minutes)
+## Quick Start
+
+Follow these steps to spin up the container and run a utility.
 
 1. **Clone the repository**
    ```bash
@@ -23,11 +25,11 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
    DHISANA_API_KEY=...
    HUBSPOT_API_KEY=...
    ```
-4. **Launch the web app**
+4. **Start the container and open the app**
    ```bash
    docker run --env-file .env -p 8080:8080 gtm-ai-tools
    ```
-5. Open <http://localhost:8080> and start running utilities.
+   Then browse to <http://localhost:8080>.
 
 ## Repository structure
 
@@ -118,28 +120,23 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 
 ## Vibe coding new workflows
 
-The Docker image no longer bundles the OpenAI Codex CLI. To generate a new
-utility with Codex you need Node.js 22+ installed on your local machine:
+The Codex CLI lets you create new utilities with natural language prompts.
+It runs on your machine, not inside the container.
 
-```bash
-npm install -g @openai/codex
-```
-
-Once installed, use the provided `task add_utility` helper outside the
-container:
-
-```bash
-task add_utility my_tool "scrape a web page and return the title"
-```
-
-Codex will propose edits and update the repository. A common workflow is:
-
-```bash
-git checkout -b my-feature
-task add_utility ...
-git commit -am "Add new utility"
-git push origin my-feature
-```
+1. Install **Node.js 22+** and the CLI:
+   ```bash
+   npm install -g @openai/codex
+   ```
+2. Generate a utility from the project root:
+   ```bash
+   task add_utility my_tool "scrape a web page and return the title"
+   ```
+3. Review the changes, commit and push:
+   ```bash
+   git checkout -b my-feature
+   git commit -am "Add new utility"
+   git push origin my-feature
+   ```
 
 See [docs/vibe_coding_workflows.md](docs/vibe_coding_workflows.md) for a more
 detailed walkthrough.
