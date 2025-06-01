@@ -2,6 +2,10 @@ import os
 import shlex
 import subprocess
 import tempfile
+import csv
+import re
+import asyncio
+from utils import push_lead_to_dhisana_webhook
 from flask import (
     Flask,
     render_template,
@@ -280,3 +284,46 @@ def help_page():
 def download_file(filename: str):
     """Send a file from the temporary directory."""
     return send_from_directory(tempfile.gettempdir(), os.path.basename(filename), as_attachment=True)
+
+
+@app.route('/push_to_dhisana', methods=['POST'])
+def push_to_dhisana():
+    csv_path = request.form.get('csv_path', '')
+    output_text = request.form.get('output_text', '')
+    linkedin_re = re.compile(r'https://www\.linkedin\.com/in/[A-Za-z0-9_-]+')
+    urls: set[str] = set()
+    if csv_path and os.path.exists(csv_path):
+        try:
+            with open(csv_path, newline='', encoding='utf-8') as fh:
+                reader = csv.reader(fh)
+                for row in reader:
+                    for cell in row:
+                        urls.update(linkedin_re.findall(str(cell)))
+        except Exception:
+            pass
+    urls.update(linkedin_re.findall(output_text or ''))
+    if not urls:
+        flash('No LinkedIn profile URLs found to push.')
+        return redirect(url_for('run_utility'))
+
+    webhook_url = os.getenv('DHISANA_WEBHOOK_URL')
+    api_key = os.getenv('DHISANA_API_KEY')
+    if not webhook_url or not api_key:
+        flash('Please set DHISANA_WEBHOOK_URL and DHISANA_API_KEY in Settings.')
+        return redirect(url_for('settings'))
+
+    pushed = 0
+    for url in urls:
+        try:
+            asyncio.run(
+                push_lead_to_dhisana_webhook.push_lead_to_dhisana_webhook(
+                    '',
+                    linkedin_url=url,
+                    webhook_url=webhook_url,
+                )
+            )
+            pushed += 1
+        except Exception:
+            pass
+    flash(f'Pushed {pushed} leads to Dhisana.')
+    return redirect(url_for('run_utility'))

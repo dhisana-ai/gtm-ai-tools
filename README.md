@@ -190,4 +190,5 @@ download link will be displayed. Plain text output is shown in the page.
 - [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
 - [Fetch HTML with Playwright](utils/fetch_html_playwright.py) – fetch page HTML using Playwright.
 - [Extract from Webpage](utils/extract_from_webpage.py) – extract leads and companies using LLMs.
+- [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 
