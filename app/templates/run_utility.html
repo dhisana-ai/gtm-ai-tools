@@ -20,41 +20,64 @@
     View this project on <a href="https://github.com/dhisana-ai/gtm-ai-tools" target="_blank">GitHub</a>.
     <a href="https://www.dhisana.ai" target="_blank">Signup</a> and get a 24/7 managed version of this service that runs an AI Agent for you in the cloud with all these workflows and more.
   </p>
-  <form method="post" enctype="multipart/form-data" class="mb-4" id="util-form">
-    <input type="hidden" name="mode" value="util">
-    <div class="mb-3">
-      <label class="form-label">Utility</label>
-      <select class="form-select" name="util_name" id="util-select">
-        {% for name, desc in utils %}
-          <option value="{{ name }}" {% if name == default_util %}selected{% endif %}>{{ loop.index }}. {{ desc }}</option>
-        {% endfor %}
-      </select>
+  <div class="row">
+    <div class="col-md-4 mb-4">
+      {% for name, desc in utils %}
+        <div class="card util-card mb-3" data-util="{{ name }}" role="button" style="cursor:pointer;">
+          <div class="card-body">
+            <h5 class="card-title mb-1">{{ name }}</h5>
+            <p class="card-text small text-muted">{{ desc }}</p>
+          </div>
+        </div>
+      {% endfor %}
     </div>
-    <div class="mb-3">
-      <label class="form-label">Input Mode</label><br>
-      <div class="form-check form-check-inline">
-        <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
-        <label class="form-check-label" for="mode-single">Single Input</label>
-      </div>
-      <div class="form-check form-check-inline">
-        <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file">
-        <label class="form-check-label" for="mode-upload">Upload input list</label>
-      </div>
+    <div class="col-md-8">
+      <form method="post" enctype="multipart/form-data" class="mb-4" id="util-form">
+        <input type="hidden" name="mode" value="util">
+        <input type="hidden" name="util_name" id="util-name-input" value="{{ default_util }}">
+        <div class="mb-3">
+          <label class="form-label">Input Mode</label><br>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
+            <label class="form-check-label" for="mode-single">Single Input</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file">
+            <label class="form-check-label" for="mode-upload">Upload input list</label>
+          </div>
+        </div>
+        <div id="params-container"></div>
+        <div class="mb-3" id="file-container" style="display:none;">
+          <input class="form-control" type="file" name="csv_file">
+        </div>
+        <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+      </form>
+
+      {% if util_output %}
+        <h3>Output</h3>
+        <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
+      {% endif %}
+      {% if download_name %}
+        <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
+      {% endif %}
     </div>
-    <div id="params-container"></div>
-    <div class="mb-3" id="file-container" style="display:none;">
-      <input class="form-control" type="file" name="csv_file">
-    </div>
-    <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
-  </form>
+  </div>
 
   <script>
     const PARAM_MAP = {{ util_params|tojson }};
+    const utilInput = document.getElementById('util-name-input');
+
+    function selectUtil(name) {
+      utilInput.value = name;
+      document.querySelectorAll('.util-card').forEach(card => {
+        card.classList.toggle('border-primary', card.dataset.util === name);
+      });
+    }
+
     function renderParams() {
-      const select = document.getElementById('util-select');
       const container = document.getElementById('params-container');
       container.innerHTML = '';
-      const util = select.value;
+      const util = utilInput.value;
       const params = PARAM_MAP[util] || [];
       params.forEach(p => {
         const div = document.createElement('div');
@@ -89,17 +112,18 @@
       document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
       document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
     }
-    document.getElementById('util-select').addEventListener('change', renderParams);
+    document.querySelectorAll('.util-card').forEach(card => {
+      card.addEventListener('click', () => {
+        selectUtil(card.dataset.util);
+        renderParams();
+      });
+    });
     document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
-    document.addEventListener('DOMContentLoaded', () => { renderParams(); updateMode(); });
+    document.addEventListener('DOMContentLoaded', () => {
+      selectUtil(utilInput.value);
+      renderParams();
+      updateMode();
+    });
   </script>
-
-  {% if util_output %}
-    <h3>Output</h3>
-    <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
-  {% endif %}
-  {% if download_name %}
-    <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
-  {% endif %}
 
 {% endblock %}
