@@ -22,8 +22,19 @@
         {% endfor %}
       </select>
     </div>
-    <div id="params-container"></div>
     <div class="mb-3">
+      <label class="form-label">Input Mode</label><br>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
+        <label class="form-check-label" for="mode-single">Single Input</label>
+      </div>
+      <div class="form-check form-check-inline">
+        <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file">
+        <label class="form-check-label" for="mode-upload">Upload input list</label>
+      </div>
+    </div>
+    <div id="params-container"></div>
+    <div class="mb-3" id="file-container" style="display:none;">
       <input class="form-control" type="file" name="csv_file">
     </div>
     <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
@@ -57,8 +68,15 @@
         container.appendChild(div);
       });
     }
+
+    function updateMode() {
+      const mode = document.querySelector('input[name="input_mode"]:checked').value;
+      document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
+      document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
+    }
     document.getElementById('util-select').addEventListener('change', renderParams);
-    document.addEventListener('DOMContentLoaded', renderParams);
+    document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
+    document.addEventListener('DOMContentLoaded', () => { renderParams(); updateMode(); });
   </script>
 
   {% if util_output %}
