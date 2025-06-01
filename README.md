@@ -143,19 +143,16 @@ arguments, the web interface launches automatically on port `8080`:
 docker run -p 8080:8080 gtm-ai-tools
 ```
 
-Open <http://localhost:8080> in your browser to access the app which provides a
-simple interface for describing and running workflows as well as editing your
-environment variables.
-
-The homepage now offers two options:
+Open <http://localhost:8080> in your browser to access the app. The interface
+now separates utilities and workflows into two pages:
 
 1. **Run a Utility** – choose an available tool by its description and provide
    the command‑line parameters. If a utility requires a CSV input you can upload
    the file directly in the form. When a utility produces a CSV output a
    download link will be displayed. Plain text output is shown in the page.
-2. **Build My Own Workflow** – describe a workflow in free text. The current
-   implementation simply previews the text or flashes that the workflow would
-   run; additional functionality can be added later.
+2. **Build My Own Workflow** – supply a name and instructions. The Codex CLI
+   creates a new utility script in the `utils/` directory and adds it to the
+   application.
 
 ## Utility reference
 

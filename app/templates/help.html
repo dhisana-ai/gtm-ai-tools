@@ -11,7 +11,7 @@
   </ol>
 
   <h4>Running Utilities</h4>
-  <p>Use the <strong>Run a Utility</strong> section on the homepage to execute one of the available tools. Select a utility, provide parameters and optional CSV input, then click <em>Run</em>.</p>
+  <p>Use the <strong>Run a Utility</strong> page to execute one of the available tools. Select a utility, provide parameters and optional CSV input, then click <em>Run</em>.</p>
   <ul>
     {% for name, desc in utils %}
       <li><strong>{{ name }}</strong> – {{ desc }}</li>
@@ -19,5 +19,5 @@
   </ul>
 
   <h4>Building Workflows</h4>
-  <p>The <strong>Build My Own Workflow</strong> section lets you describe a workflow in plain text. Currently it previews your text or flashes that the workflow would run.</p>
+  <p>The <strong>Build My Own Workflow</strong> page lets you generate new utilities. Provide a name and instructions and the Codex CLI will create a script in the <code>utils/</code> directory.</p>
 {% endblock %}
