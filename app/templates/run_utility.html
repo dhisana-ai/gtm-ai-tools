@@ -63,7 +63,7 @@
 
   {% if util_output %}
     <h3>Output</h3>
-    <pre class="bg-light p-3 border">{{ util_output }}</pre>
+    <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
   {% endif %}
   {% if download_name %}
     <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
