@@ -30,8 +30,8 @@ UTILITY_PARAMETERS = {
     "check_email_zero_bounce": [{"name": "email", "label": "E-mail"}],
     "fetch_html_playwright": [
         {"name": "url", "label": "URL"},
-        {"name": "--proxy_url", "label": "Proxy URL"},
-        {"name": "--captcha_key", "label": "2Captcha key"},
+        {"name": "--summarize", "label": "Summarize content", "type": "boolean"},
+        {"name": "--instructions", "label": "Summarize instructions"},
     ],
     "find_a_user_by_name_and_keywords": [
         {"name": "full_name", "label": "Full name"},

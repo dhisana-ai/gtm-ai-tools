@@ -11,6 +11,8 @@ from contextlib import asynccontextmanager
 from typing import Optional, Dict, Any
 from urllib.parse import urlparse
 
+from openai import OpenAI
+
 import httpx
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 from playwright_stealth import stealth_async
@@ -188,15 +190,33 @@ async def fetch_html(url: str, proxy_url: Optional[str] = None, captcha_key: Opt
     return await _do_fetch(url, proxy_url, captcha_key)
 
 
+def summarize_html(text: str, instructions: str) -> str:
+    """Return a summary of ``text`` using the OpenAI Responses API."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    client = OpenAI(api_key=api_key)
+    response = client.responses.create(
+        model="gpt-4.1",
+        input=f"{instructions}\n\n{text}",
+    )
+    return getattr(response, "output_text", "")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch HTML using Playwright")
     parser.add_argument("url", help="URL to fetch")
-    parser.add_argument("--proxy_url", help="Proxy server URL")
-    parser.add_argument("--captcha_key", help="2Captcha API key")
+    parser.add_argument("--summarize", action="store_true", help="Summarize content")
+    parser.add_argument("--instructions", default="Summarize the following text", help="Summarization instructions")
     args = parser.parse_args()
-    captcha = args.captcha_key or os.getenv("TWO_CAPTCHA_API_KEY")
-    html = asyncio.run(fetch_html(args.url, args.proxy_url, captcha))
-    print(html)
+    proxy_url = os.getenv("PROXY_URL")
+    captcha = os.getenv("TWO_CAPTCHA_API_KEY")
+    html = asyncio.run(fetch_html(args.url, proxy_url, captcha))
+    if args.summarize:
+        output = summarize_html(html, args.instructions)
+    else:
+        output = html
+    print(output)
 
 
 if __name__ == "__main__":
