@@ -185,6 +185,14 @@ task run:command -- hubspot_add_note --id 1234 --note "Followed up via email"
 task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body "Hello"
 ```
 
+### Send Slack Message
+
+`send_slack_message.py` posts a message to Slack using a webhook URL. Set `SLACK_WEBHOOK_URL` in the environment or pass `--webhook`.
+
+```bash
+task run:command -- send_slack_message "Deployment finished"
+```
+
 
 ## OpenAI Codex CLI
 

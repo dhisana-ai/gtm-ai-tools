@@ -51,4 +51,12 @@ if 'openai' not in sys.modules:
     openai.OpenAI = DummyClient
     sys.modules['openai'] = openai
 
+if 'requests' not in sys.modules:
+    requests = types.ModuleType('requests')
+    def dummy_post(*a, **kw):
+        class Resp: pass
+        return Resp()
+    requests.post = dummy_post
+    sys.modules['requests'] = requests
+
 import pytest
