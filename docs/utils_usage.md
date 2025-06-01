@@ -130,6 +130,42 @@ task run:command -- push_company_to_dhisana_webhook \
     --tags prospect --notes "From event"
 ```
 
+## HubSpot Contact Utilities
+
+The following scripts interact with HubSpot's CRM using the `HUBSPOT_API_KEY` environment variable.
+
+### Get HubSpot Contact
+
+`hubspot_get_contact.py` fetches a contact by ID, email address or LinkedIn URL.
+
+```bash
+task run:command -- hubspot_get_contact --email user@example.com
+```
+
+### Create HubSpot Contact
+
+`hubspot_create_contact.py` checks if a contact with the given email or LinkedIn URL exists and creates one if not.
+
+```bash
+task run:command -- hubspot_create_contact --email user@example.com --first_name Jane
+```
+
+### Update HubSpot Contact
+
+`hubspot_update_contact.py` updates known fields for a contact ID. Provide `key=value` pairs to set properties.
+
+```bash
+task run:command -- hubspot_update_contact --id 1234 firstname=Jane phone=555-1234
+```
+
+### Add HubSpot Note
+
+`hubspot_add_note.py` attaches a note to an existing contact by ID.
+
+```bash
+task run:command -- hubspot_add_note --id 1234 --note "Followed up via email"
+```
+
 ## OpenAI Codex CLI
 
 The Docker image includes the Codex CLI for conversational code edits. Once your

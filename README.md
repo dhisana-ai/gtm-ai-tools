@@ -21,6 +21,7 @@ The project is contributed to and maintained by the **[Dhisana AI](https://www.d
    OPENAI_API_KEY=...
    SERPER_API_KEY=...
    DHISANA_API_KEY=...
+   HUBSPOT_API_KEY=...
    ```
 4. **Launch the web app**
    ```bash
@@ -166,6 +167,10 @@ The homepage now offers two options:
 - [Find Users by Name and Keywords](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
 - [Push Lead to Dhisana Webhook](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send a lead record to Dhisana.
 - [Push Company to Dhisana Webhook](docs/utils_usage.md#push-company-to-dhisana-webhook) – send a company record to Dhisana.
+- [Get HubSpot Contact](docs/utils_usage.md#get-hubspot-contact) – retrieve a CRM contact.
+- [Create HubSpot Contact](docs/utils_usage.md#create-hubspot-contact) – add a new contact if one doesn't exist.
+- [Update HubSpot Contact](docs/utils_usage.md#update-hubspot-contact) – modify contact properties.
+- [Add HubSpot Note](docs/utils_usage.md#add-hubspot-note) – attach a note to a contact.
 - [Fetch HTML with Playwright](utils/fetch_html_playwright.py) – fetch page HTML using Playwright.
 - [Extract from Webpage](utils/extract_from_webpage.py) – extract leads and companies using LLMs.
 
