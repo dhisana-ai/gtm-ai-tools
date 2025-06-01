@@ -14,6 +14,17 @@ task run:command -- openai_sample "Hello!"
 
 The script prints the text from the `responses.create` call.
 
+## MCP Tool Sample
+
+`mcp_tool_sample.py` sends a prompt to OpenAI using an MCP server. It requires `OPENAI_API_KEY` along with `MCP_SERVER_URL`, `MCP_API_KEY_HEADER_NAME` and `MCP_API_KEY_HEADER_VALUE`. Optionally set `MCP_SERVER_LABEL`.
+
+Run it with:
+
+```bash
+task run:command -- mcp_tool_sample "Ping"
+```
+
+
 ## Search LinkedIn URLs
 
 `linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERPER_API_KEY` environment variable.

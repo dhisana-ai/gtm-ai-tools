@@ -160,6 +160,7 @@ The homepage now offers two options:
 ## Utility reference
 
 - [OpenAI Sample](docs/utils_usage.md#openai-sample) – example using the OpenAI API.
+- [MCP Tool Sample](docs/utils_usage.md#mcp-tool-sample) – call OpenAI using an MCP server.
 - [Search LinkedIn URLs](docs/utils_usage.md#search-linkedin-urls) – gather profile URLs from Google.
 - [Find Company Info](docs/utils_usage.md#find-company-info) – locate a company's website and LinkedIn page.
 - [Find User by Name and Keywords](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a LinkedIn profile by name.
