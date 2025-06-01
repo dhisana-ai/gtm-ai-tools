@@ -211,12 +211,15 @@ task run:command -- send_slack_message "Deployment finished"
 
 ## OpenAI Codex CLI
 
-The Docker image includes the Codex CLI for conversational code edits. Once your
-`OPENAI_API_KEY` is set, start it in auto-edit mode with:
+Install the Codex CLI locally to generate new utilities using natural language.
+After installing Node.js 22+ run:
 
 ```bash
-codex-auto "Explain this repo"
+npm install -g @openai/codex
 ```
 
-Codex proposes edits and applies them to files in the repository while still
-prompting before executing shell commands.
+You can then invoke it through the helper task:
+
+```bash
+task add_utility my_tool "describe what it should do"
+```

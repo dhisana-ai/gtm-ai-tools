@@ -95,33 +95,6 @@ def run_utility():
     )
 
 
-@app.route('/workflow', methods=['GET', 'POST'])
-def build_workflow():
-    workflow_name = ''
-    instructions = ''
-    output = None
-    if request.method == 'POST':
-        workflow_name = request.form.get('workflow_name', '').strip()
-        instructions = request.form.get('instructions', '').strip()
-        if not workflow_name or not instructions:
-            flash('Please provide a workflow name and instructions.')
-        else:
-            cmd = [
-                'codex-auto',
-                f"create a utils/{workflow_name}.py with the following instructions. add it to app, docs and tools like other tools: {instructions}"
-            ]
-            env = os.environ.copy()
-            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            proc = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=root_dir)
-            output = (proc.stdout or '') + (proc.stderr or '')
-            flash(f'Codex executed to create {workflow_name}.py')
-    return render_template(
-        'build_workflow.html',
-        workflow_name=workflow_name,
-        instructions=instructions,
-        output=output,
-    )
-
 
 @app.route('/settings', methods=['GET', 'POST'])
 def settings():

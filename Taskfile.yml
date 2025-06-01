@@ -42,3 +42,18 @@ tasks:
         docker run --env-file .env -v ${input_path_prefix}:${input_path_prefix} -v $(pwd)/output:/workspace {{.IMAGE}} python -m utils.${cmd} "$@" 2>&1 | tee output/run.log
       - mkdir -p /tmp/outputs
       - cp -a output/* /tmp/outputs/ 2>/dev/null || true
+
+  add_utility:
+    desc: Generate a new utility using the Codex CLI
+    cmds:
+      - |
+        set -e
+        set -- {{.CLI_ARGS}}
+        name="$1"
+        shift
+        if [ -z "$name" ] || [ $# -eq 0 ]; then
+          echo "Usage: task add_utility <name> <instructions>" >&2
+          exit 1
+        fi
+        codex-auto "create a utils/${name}.py with the following instructions. add it to app, docs and tools like other tools: $*"
+

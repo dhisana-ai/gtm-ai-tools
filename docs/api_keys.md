@@ -43,7 +43,8 @@ HUBSPOT_API_KEY=your_hubspot_key
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
 ```
 
-Save the file. The utilities and the Codex CLI will read these variables when run.
+Save the file. The utilities will read these variables when run. If you use the
+Codex CLI locally it will read them as well.
 # SMTP Credentials
 
 To use the e-mail sending utility you also need SMTP credentials. Add these to your `.env` file:
