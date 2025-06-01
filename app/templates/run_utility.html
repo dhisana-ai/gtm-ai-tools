@@ -60,6 +60,13 @@
       {% if download_name %}
         <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
       {% endif %}
+      {% if download_name or util_output %}
+        <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
+          <input type="hidden" name="csv_path" value="{{ download_name }}">
+          <input type="hidden" name="output_text" value="{{ util_output }}">
+          <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
+        </form>
+      {% endif %}
     </div>
   </div>
 
