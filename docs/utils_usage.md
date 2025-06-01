@@ -221,5 +221,5 @@ npm install -g @openai/codex
 You can then invoke it through the helper task:
 
 ```bash
-task add_utility my_tool "describe what it should do"
+task add_utility -- my_tool "describe what it should do"
 ```

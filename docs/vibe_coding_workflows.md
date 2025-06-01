@@ -9,7 +9,7 @@ The CLI runs locally, outside the Docker container.
    ```
 2. Generate a script from the project root:
    ```bash
-   task add_utility my_tool "describe what it should do"
+   task add_utility -- my_tool "describe what it should do"
    ```
 3. Work on a branch, then commit and push the changes:
    ```bash
