@@ -52,7 +52,7 @@ tasks:
         name="$1"
         shift
         if [ -z "$name" ] || [ $# -eq 0 ]; then
-          echo "Usage: task add_utility <name> <instructions>" >&2
+          echo "Usage: task add_utility -- <name> <instructions>" >&2
           exit 1
         fi
         codex-auto "create a utils/${name}.py with the following instructions. add it to app, docs and tools like other tools: $*"

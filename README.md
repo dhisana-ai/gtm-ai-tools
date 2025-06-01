@@ -131,7 +131,7 @@ It runs on your machine, not inside the container.
    ```
 2. Generate a utility from the project root:
    ```bash
-   task add_utility my_tool "scrape a web page and return the title"
+   task add_utility -- my_tool "scrape a web page and return the title"
    ```
 3. Review the changes, commit and push:
    ```bash
