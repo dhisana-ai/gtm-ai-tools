@@ -20,6 +20,12 @@ This project uses several APIs. Follow the steps below to generate the required 
 2. Select **API Credentials** from the menu.
 3. Click **New API Key** and copy the value provided.
 
+## HubSpot API Key
+
+1. Log into your HubSpot account.
+2. Navigate to **Settings** &rarr; **Integrations** &rarr; **Private Apps**.
+3. Create a new private app and copy the access token shown.
+
 ## Adding the keys to the environment
 
 Edit the `.env` file in the project root and set each key:
@@ -28,6 +34,7 @@ Edit the `.env` file in the project root and set each key:
 OPENAI_API_KEY=your_openai_key
 SERPER_API_KEY=your_serper_key
 DHISANA_API_KEY=your_dhisana_key
+HUBSPOT_API_KEY=your_hubspot_key
 ```
 
 Save the file. The utilities and the Codex CLI will read these variables when run.
