@@ -1,4 +1,4 @@
-"""Simple utility demonstrating the OpenAI Responses API."""
+"""Use the OpenAI Responses API with a prompt and built-in web search."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from openai import OpenAI
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Send a prompt to OpenAI and print the response"
+        description="Use OpenAI to answer a prompt with web search assistance"
     )
     parser.add_argument("prompt", help="Prompt text to send")
     args = parser.parse_args()
