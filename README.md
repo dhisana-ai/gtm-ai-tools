@@ -71,7 +71,7 @@ Common actions:
 3. Run a utility inside the container
 
    ```bash
-   task run:command openai_sample "Hello!"
+   task run:command call_openai_llm "Hello!"
    ```
 
    The output of the command is saved to `output/run.log` in your working
@@ -159,7 +159,7 @@ The homepage now offers two options:
 
 ## Utility reference
 
-- [OpenAI Sample](docs/utils_usage.md#openai-sample) – example using the OpenAI API.
+- [Call OpenAI LLM](docs/utils_usage.md#call-openai-llm) – example using the OpenAI API.
 - [MCP Tool Sample](docs/utils_usage.md#mcp-tool-sample) – call OpenAI using an MCP server.
 - [Search LinkedIn URLs](docs/utils_usage.md#search-linkedin-urls) – gather profile URLs from Google.
 - [Find Company Info](docs/utils_usage.md#find-company-info) – locate a company's website and LinkedIn page.
