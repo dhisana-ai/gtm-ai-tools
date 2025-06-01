@@ -1,4 +1,4 @@
-"""Create a Salesforce contact if one with the same email does not exist."""
+"""Create a Salesforce contact if one with the same email doesn't already exist."""
 
 from __future__ import annotations
 

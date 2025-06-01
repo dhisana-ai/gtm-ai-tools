@@ -1,4 +1,4 @@
-"""Send a prompt through an MCP server using the OpenAI Responses API."""
+"""Sample utility that sends a prompt to OpenAI through an MCP server."""
 
 from __future__ import annotations
 

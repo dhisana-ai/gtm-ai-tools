@@ -1,4 +1,4 @@
-"""Utilities for fetching person and company info from Apollo.io."""
+"""Look up people and companies in Apollo.io for lead enrichment."""
 
 from __future__ import annotations
 

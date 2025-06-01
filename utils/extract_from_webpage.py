@@ -1,9 +1,7 @@
-"""Utilities to extract companies and leads from a web page.
+"""Extract companies and leads from any web page.
 
-The functions in this module fetch a web page using the existing Playwright
-helper and then ask an LLM to return structured JSON according to the
-provided Pydantic models.
-"""
+This module scrapes a page with Playwright and then asks an LLM to return
+structured company or lead data."""
 
 from __future__ import annotations
 

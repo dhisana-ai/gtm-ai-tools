@@ -1,4 +1,4 @@
-"""Utility to push company information to a Dhisana webhook."""
+"""Push company details to a Dhisana webhook for enrichment."""
 
 from __future__ import annotations
 

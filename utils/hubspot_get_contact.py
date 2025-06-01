@@ -1,4 +1,4 @@
-"""Retrieve a HubSpot contact by ID, email or LinkedIn URL."""
+"""Find a HubSpot contact by ID, email or LinkedIn URL."""
 
 from __future__ import annotations
 

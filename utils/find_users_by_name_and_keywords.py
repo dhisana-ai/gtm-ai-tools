@@ -1,4 +1,4 @@
-"""Process a CSV of names and keywords to find LinkedIn profile URLs."""
+"""Bulk search LinkedIn profiles from a CSV of names and keywords."""
 
 from __future__ import annotations
 

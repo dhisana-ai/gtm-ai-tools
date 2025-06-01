@@ -1,4 +1,4 @@
-"""Find e-mail and phone number using Findymail."""
+"""Get a prospect's email and phone number using Findymail."""
 
 from __future__ import annotations
 

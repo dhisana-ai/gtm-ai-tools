@@ -1,4 +1,4 @@
-"""Retrieve a Salesforce contact by ID or email."""
+"""Find a Salesforce contact by ID or email."""
 
 from __future__ import annotations
 

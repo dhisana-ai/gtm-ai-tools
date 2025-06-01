@@ -1,4 +1,4 @@
-"""Utility to fetch LinkedIn profile URLs from Google via Serper.dev and write them to CSV."""
+"""Export LinkedIn profile URLs from Google search results into a CSV for outreach."""
 
 from __future__ import annotations
 

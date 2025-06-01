@@ -1,4 +1,4 @@
-"""Send a message to Slack via an incoming webhook."""
+"""Post a message to Slack via an incoming webhook."""
 
 from __future__ import annotations
 

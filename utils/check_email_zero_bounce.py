@@ -1,4 +1,4 @@
-"""Check e-mail validity using the ZeroBounce API."""
+"""Verify an email address with ZeroBounce before adding it to campaigns."""
 
 from __future__ import annotations
 

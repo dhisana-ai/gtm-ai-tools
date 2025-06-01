@@ -1,4 +1,4 @@
-"""Utility to find a LinkedIn profile URL using a person's name and optional search keywords."""
+"""Find a person's LinkedIn profile by searching their name with keywords."""
 
 from __future__ import annotations
 

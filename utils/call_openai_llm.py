@@ -1,4 +1,7 @@
-"""Use the OpenAI Responses API with a prompt and built-in web search."""
+"""OpenAI tools for GTM workflows.
+
+Send a prompt with optional web search to summarize content, research companies
+or uncover new leads."""
 
 from __future__ import annotations
 

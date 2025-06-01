@@ -1,4 +1,4 @@
-"""Utility to find a company's website, primary domain and LinkedIn URL."""
+"""Discover a company's website, domain and LinkedIn page to build account lists."""
 
 from __future__ import annotations
 
