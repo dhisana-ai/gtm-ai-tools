@@ -2,14 +2,14 @@
 
 This page provides usage instructions for the sample scripts included in the `utils/` folder.
 
-## OpenAI Sample
+## Call OpenAI LLM
 
-`openai_sample.py` sends a prompt to OpenAI and prints the response returned from the API. The script requires the `OPENAI_API_KEY` environment variable.
+`call_openai_llm.py` sends a prompt to OpenAI and prints the response returned from the API. The script requires the `OPENAI_API_KEY` environment variable.
 
 Run it with the Taskfile:
 
 ```bash
-task run:command -- openai_sample "Hello!"
+task run:command -- call_openai_llm "Hello!"
 ```
 
 The script prints the text from the `responses.create` call.
