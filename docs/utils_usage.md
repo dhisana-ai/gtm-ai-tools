@@ -112,6 +112,21 @@ task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
 The resulting CSV contains `full_name`, `user_linkedin_url` and
 `search_keywords` for each entry.
 
+## Find Email and Phone
+
+`find_contact_with_findymail.py` queries the Findymail API for a person's
+e-mail address and phone number using their full name and company domain.
+Set the `FINDYMAIL_API_KEY` environment variable before running the script.
+
+Run it with the name and domain:
+
+```bash
+task run:command -- find_contact_with_findymail "Jane Doe" example.com
+```
+
+The script prints a JSON object containing `email`, `phone` and the raw
+`contact_info` returned by Findymail.
+
 ## Push Lead to Dhisana Webhook
 
 `push_lead_to_dhisana_webhook.py` sends a lead's details to a Dhisana webhook endpoint. Provide the full name and optionally the LinkedIn URL, email address, tags, and notes. The script uses the `DHISANA_API_KEY` environment variable for authentication. The webhook URL is read from `DHISANA_WEBHOOK_URL` or can be supplied with `--webhook_url`.

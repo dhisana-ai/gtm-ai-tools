@@ -166,6 +166,7 @@ The homepage now offers two options:
 - [Find User by Name and Keywords](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a LinkedIn profile by name.
 - [Find User by Job Title and Company](docs/utils_usage.md#find-user-by-job-title-and-company) – search by title at a company.
 - [Find Users by Name and Keywords](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
+- [Find Email and Phone](docs/utils_usage.md#find-email-and-phone) – look up contact details with Findymail.
 - [Push Lead to Dhisana Webhook](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send a lead record to Dhisana.
 - [Push Company to Dhisana Webhook](docs/utils_usage.md#push-company-to-dhisana-webhook) – send a company record to Dhisana.
 - [Get HubSpot Contact](docs/utils_usage.md#get-hubspot-contact) – retrieve a CRM contact.
