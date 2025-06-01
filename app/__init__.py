@@ -43,63 +43,83 @@ def _list_utils() -> list[tuple[str, str]]:
     return sorted(items, key=lambda x: x[0])
 
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/')
 def index():
-    preview = None
-    workflow = ''
+    return redirect(url_for('run_utility'))
+
+
+@app.route('/utility', methods=['GET', 'POST'])
+def run_utility():
     util_output = None
     download_name = None
     utils_list = _list_utils()
     if request.method == 'POST':
-        mode = request.form.get('mode', 'workflow')
-        if mode == 'util':
-            util_name = request.form.get('util_name', '')
-            params = request.form.get('params', '')
-            file = request.files.get('csv_file')
-            uploaded = None
-            if file and file.filename:
-                tmp_dir = tempfile.gettempdir()
-                filename = os.path.join(tmp_dir, os.path.basename(file.filename))
-                file.save(filename)
-                uploaded = filename
-            cmd = [
-                'python',
-                '-m',
-                f'utils.{util_name}',
-            ]
-            if params:
-                cmd += shlex.split(params)
-            if uploaded:
-                cmd.append(uploaded)
-            env = os.environ.copy()
-            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
-            proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-            if proc.returncode != 0:
-                util_output = proc.stderr or 'Error running command'
-            else:
-                util_output = proc.stdout
-            args = shlex.split(params)
-            for arg in args:
-                if arg.endswith('.csv') and (not uploaded or arg != uploaded):
-                    path = os.path.abspath(arg)
-                    if os.path.exists(path):
-                        download_name = path
-                        break
+        util_name = request.form.get('util_name', '')
+        params = request.form.get('params', '')
+        file = request.files.get('csv_file')
+        uploaded = None
+        if file and file.filename:
+            tmp_dir = tempfile.gettempdir()
+            filename = os.path.join(tmp_dir, os.path.basename(file.filename))
+            file.save(filename)
+            uploaded = filename
+        cmd = [
+            'python',
+            '-m',
+            f'utils.{util_name}',
+        ]
+        if params:
+            cmd += shlex.split(params)
+        if uploaded:
+            cmd.append(uploaded)
+        env = os.environ.copy()
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
+        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+        if proc.returncode != 0:
+            util_output = proc.stderr or 'Error running command'
         else:
-            workflow = request.form.get('workflow', '')
-            action = request.form.get('action')
-            if action in {'build', 'preview'}:
-                preview = workflow
-            elif action == 'run':
-                flash(f"Running workflow: {workflow}")
+            util_output = proc.stdout
+        args = shlex.split(params)
+        for arg in args:
+            if arg.endswith('.csv') and (not uploaded or arg != uploaded):
+                path = os.path.abspath(arg)
+                if os.path.exists(path):
+                    download_name = path
+                    break
     return render_template(
-        'index.html',
-        workflow=workflow,
-        preview=preview,
+        'run_utility.html',
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
+    )
+
+
+@app.route('/workflow', methods=['GET', 'POST'])
+def build_workflow():
+    workflow_name = ''
+    instructions = ''
+    output = None
+    if request.method == 'POST':
+        workflow_name = request.form.get('workflow_name', '').strip()
+        instructions = request.form.get('instructions', '').strip()
+        if not workflow_name or not instructions:
+            flash('Please provide a workflow name and instructions.')
+        else:
+            cmd = [
+                'codex-auto',
+                f"create a utils/{workflow_name}.py with the following instructions. add it to app, docs and tools like other tools: {instructions}"
+            ]
+            env = os.environ.copy()
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            proc = subprocess.run(cmd, capture_output=True, text=True, env=env, cwd=root_dir)
+            output = (proc.stdout or '') + (proc.stderr or '')
+            flash(f'Codex executed to create {workflow_name}.py')
+    return render_template(
+        'build_workflow.html',
+        workflow_name=workflow_name,
+        instructions=instructions,
+        output=output,
     )
 
 
