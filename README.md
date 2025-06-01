@@ -151,6 +151,16 @@ It runs on your machine, not inside the container. This repository is vibe code 
 See [docs/vibe_coding_workflows.md](docs/vibe_coding_workflows.md) for a more
 detailed walkthrough.
 
+### Why this pattern is better than MCP, A2A, and similar approaches
+
+The repository ships with a library of small, focused utilities—fetch a CRM
+contact, search Google for a company or person, validate an email address, and
+so on. Feed these examples into the Codex CLI or the coding agent to generate a
+custom workflow script. Once generated, you simply run that workflow over and
+over. When processing hundreds or thousands of records, this "generate once and
+reuse" model is far cheaper and more efficient than dynamically choosing tool
+combinations at runtime with patterns like MCP or A2A.
+
 
 ## Web application
 
