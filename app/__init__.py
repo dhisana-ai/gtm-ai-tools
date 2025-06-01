@@ -76,7 +76,6 @@ UTILITY_PARAMETERS = {
     ],
     "linkedin_search_to_csv": [
         {"name": "query", "label": "Google query"},
-        {"name": "output_file", "label": "Output CSV"},
         {"name": "--num", "label": "Number of results"},
     ],
     "mcp_tool_sample": [{"name": "prompt", "label": "Prompt"}],
@@ -170,6 +169,15 @@ def run_utility():
                     cmd.extend([name, val])
                 else:
                     cmd.append(val)
+            if util_name == 'linkedin_search_to_csv':
+                fd, out_path = tempfile.mkstemp(suffix='.csv', dir=tempfile.gettempdir())
+                os.close(fd)
+                insert_at = len(cmd)
+                for i, arg in enumerate(cmd[3:], start=3):
+                    if arg.startswith('-'):
+                        insert_at = i
+                        break
+                cmd.insert(insert_at, out_path)
             return cmd
 
         def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
