@@ -155,38 +155,61 @@ def run_utility():
             filename = os.path.join(tmp_dir, os.path.basename(file.filename))
             file.save(filename)
             uploaded = filename
-        cmd = [
-            'python',
-            '-m',
-            f'utils.{util_name}',
-        ]
-        for spec in UTILITY_PARAMETERS.get(util_name, []):
-            name = spec['name']
-            value = request.form.get(name, '').strip()
-            if not value:
-                continue
-            if spec.get('type') == 'boolean':
-                cmd.append(name)
-            elif name.startswith('-'):
-                cmd.extend([name, value])
-            else:
-                cmd.append(value)
+
+        def build_cmd(values: dict[str, str]) -> list[str]:
+            cmd = ['python', '-m', f'utils.{util_name}']
+            for spec in UTILITY_PARAMETERS.get(util_name, []):
+                name = spec['name']
+                val = (values.get(name) or '').strip()
+                if not val:
+                    continue
+                if spec.get('type') == 'boolean':
+                    if val.lower() in ('1', 'true', 'yes', 'on'):
+                        cmd.append(name)
+                elif name.startswith('-'):
+                    cmd.extend([name, val])
+                else:
+                    cmd.append(val)
+            return cmd
+
+        def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
+            env = os.environ.copy()
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
+            proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            status = 'SUCCESS' if proc.returncode == 0 else 'FAIL'
+            output = proc.stdout if proc.returncode == 0 else (proc.stderr or 'Error running command')
+            cmd_str = ' '.join(shlex.quote(c) for c in cmd)
+            return status, cmd_str, output.strip()
+
         if uploaded:
-            cmd.append(uploaded)
-        env = os.environ.copy()
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
-        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-        if proc.returncode != 0:
-            util_output = proc.stderr or 'Error running command'
+            import csv
+            with open(uploaded, newline='', encoding='utf-8') as fh:
+                reader = csv.DictReader(fh)
+                rows = list(reader)
+                fieldnames = reader.fieldnames or []
+            out_path = os.path.join(tempfile.gettempdir(), os.path.basename(uploaded) + '.out.csv')
+            with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
+                writer = csv.DictWriter(out_fh, fieldnames=fieldnames + ['status', 'command', 'output'])
+                writer.writeheader()
+                for row in rows:
+                    cmd = build_cmd(row)
+                    status, cmd_str, out_text = run_cmd(cmd)
+                    row.update({'status': status, 'command': cmd_str, 'output': out_text})
+                    writer.writerow(row)
+            download_name = out_path
+            util_output = None
         else:
-            util_output = proc.stdout
-        for arg in cmd[3:]:
-            if arg.endswith('.csv') and (not uploaded or arg != uploaded):
-                path = os.path.abspath(arg)
-                if os.path.exists(path):
-                    download_name = path
-                    break
+            values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
+            cmd = build_cmd(values)
+            status, cmd_str, out_text = run_cmd(cmd)
+            util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+            for arg in cmd[3:]:
+                if arg.endswith('.csv'):
+                    path = os.path.abspath(arg)
+                    if os.path.exists(path):
+                        download_name = path
+                        break
     return render_template(
         'run_utility.html',
         utils=utils_list,
