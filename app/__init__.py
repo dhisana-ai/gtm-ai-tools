@@ -75,7 +75,10 @@ UTILITY_PARAMETERS = {
         {"name": "properties", "label": "key=value pairs"},
     ],
     "linkedin_search_to_csv": [
-        {"name": "query", "label": "Google query"},
+        {
+            "name": "query",
+            "label": 'Google query (e.g. site:linkedin.com/in "VP Sales")',
+        },
         {"name": "--num", "label": "Number of results"},
     ],
     "mcp_tool_sample": [{"name": "prompt", "label": "Prompt"}],
@@ -94,6 +97,13 @@ UTILITY_PARAMETERS = {
         {"name": "--tags", "label": "Tags"},
         {"name": "--notes", "label": "Notes"},
         {"name": "--webhook_url", "label": "Webhook URL"},
+    ],
+    "extract_from_webpage": [
+        {"name": "url", "label": "Website URL"},
+        {"name": "--lead", "label": "Fetch lead", "type": "boolean"},
+        {"name": "--leads", "label": "Fetch leads", "type": "boolean"},
+        {"name": "--company", "label": "Fetch company", "type": "boolean"},
+        {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
     ],
     "send_email_smtp": [
         {"name": "recipient", "label": "Recipient"},
