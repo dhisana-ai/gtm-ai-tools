@@ -137,9 +137,10 @@ It runs on your machine, not inside the container. This repository is vibe code 
    ```bash
    npm install -g @openai/codex
    ```
-2. Generate a utility from the project root:
+2. Generate a utility from the project root. The helper script runs the Codex
+   CLI in quiet, fully automated mode:
    ```bash
-   task add_utility -- my_tool "scrape a web page and return the title"
+   task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
    ```
 3. Review the changes, commit and push:
    ```bash
