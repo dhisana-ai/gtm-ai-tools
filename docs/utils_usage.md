@@ -258,6 +258,16 @@ Or edit an existing image:
 task run:command -- generate_image "add a beach background" --image-url http://example.com/photo.png
 ```
 
+## Extract Companies from Image
+
+`extract_companies_from_image.py` detects company logos in a picture and looks up
+each organization's website, primary domain and LinkedIn page. It requires the
+`OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
+
+```bash
+task run:command -- extract_companies_from_image /workspace/logo.png
+```
+
 
 ## OpenAI Codex CLI
 
