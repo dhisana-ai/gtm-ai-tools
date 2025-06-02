@@ -54,6 +54,8 @@ Follow these steps to spin up the container and run a utility.
 - Ensure Docker is installed. See [Installing Docker](docs/install_docker.md).
 - Obtain API keys and add them to `.env`. See [API key setup](docs/api_keys.md).
 - Install Git and clone this repository. See [Git setup](docs/doc.md).
+- Install Node.js 22+ if you want to generate new utilities. See
+  [Node and Codex installation](docs/install_node.md) or run `task setup:codex`.
 
 
 ## Running the utilities
@@ -133,9 +135,10 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 The Codex CLI lets you create new utilities with natural language prompts.
 It runs on your machine, not inside the container. This repository is vibe code ready—just describe what you want in natural language and you can have your custom workflow ready in 5 min.
 
-1. Install **Node.js 22+** and the CLI:
+1. Install **Node.js 22+** and the CLI. Run the helper task or follow the
+   [installation guide](docs/install_node.md):
    ```bash
-   npm install -g @openai/codex
+   task setup:codex
    ```
 2. Generate a utility from the project root. The `task add_utility` command runs
    the Codex CLI in quiet, fully automated mode:

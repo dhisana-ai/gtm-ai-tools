@@ -3,9 +3,10 @@
 This project uses the OpenAI Codex CLI to scaffold new utilities.
 The CLI runs locally, outside the Docker container.
 
-1. Install **Node.js 22+** and the CLI:
+1. Install **Node.js 22+** and the CLI. Run the helper task or follow the
+   [install_node.md](install_node.md) guide:
    ```bash
-   npm install -g @openai/codex
+   task setup:codex
    ```
 2. Generate a script from the project root. The `task add_utility` command runs
    the Codex CLI in quiet mode with automatic approval:
