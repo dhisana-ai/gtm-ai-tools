@@ -16,6 +16,8 @@ from urllib.parse import urlparse
 
 from openai import OpenAI
 
+from utils import common
+
 import httpx
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 from playwright_stealth import stealth_async
@@ -200,7 +202,7 @@ def summarize_html(text: str, instructions: str) -> str:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
     client = OpenAI(api_key=api_key)
     response = client.responses.create(
-        model="gpt-4.1",
+        model=common.get_openai_model(),
         input=f"{instructions}\n\n{text}",
     )
     return getattr(response, "output_text", "")

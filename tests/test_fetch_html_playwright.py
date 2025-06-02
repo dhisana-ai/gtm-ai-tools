@@ -49,3 +49,30 @@ def test_main_with_summary(monkeypatch, capsys):
     assert "summary" in captured.out
     assert "Summ it" in dummy.kwargs["input"]
 
+
+def test_model_env(monkeypatch):
+    monkeypatch.setenv("PROXY_URL", "http://proxy")
+    monkeypatch.setenv("TWO_CAPTCHA_API_KEY", "k")
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setenv("OPENAI_MODEL_NAME", "gpt-test")
+    monkeypatch.setattr(mod, "fetch_html", dummy_fetch)
+
+    class DummyClient:
+        def __init__(self):
+            self.kwargs = None
+            self.responses = SimpleNamespace(create=self.create)
+
+        def create(self, **kwargs):
+            self.kwargs = kwargs
+            return SimpleNamespace(output_text="summary")
+
+    dummy = DummyClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key=None: dummy)
+    monkeypatch.setattr(sys, "argv", [
+        "fetch_html_playwright.py",
+        "http://e.com",
+        "--summarize",
+    ])
+    mod.main()
+    assert dummy.kwargs["model"] == "gpt-test"
+

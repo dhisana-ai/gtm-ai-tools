@@ -4,7 +4,7 @@ This page provides usage instructions for the sample scripts included in the `ut
 
 ## Call OpenAI LLM
 
-`call_openai_llm.py` sends a prompt to OpenAI and prints the response returned from the API. The script requires the `OPENAI_API_KEY` environment variable.
+`call_openai_llm.py` sends a prompt to OpenAI and prints the response returned from the API. The script requires the `OPENAI_API_KEY` environment variable. The model defaults to `gpt-4.1` but can be overridden with `OPENAI_MODEL_NAME`.
 
 Run it with the Taskfile:
 
@@ -16,7 +16,7 @@ The script prints the text from the `responses.create` call.
 
 ## MCP Tool Sample
 
-`mcp_tool_sample.py` sends a prompt to OpenAI using an MCP server. It requires `OPENAI_API_KEY` along with `MCP_SERVER_URL`, `MCP_API_KEY_HEADER_NAME` and `MCP_API_KEY_HEADER_VALUE`. Optionally set `MCP_SERVER_LABEL`.
+`mcp_tool_sample.py` sends a prompt to OpenAI using an MCP server. It requires `OPENAI_API_KEY` along with `MCP_SERVER_URL`, `MCP_API_KEY_HEADER_NAME` and `MCP_API_KEY_HEADER_VALUE`. Optionally set `MCP_SERVER_LABEL`. The OpenAI model can also be set with `OPENAI_MODEL_NAME`.
 
 Run it with:
 
