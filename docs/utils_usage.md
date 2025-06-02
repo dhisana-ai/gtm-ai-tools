@@ -244,6 +244,20 @@ task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body 
 task run:command -- send_slack_message "Deployment finished"
 ```
 
+## Generate Image with OpenAI
+
+`generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script edits that picture using the prompt instead of generating a new one. It requires the `OPENAI_API_KEY` environment variable.
+
+```bash
+task run:command -- generate_image "an astronaut riding a horse"
+```
+
+Or edit an existing image:
+
+```bash
+task run:command -- generate_image "add a beach background" --image-url http://example.com/photo.png
+```
+
 
 ## OpenAI Codex CLI
 
