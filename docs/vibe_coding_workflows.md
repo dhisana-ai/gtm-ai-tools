@@ -7,9 +7,10 @@ The CLI runs locally, outside the Docker container.
    ```bash
    npm install -g @openai/codex
    ```
-2. Generate a script from the project root:
+2. Generate a script from the project root. The wrapper invokes Codex with
+   quiet mode and automatic approval:
    ```bash
-   task add_utility -- my_tool "describe what it should do"
+   task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
    ```
 3. Work on a branch, then commit and push the changes:
    ```bash

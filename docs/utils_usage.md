@@ -254,8 +254,9 @@ After installing **Node.js 22+** run:
 npm install -g @openai/codex
 ```
 
-You can then invoke it through the helper task:
+You can then invoke it through the helper task, which runs Codex quietly with
+automatic approval:
 
 ```bash
-task add_utility -- my_tool "describe what it should do"
+task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
 ```
