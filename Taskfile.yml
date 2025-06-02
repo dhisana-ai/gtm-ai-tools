@@ -55,5 +55,5 @@ tasks:
           echo "Usage: task add_utility -- <name> <instructions>" >&2
           exit 1
         fi
-        codex-auto "create a utils/${name}.py with the following instructions. add it to app, docs and tools like other tools: $*"
+        codex -q --approval-mode full-auto --auto-edit "create a utils/${name}.py with the following instructions. add it to app, docs and tools like other tools: $*"
 
