@@ -108,3 +108,9 @@ def extract_user_linkedin_page(url: str) -> str:
         return f"https://www.linkedin.com/in/{slug}"
 
     return ""
+
+
+def get_openai_model() -> str:
+    """Return the OpenAI model name from the environment or the default."""
+    return os.getenv("OPENAI_MODEL_NAME", "gpt-4.1")
+

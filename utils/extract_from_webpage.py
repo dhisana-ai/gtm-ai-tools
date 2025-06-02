@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 
-from utils import fetch_html_playwright
+from utils import fetch_html_playwright, common
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ async def _get_structured_data_internal(prompt: str, model: Type[BaseModel]) -> 
     client = AsyncOpenAI(api_key=api_key)
     try:
         response = await client.chat.completions.create(
-            model="gpt-4",
+            model=common.get_openai_model(),
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"},
         )

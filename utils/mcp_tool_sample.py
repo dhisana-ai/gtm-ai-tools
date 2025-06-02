@@ -6,6 +6,8 @@ import argparse
 import os
 from openai import OpenAI
 
+from utils import common
+
 
 def main() -> None:
     parser = argparse.ArgumentParser(
@@ -28,7 +30,7 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
     response = client.responses.create(
-        model="gpt-4.1",
+        model=common.get_openai_model(),
         input=args.prompt,
         tools=[
             {

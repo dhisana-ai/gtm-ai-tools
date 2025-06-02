@@ -30,3 +30,16 @@ def test_mcp_main(monkeypatch, capsys):
     assert tool["server_label"] == "label"
     assert tool["server_url"] == "http://mcp"
     assert tool["headers"]["X-Key"] == "val"
+
+
+def test_model_env(monkeypatch):
+    dummy = DummyClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key=None: dummy)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    monkeypatch.setenv("MCP_SERVER_URL", "http://mcp")
+    monkeypatch.setenv("MCP_API_KEY_HEADER_NAME", "X")
+    monkeypatch.setenv("MCP_API_KEY_HEADER_VALUE", "y")
+    monkeypatch.setenv("OPENAI_MODEL_NAME", "gpt-test")
+    monkeypatch.setattr(sys, "argv", ["mcp_tool_sample.py", "hi"])
+    mod.main()
+    assert dummy.kwargs["model"] == "gpt-test"

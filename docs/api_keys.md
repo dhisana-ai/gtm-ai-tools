@@ -43,6 +43,7 @@ Edit the `.env` file in the project root and set each key:
 
 ```bash
 OPENAI_API_KEY=your_openai_key
+OPENAI_MODEL_NAME=gpt-4.1
 SERPER_API_KEY=your_serper_key
 DHISANA_API_KEY=your_dhisana_key
 HUBSPOT_API_KEY=your_hubspot_key
