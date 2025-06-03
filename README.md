@@ -2,9 +2,7 @@
 
 ## Project Introduction Video
 
-<div align="center">
-  <iframe src="https://www.loom.com/embed/748524a3696a4873b8047c7c842ee0de?sid=13a58c66-c48a-4419-8d12-0573d41e8058" frameborder="0" allowfullscreen style="width:100%;height:450px;"></iframe>
-</div>
+Watch the project introduction on [Loom](https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de).
 
 ## How Does GTM Builder Agent Work?
 
