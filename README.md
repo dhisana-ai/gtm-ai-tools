@@ -1,30 +1,21 @@
-# GTM Workflows Builder AI Agent - Powered by Dhisana AI
+# GTM Workflows Builder AI Agent - Dhisana AI
 
 ## Project Introduction Video
 
-<a href="https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de" target="_blank">Wath project introduction view</a>
+<a href="https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de" target="_blank">Watch project introduction</a>
 
 ## How Does GTM Builder Agent Work?
 
-We have seeded the repository with few-shot examples of key tools and
-workflows used in GTM operations by GTM engineers. When a GTM engineer
-describes a new workflow in natural language, the agent selects the
-appropriate examples, applies user instructions along with the meta
-prompt and generates the new tool or workflow. It runs tests and
-produces the output tool that you can save. You can then run that tool
-repeatedly on any CSV or source input to parse customer websites,
-extract leads, perform research and qualification, and push the results
-to destinations such as a CRM, Dhisana Webhook or Clay tables.
+We’ve seeded the repository with few-shot examples of essential tools and workflows commonly used in GTM operations. When a GTM engineer describes a new workflow in natural language, the agent selects relevant examples, applies the user’s instructions along with a meta prompt, and generates a new tool or workflow. It then runs tests and outputs a ready-to-use tool.
 
-This approach creates a powerful tool chain for GTM engineers. It is
-cheaper than patterns where every invocation goes through an LLM and is
-more accurate than generic apps because it is tuned for GTM workflows
-and playbooks. The tools are free for you to build and use—please
-contribute and share feedback.
+You can run these tools repeatedly on any CSV or input source to parse customer websites, extract leads, conduct research and qualification, and push results to destinations like CRMs, Dhisana webhooks, or Clay tables.
 
-These tools are free and open source for you to download and use.
+This approach creates a cost-efficient and accurate toolchain for GTM engineers—cheaper than LLM-heavy pipelines and more precise than generic solutions, as it’s purpose-built for GTM workflows and playbooks.
 
-This repository provides a curated set of utilities for GTM (go-to-market) engineers to automate and streamline common workflows. It includes tools for lead discovery, enrichment and qualification, CRM data hygiene, AI-powered outreach content generation and more—helping teams accelerate pipeline generation and reduce manual effort in GTM operations.
+Project includes tools for lead discovery, enrichment and qualification, CRM data hygiene, AI-powered outreach content generation and more—helping teams accelerate pipeline generation and reduce manual effort in GTM operations.
+
+All tools are free and open source. Feel free to build, use, contribute, and share feedback.
+
 
 This repo is *vibe code ready*: just describe the workflow you want in natural language and you'll have a custom GTM tool up and running in about five minutes.
 
