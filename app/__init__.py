@@ -149,6 +149,11 @@ UTILITY_PARAMETERS = {
         {"name": "message", "label": "Message"},
         {"name": "--webhook", "label": "Webhook URL"},
     ],
+    "push_to_clay_table": [
+        {"name": "data", "label": "key=value pairs"},
+        {"name": "--webhook_url", "label": "Webhook URL"},
+        {"name": "--api_key", "label": "API key"},
+    ],
 }
 
 

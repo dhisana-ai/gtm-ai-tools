@@ -156,6 +156,19 @@ task run:command -- push_company_to_dhisana_webhook \
     --tags prospect --notes "From event"
 ```
 
+## Push to Clay Table
+
+`push_to_clay_table.py` sends arbitrary data to a Clay table webhook. Provide
+`key=value` pairs to build the payload. The script uses the `CLAY_API_KEY`
+environment variable for authentication. The webhook URL is read from
+`CLAY_WEBHOOK_URL` or can be supplied with `--webhook_url`.
+
+Example usage:
+
+```bash
+task run:command -- push_to_clay_table name=Jane email=jane@example.com
+```
+
 ## HubSpot Contact Utilities
 
 The following scripts interact with HubSpot's CRM using the `HUBSPOT_API_KEY` environment variable.
