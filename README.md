@@ -1,4 +1,22 @@
-# Vibe Code Ready GTM AI Tools By Dhisana AI
+# GTM Workflows Builder AI Agent - Powered by Dhisana AI
+
+## How Does GTM Builder Agent Work?
+
+We have seeded the repository with few-shot examples of key tools and
+workflows used in GTM operations by GTM engineers. When a GTM engineer
+describes a new workflow in natural language, the agent selects the
+appropriate examples, applies user instructions along with the meta
+prompt and generates the new tool or workflow. It runs tests and
+produces the output tool that you can save. You can then run that tool
+repeatedly on any CSV or source input to parse customer websites,
+extract leads, perform research and qualification, and push the results
+to destinations such as a CRM, Dhisana Webhook or Clay tables.
+
+This approach creates a powerful tool chain for GTM engineers. It is
+cheaper than patterns where every invocation goes through an LLM and is
+more accurate than generic apps because it is tuned for GTM workflows
+and playbooks. The tools are free for you to build and use—please
+contribute and share feedback.
 
 These tools are free and open source for you to download and use.
 
