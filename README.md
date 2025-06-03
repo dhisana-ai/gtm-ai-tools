@@ -1,5 +1,9 @@
 # GTM Workflows Builder AI Agent - Powered by Dhisana AI
 
+## Project Introduction Video
+
+Watch the project introduction on [Loom](https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de).
+
 ## How Does GTM Builder Agent Work?
 
 We have seeded the repository with few-shot examples of key tools and
@@ -31,6 +35,8 @@ Dhisana AI also provides a managed offering of these workflows and more. It deli
 Vibe code and add your own GTM workflow in 5 min! [Vibe coding instructions](docs/vibe_coding_workflows.md)
 
 View this project on [GitHub](https://github.com/dhisana-ai/gtm-ai-tools). Signup and get a 24/7 managed version of this service that runs an AI Agent for you in the cloud with all these workflows and more.
+
+Join the discussion on our [Slack community channel](https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-3543qqhoz-XThU6z1VOD21lNf3AI8K3Q).
 
 
 ## Quick Start
@@ -227,4 +233,5 @@ download link will be displayed. Plain text output is shown in the page.
 - [Scrape Website HTML (Playwright)](utils/fetch_html_playwright.py) – scrape page HTML for lead extraction.
 - [Extract from Webpage](utils/extract_from_webpage.py) – pull leads and companies from any website.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
+- [Create Dhisana Webhook](docs/create_dhisana_webhook.md) – configure your webhook and API key.
 
