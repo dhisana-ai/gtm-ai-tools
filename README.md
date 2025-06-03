@@ -53,6 +53,8 @@ Follow these steps to spin up the container and run a utility.
    SERPER_API_KEY=...
    DHISANA_API_KEY=...
    HUBSPOT_API_KEY=...
+   CLAY_API_KEY=...
+   CLAY_WEBHOOK_URL=...
    ```
 4. **Start the container and open the app**
    ```bash
@@ -213,6 +215,7 @@ download link will be displayed. Plain text output is shown in the page.
 - [Find Email and Phone](docs/utils_usage.md#find-email-and-phone) – retrieve contact details with Findymail.
 - [Push Lead to Dhisana](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send lead data to Dhisana for enrichment.
 - [Push Company to Dhisana](docs/utils_usage.md#push-company-to-dhisana-webhook) – send company data to Dhisana.
+- [Push Data to Clay](docs/utils_usage.md#push-to-clay-table) – send a row to a Clay table via webhook.
 - [Get HubSpot Contact](docs/utils_usage.md#get-hubspot-contact) – retrieve a CRM contact.
 - [Create HubSpot Contact](docs/utils_usage.md#create-hubspot-contact) – add a new contact if one doesn't exist.
 - [Update HubSpot Contact](docs/utils_usage.md#update-hubspot-contact) – modify contact properties.
