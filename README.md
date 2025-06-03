@@ -226,3 +226,8 @@ download link will be displayed. Plain text output is shown in the page.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 - [Create Dhisana Webhook](docs/create_dhisana_webhook.md) – configure your webhook and API key.
 
+## Next Workitems
+
+Playbooks to train and test the AI agent:
+- [Common playbooks](docs/playbooks.md)
+
