@@ -2,7 +2,7 @@
 
 ## Project Introduction Video
 
-Watch the project introduction on [Loom](https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de).
+<a href="https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de" target="_blank">Wath project introduction view</a>
 
 ## How Does GTM Builder Agent Work?
 
