@@ -231,4 +231,5 @@ download link will be displayed. Plain text output is shown in the page.
 Playbooks to train and test the AI agent:
 - [Common playbooks](docs/playbooks.md)
 - [Generic Playwright + LLM scraper](docs/generic_scraper_playwright.md)
+- [Integration tools](docs/integration_tools.md) – example services to try when testing new workflows
 
