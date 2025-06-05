@@ -53,3 +53,15 @@ Following are the common playbooks we need to train the coding agent to generate
 49. Enrich school district data with size, location, and test scores
 50. Auto-capture unlimited website screenshots
 
+Some Concreate examples to try:
+1. Find last week top apps in product hunt. Find thier founders with linkedin, email, company website, contact information for outreach. 
+2. Find users who are attending Microsoft Build event in 2025 
+3. Find YCombination startups of 2024 batch working on Generative AI, Find founder contact information there. 
+4. Find Pino studio instructions in San Jose, Seattle locations. 
+5. Find instructors in "Udemy" teaching cybersecurity courses. 
+4. Find reviews about a product in Reditt. 
+5. Find review about aproduct in G2.
+6. Find instragram influencers selling cosmetics with more than 10k followers. 
+7. Find users with "MongoDB Certification" in thier skills 
+9. Find customres listed in Azure CosmosDB case studies. 
+10. Find companies with job posting for "GTM Engineers" in USA
