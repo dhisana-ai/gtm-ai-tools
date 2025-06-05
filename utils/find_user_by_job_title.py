@@ -18,6 +18,7 @@ async def find_user_linkedin_url_by_job_title(
     job_title: str,
     company_name: str,
     search_keywords: str = "",
+    exclude_profiles_intitle: bool = True,
 ) -> str:
     """Return the LinkedIn profile URL for a title at a given company."""
     if not job_title or not company_name:
@@ -26,7 +27,8 @@ async def find_user_linkedin_url_by_job_title(
     query = f'site:linkedin.com/in "{company_name}" "{job_title}"'
     if search_keywords:
         query += f' "{search_keywords}"'
-    query += ' -intitle:"profiles"'
+    if exclude_profiles_intitle:
+        query += ' -intitle:"profiles"'
 
     logger.info("Querying Google: %s", query)
     results = await search_google_serper(query.strip(), 3)
@@ -54,11 +56,19 @@ def main() -> None:
         default="",
         help="Additional keywords to refine the search",
     )
+    parser.add_argument(
+        "--exclude_profiles_intitle",
+        default=False,
+        help="Allow results where the page title includes 'profiles' (removes -intitle:\"profiles\")",
+    )
     args = parser.parse_args()
 
     url = asyncio.run(
         find_user_linkedin_url_by_job_title(
-            args.job_title, args.company_name, args.search_keywords
+            args.job_title,
+            args.company_name,
+            args.search_keywords,
+            not args.no_exclude_profiles_intitle,
         )
     )
     result = {
