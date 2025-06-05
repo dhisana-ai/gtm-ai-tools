@@ -46,7 +46,7 @@ def test_get_company_info(monkeypatch):
     monkeypatch.setenv("APOLLO_API_KEY", "y")
     result = asyncio.run(mod.get_company_info(company_url="https://foo.com"))
     assert session.gets[0].endswith("domain=foo.com")
-    assert result["id"] == "org"
+    assert result["id"] == "org123"
 
 
 def test_missing_api_key(monkeypatch):
