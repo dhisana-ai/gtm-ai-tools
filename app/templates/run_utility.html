@@ -19,7 +19,7 @@
   <div class="row">
     <div class="col-md-4 mb-4" style="max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       {% for util in utils %}
-        <div class="card util-card mb-3 shadow-sm" data-util="{{ util.name }}" role="button" style="cursor:pointer;">
+        <div class="card util-card mb-3" data-util="{{ util.name }}" role="button" style="cursor:pointer;">
           <div class="card-body">
             <h5 class="card-title mb-1">{{ util.title }}</h5>
             <p class="card-text small text-muted">{{ util.desc }}</p>
@@ -73,9 +73,7 @@
     function selectUtil(name) {
       utilInput.value = name;
       document.querySelectorAll('.util-card').forEach(card => {
-        const active = card.dataset.util === name;
-        card.classList.toggle('border-primary', active);
-        card.classList.toggle('active', active);
+        card.classList.toggle('border-primary', card.dataset.util === name);
       });
     }
 
