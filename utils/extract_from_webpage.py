@@ -97,7 +97,8 @@ async def extract_multiple_companies_from_webpage(url: str) -> List[Company]:
     return result.companies
 
 
-async def extract_comapy_from_webpage(url: str) -> Optional[Company]:
+async def extract_company_from_webpage(url: str) -> Optional[Company]:
+    """Return the first company mentioned on ``url`` if any."""
     companies = await extract_multiple_companies_from_webpage(url)
     return companies[0] if companies else None
 
@@ -134,7 +135,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
         print("[]" if not result else LeadList(leads=result).json(indent=2))
         return
     if args.company:
-        result = await extract_comapy_from_webpage(url)
+        result = await extract_company_from_webpage(url)
         if result:
             print(result.json(indent=2))
         return
