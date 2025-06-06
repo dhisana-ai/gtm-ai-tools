@@ -1,0 +1,16 @@
+/* Custom UI tweaks */
+.util-card.active {
+  border-color: var(--bs-primary);
+  background-color: var(--bs-light);
+}
+.util-card:hover {
+  box-shadow: 0 0.5rem 1rem rgba(0,0,0,0.1);
+}
+
+footer {
+  font-size: 0.9rem;
+}
+
+body {
+  background-color: #f8fafc;
+}
