@@ -1,19 +1,22 @@
 ######################################################################
 # Azure Functions - Python - Playwright container
 ######################################################################
-FROM python:3.12-slim
+FROM mcr.microsoft.com/azure-functions/python:4-python3.12
 
-ENV PYTHONUNBUFFERED=1 \
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
+    PYTHONUNBUFFERED=1 \
     PLAYWRIGHT_BROWSERS_PATH=/home/pw-browsers
 
 # ─── 1️⃣  OS libs for Chromium ───────────────────────────────────────
 USER root
 RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
-echo "Acquire::http::No-Cache true;" >> /etc/apt/apt.conf.d/99custom && \
-echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom
+    echo "Acquire::http::No-Cache true;" >> /etc/apt/apt.conf.d/99custom && \
+    echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom
 
-RUN apt-get update && apt-get upgrade -y \
-&&  apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         libnss3 libatk-bridge2.0-0 libatk1.0-0 \
@@ -22,7 +25,6 @@ RUN apt-get update && apt-get upgrade -y \
         libxcb1 libxcomposite1 libxdamage1 libxrandr2 \
         xdg-utils fonts-liberation && \
     rm -rf /var/lib/apt/lists/*
-
 
 # Install Taskfile runner for convenient local usage
 RUN curl -sL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
@@ -38,8 +40,8 @@ RUN python -m playwright install chromium && \
     python -m playwright install-deps chromium
 
 # ─── 4️⃣  Copy your functions code ───────────────────────────────────
-COPY . /app
-WORKDIR /app
+COPY . /home/site/wwwroot
+WORKDIR /home/site/wwwroot
 
 EXPOSE 8080
 
