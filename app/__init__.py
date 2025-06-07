@@ -154,6 +154,7 @@ UTILITY_PARAMETERS = {
         {"name": "--webhook_url", "label": "Webhook URL"},
         {"name": "--api_key", "label": "API key"},
     ],
+    "push_ph_top_creators": []
 }
 
 
@@ -233,9 +234,11 @@ def run_utility():
             return cmd
 
         def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
+
             env = os.environ.copy()
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
+            print(cmd)
             proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
             status = 'SUCCESS' if proc.returncode == 0 else 'FAIL'
             output = proc.stdout if proc.returncode == 0 else (proc.stderr or 'Error running command')
