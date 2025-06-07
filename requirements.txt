@@ -10,3 +10,4 @@ python-dotenv
 aiosmtplib
 requests
 pytest>=7.0.0
+numpy

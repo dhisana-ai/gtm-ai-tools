@@ -14,12 +14,17 @@ from flask import (
     url_for,
     flash,
     send_from_directory,
+    jsonify,
 )
 from dotenv import dotenv_values, set_key
+import openai
+import numpy as np
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
+UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
+UTILITY_EMBEDDINGS = []
 
 # Optional nicer titles for utilities when displayed in the UI
 UTILITY_TITLES = {
@@ -347,3 +352,73 @@ def push_to_dhisana():
             pass
     flash(f'Pushed {pushed} leads to Dhisana.')
     return redirect(url_for('run_utility'))
+
+
+def embed_text(text):
+    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002"
+    )
+    return np.array(response.data[0].embedding)
+
+def build_utility_embeddings():
+    global UTILITY_EMBEDDINGS
+    UTILITY_EMBEDDINGS = []
+    for fname in os.listdir(UTILS_DIR):
+        if fname.endswith('.py') and fname != 'common.py':
+            path = os.path.join(UTILS_DIR, fname)
+            with open(path, 'r', encoding='utf-8') as f:
+                code = f.read()
+            emb = embed_text(code[:2000])
+            UTILITY_EMBEDDINGS.append({
+                'filename': fname,
+                'code': code,
+                'embedding': emb
+            })
+
+def get_top_k_utilities(prompt, k=3):
+    prompt_emb = embed_text(prompt)
+    scored = []
+    for util in UTILITY_EMBEDDINGS:
+        score = np.dot(prompt_emb, util['embedding']) / (np.linalg.norm(prompt_emb) * np.linalg.norm(util['embedding']))
+        scored.append((score, util))
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [util['code'] for score, util in scored[:k]]
+
+build_utility_embeddings()
+
+@app.route('/generate_utility', methods=['POST'])
+def generate_utility():
+    user_prompt = request.form['prompt']
+    top_examples = get_top_k_utilities(user_prompt, k=3)
+    codex_prompt = (
+        "# All utilities below are for Go-To-Market (GTM) automation, lead generation, enrichment, outreach, or sales/marketing workflows.\n"
+        + "\n# Example:\n".join(top_examples) +
+        f"\n# User wants a new GTM utility:\n# {user_prompt}\n# Python code:\n"
+    )
+    with tempfile.NamedTemporaryFile('w+', delete=False, suffix='.txt') as prompt_file:
+        prompt_file.write(codex_prompt)
+        prompt_file_path = prompt_file.name
+    try:
+        result = subprocess.run(
+            ['npx', '@openai/codex', '--model', 'code-davinci-002', prompt_file_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        print('Codex CLI STDOUT:', result.stdout)
+        print('Codex CLI STDERR:', result.stderr)
+        code = result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        return jsonify({"success": False, "error": e.stderr}), 500
+    new_util_name = user_prompt.lower().replace(' ', '_')[:30]
+    new_util_path = os.path.join(UTILS_DIR, f"{new_util_name}.py")
+    with open(new_util_path, 'w', encoding='utf-8') as f:
+        f.write(code)
+    build_utility_embeddings()
+    return jsonify({
+        "success": True,
+        "filename": f"{new_util_name}.py",
+        "code": code
+    })

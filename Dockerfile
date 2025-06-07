@@ -28,6 +28,12 @@ RUN apt-get update && apt-get upgrade -y \
 # Install Taskfile runner for convenient local usage
 RUN curl -sL https://taskfile.dev/install.sh | sh -s -- -b /usr/local/bin
 
+# Install Node.js and npm
+RUN apt-get update && apt-get install -y curl && \
+    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
+    apt-get install -y nodejs && \
+    npm install -g @openai/codex
+
 # ─── 2️⃣  Python deps (add setuptools!) ───────────────────────────────
 COPY requirements.txt /
 RUN pip install --upgrade pip && \

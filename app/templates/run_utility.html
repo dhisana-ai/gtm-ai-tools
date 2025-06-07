@@ -16,6 +16,33 @@
     Vibe code and add your own GTM workflow in 5 min!
     <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">Vibe coding instructions</a>
   </p>
+  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
+    Create New GTM Utility
+  </button>
+  <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <form id="generate-utility-form">
+          <div class="modal-header">
+            <h5 class="modal-title" id="generateUtilityModalLabel">Create New GTM Utility</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <label for="utilityPrompt" class="form-label">Describe your GTM utility:</label>
+            <textarea class="form-control" id="utilityPrompt" name="prompt" rows="4" required></textarea>
+            <div id="generate-utility-status" class="mt-2"></div>
+            <div id="generated-code-container" style="display:none;">
+              <label for="generated-code" class="form-label mt-2">Generated Code:</label>
+              <pre id="generated-code" style="background:#f8f9fa; border-radius:6px; padding:1em; max-height:300px; overflow:auto;"></pre>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="submit" class="btn btn-success">Generate Utility</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
   <div class="row">
     <div class="col-md-4 mb-4" style="max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       {% for util in utils %}
@@ -65,9 +92,8 @@
       {% endif %}
     </div>
   </div>
-
   <script>
-    const PARAM_MAP = {{ util_params|tojson }};
+    const PARAM_MAP = {{ util_params|tojson|safe }};
     const utilInput = document.getElementById('util-name-input');
 
     function selectUtil(name) {
@@ -127,6 +153,35 @@
       renderParams();
       updateMode();
     });
+    // Codex utility modal form handler
+    const form = document.getElementById('generate-utility-form');
+    if (form) {
+      console.log('Codex utility submit handler attached');
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        const prompt = document.getElementById('utilityPrompt').value;
+        const statusDiv = document.getElementById('generate-utility-status');
+        statusDiv.textContent = 'Generating...';
+        fetch('/generate_utility', {
+          method: 'POST',
+          body: new URLSearchParams({prompt}),
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+        })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success) {
+            statusDiv.textContent = 'Utility created! Here is your code:';
+            document.getElementById('generated-code').textContent = data.code;
+            document.getElementById('generated-code-container').style.display = '';
+          } else {
+            statusDiv.textContent = 'Failed to generate utility.';
+            document.getElementById('generated-code-container').style.display = 'none';
+          }
+        })
+        .catch(() => {
+          statusDiv.textContent = 'Error contacting server.';
+        });
+      });
+    }
   </script>
-
 {% endblock %}
