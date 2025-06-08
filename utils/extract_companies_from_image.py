@@ -16,7 +16,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import List
 from urllib import request
 from urllib.parse import urlparse
 
@@ -44,7 +43,7 @@ def _download_image(url: str) -> Path:
     return Path(tmp)
 
 
-def extract_company_names(image_path: Path) -> List[str]:
+def extract_company_names(image_path: Path) -> list[str]:
     """Return company names detected in the image."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -52,6 +51,7 @@ def extract_company_names(image_path: Path) -> List[str]:
 
     client = OpenAI(api_key=api_key)
     b64 = _encode_image(image_path)
+
     response = client.responses.create(
         model=common.get_openai_model(),
         input=[
@@ -61,8 +61,10 @@ def extract_company_names(image_path: Path) -> List[str]:
                     {
                         "type": "input_text",
                         "text": (
-                            "List the company names visible in this image. "
-                            "Reply with a JSON array of names."
+                            "This image contains a company logo or text. "
+                            "Identify the company name(s) visible and "
+                            "reply with a JSON array of names only. "
+                            "Example: [\"BNP Paribas\"]"
                         ),
                     },
                     {
@@ -74,19 +76,31 @@ def extract_company_names(image_path: Path) -> List[str]:
             }
         ],
     )
-    text = response.output_text or ""
+    text = (response.output_text or "").strip()
+    logger.debug("Raw OpenAI response: %r", text)
+
     try:
         data = json.loads(text)
-    except json.JSONDecodeError:  # pragma: no cover - network issues
-        logger.exception("Failed to parse response: %s", text)
-        return []
-    if not isinstance(data, list):
-        return []
-    return [str(item) for item in data]
+        if not isinstance(data, list):
+            raise ValueError("Parsed JSON is not a list")
+    except (json.JSONDecodeError, ValueError):
+        import re
+
+        match = re.search(r"\[(.*?)\]", text)
+        if not match:
+            logger.error("No JSON array found in response: %s", text)
+            return []
+        try:
+            data = json.loads(f"[{match.group(1)}]")
+        except json.JSONDecodeError:
+            logger.exception("Failed fallback JSON parse of: %s", match.group(0))
+            return []
+
+    return [str(item).strip() for item in data if isinstance(item, (str,))]
 
 
-async def _lookup_details(names: List[str]) -> List[dict]:
-    results: List[dict] = []
+async def _lookup_details(names: list[str]) -> list[dict]:
+    results: list[dict] = []
     for name in names:
         info = await find_company_info.find_company_details(name)
         info["company_name"] = name
