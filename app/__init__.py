@@ -207,8 +207,8 @@ def run_utility():
     csv_rows: list[dict[str, str]] = []
     csv_path_for_grid: str | None = None
     utils_list = _list_utils()
+    util_name = request.form.get('util_name', 'linkedin_search_to_csv')
     if request.method == 'POST':
-        util_name = request.form.get('util_name', '')
         file = request.files.get('csv_file')
         uploaded = None
         if file and file.filename:
@@ -300,7 +300,7 @@ def run_utility():
         download_name=download_name,
         csv_rows=csv_rows,
         util_params=UTILITY_PARAMETERS,
-        default_util='linkedin_search_to_csv',
+        default_util=util_name,
     )
 
 
