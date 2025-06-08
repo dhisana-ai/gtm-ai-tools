@@ -65,7 +65,7 @@
           const gridOptions = { columnDefs, rowData: csvData, pagination: true, paginationPageSize: 20 };
           document.addEventListener('DOMContentLoaded', () => {
             const gridDiv = document.getElementById('csv-grid');
-            new agGrid.Grid(gridDiv, gridOptions);
+            agGrid.createGrid(gridDiv, gridOptions);
           });
         </script>
       {% endif %}
