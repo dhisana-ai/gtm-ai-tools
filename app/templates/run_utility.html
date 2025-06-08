@@ -50,58 +50,63 @@
         <div class="mb-3" id="file-container" style="display:none;">
           <input class="form-control" type="file" name="csv_file">
         </div>
-        <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+        <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+        <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
+          <span class="visually-hidden">Loading...</span>
+        </div>
       </form>
 
-      {% if download_name %}
-        <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
-      {% endif %}
-      {% if csv_rows %}
-        <h3 class="mt-4">Input or Output Preview</h3>
-        <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
-        <script>
-          const csvData = {{ csv_rows|tojson }};
-          const columnDefs = csvData.length
-            ? Object.keys(csvData[0]).map(k => {
-                if (k === 'user_linkedin_url') {
-                  return {
-                    field: k,
-                    cellRenderer: params => {
-                      if (!params.value) return '';
-                      const url = params.value.startsWith('http')
-                        ? params.value
-                        : `https://${params.value}`;
-                      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
-                    }
-                  };
-                }
-                return { field: k };
-              })
-            : [];
-          const gridOptions = {
-            columnDefs,
-            rowData: csvData,
-            pagination: true,
-            paginationPageSize: 20,
-            enableRangeSelection: true
-          };
-          document.addEventListener('DOMContentLoaded', () => {
-            const gridDiv = document.getElementById('csv-grid');
-            agGrid.createGrid(gridDiv, gridOptions);
-          });
-        </script>
-      {% endif %}
-      {% if util_output %}
-        <h3>Output</h3>
-        <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
-      {% endif %}
-      {% if download_name or util_output %}
-        <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
-          <input type="hidden" name="csv_path" value="{{ download_name }}">
-          <input type="hidden" name="output_text" value="{{ util_output }}">
-          <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
-        </form>
-      {% endif %}
+      <div id="output-section">
+        {% if download_name %}
+          <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
+        {% endif %}
+        {% if csv_rows %}
+          <h3 class="mt-4">Input or Output Preview</h3>
+          <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
+          <script>
+            const csvData = {{ csv_rows|tojson }};
+            const columnDefs = csvData.length
+              ? Object.keys(csvData[0]).map(k => {
+                  if (k === 'user_linkedin_url') {
+                    return {
+                      field: k,
+                      cellRenderer: params => {
+                        if (!params.value) return '';
+                        const url = params.value.startsWith('http')
+                          ? params.value
+                          : `https://${params.value}`;
+                        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
+                      }
+                    };
+                  }
+                  return { field: k };
+                })
+              : [];
+            const gridOptions = {
+              columnDefs,
+              rowData: csvData,
+              pagination: true,
+              paginationPageSize: 20,
+              enableRangeSelection: true
+            };
+            document.addEventListener('DOMContentLoaded', () => {
+              const gridDiv = document.getElementById('csv-grid');
+              agGrid.createGrid(gridDiv, gridOptions);
+            });
+          </script>
+        {% endif %}
+        {% if util_output %}
+          <h3>Output</h3>
+          <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
+        {% endif %}
+        {% if download_name or util_output %}
+          <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
+            <input type="hidden" name="csv_path" value="{{ download_name }}">
+            <input type="hidden" name="output_text" value="{{ util_output }}">
+            <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
+          </form>
+        {% endif %}
+      </div>
     </div>
   </div>
 
@@ -179,6 +184,15 @@
         });
       });
     document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
+    const form = document.getElementById('util-form');
+    const spinner = document.getElementById('run-spinner');
+    const runBtn = document.getElementById('run-button');
+    const outputSection = document.getElementById('output-section');
+    form.addEventListener('submit', () => {
+      if (spinner) spinner.style.display = 'inline-block';
+      if (runBtn) runBtn.disabled = true;
+      if (outputSection) outputSection.innerHTML = '';
+    });
     document.addEventListener('DOMContentLoaded', () => {
       selectUtil(utilInput.value);
       renderParams();
