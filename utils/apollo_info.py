@@ -15,6 +15,120 @@ from utils.find_company_info import extract_domain
 API_BASE = "https://api.apollo.io/api/v1"
 
 
+def fill_in_properties_with_preference(
+    input_user_properties: dict, person_data: dict
+) -> dict:
+    """Map person information to standard output properties."""
+
+    def is_empty(value: Any) -> bool:
+        return value is None or (isinstance(value, str) and not value.strip())
+
+    # Email
+    if is_empty(input_user_properties.get("email")):
+        input_user_properties["email"] = person_data.get("email", "")
+
+    # Phone
+    if is_empty(input_user_properties.get("phone")):
+        input_user_properties["phone"] = (
+            (person_data.get("contact", {}) or {}).get("sanitized_phone", "")
+        )
+
+    # Full name
+    if is_empty(input_user_properties.get("full_name")) and person_data.get("name"):
+        input_user_properties["full_name"] = person_data["name"]
+
+    # First name
+    if (
+        is_empty(input_user_properties.get("first_name"))
+        and person_data.get("first_name")
+    ):
+        input_user_properties["first_name"] = person_data["first_name"]
+
+    # Last name
+    if (
+        is_empty(input_user_properties.get("last_name"))
+        and person_data.get("last_name")
+    ):
+        input_user_properties["last_name"] = person_data["last_name"]
+
+    # LinkedIn URL
+    if (
+        is_empty(input_user_properties.get("user_linkedin_url"))
+        and person_data.get("linkedin_url")
+    ):
+        input_user_properties["user_linkedin_url"] = person_data["linkedin_url"]
+
+    # Organization data
+    org_data = person_data.get("organization") or {}
+    if org_data:
+        if (
+            is_empty(input_user_properties.get("primary_domain_of_organization"))
+            and org_data.get("primary_domain")
+        ):
+            input_user_properties["primary_domain_of_organization"] = org_data[
+                "primary_domain"
+            ]
+
+        if (
+            is_empty(input_user_properties.get("organization_name"))
+            and org_data.get("name")
+        ):
+            input_user_properties["organization_name"] = org_data["name"]
+
+        if (
+            is_empty(input_user_properties.get("organization_linkedin_url"))
+            and org_data.get("linkedin_url")
+        ):
+            input_user_properties["organization_linkedin_url"] = org_data[
+                "linkedin_url"
+            ]
+
+        if (
+            is_empty(input_user_properties.get("organization_website"))
+            and org_data.get("website_url")
+        ):
+            input_user_properties["organization_website"] = org_data[
+                "website_url"
+            ]
+
+        if is_empty(input_user_properties.get("keywords")) and org_data.get(
+            "keywords"
+        ):
+            input_user_properties["keywords"] = ", ".join(org_data["keywords"])
+
+    # Job title
+    if is_empty(input_user_properties.get("job_title")) and person_data.get("title"):
+        input_user_properties["job_title"] = person_data["title"]
+
+    # Headline
+    if (
+        is_empty(input_user_properties.get("headline"))
+        and person_data.get("headline")
+    ):
+        input_user_properties["headline"] = person_data["headline"]
+
+    if (
+        is_empty(input_user_properties.get("summary_about_lead"))
+        and person_data.get("headline")
+    ):
+        input_user_properties["summary_about_lead"] = person_data["headline"]
+
+    # City/State -> lead_location
+    city = person_data.get("city", "")
+    state = person_data.get("state", "")
+    if is_empty(input_user_properties.get("lead_location")) and (city or state):
+        lead_location = f"{city}, {state}".strip(", ")
+        input_user_properties["lead_location"] = lead_location
+
+    if (
+        input_user_properties.get("email")
+        and "domain.com" in input_user_properties["email"].lower()
+    ):
+        input_user_properties["email"] = ""
+
+    return input_user_properties
+
+
 async def get_person_info(
     linkedin_url: str = "",
     email: str = "",
@@ -49,7 +163,13 @@ async def get_person_info(
     async with aiohttp.ClientSession() as session:
         url = f"{API_BASE}/people/match"
         async with session.post(url, headers=headers, json=payload) as resp:
-            return await resp.json()
+            data = await resp.json()
+
+    person_data = data.get("person") or {}
+    if person_data:
+        mapped = fill_in_properties_with_preference({}, person_data)
+        return mapped
+    return data
 
 
 async def get_company_info(company_url: str = "", primary_domain: str = "") -> Dict[str, Any]:
