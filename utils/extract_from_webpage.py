@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel
 from openai import AsyncOpenAI
 
-from utils import fetch_html_playwright, common
+from utils import fetch_html_playwright, common, find_company_info
 
 logger = logging.getLogger(__name__)
 
@@ -82,10 +82,27 @@ async def _fetch_and_clean(url: str) -> str:
     return str(soup)
 
 
+def _extract_linkedin_links(html: str) -> tuple[str, str]:
+    """Return first user and company LinkedIn URLs found in HTML."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    user_url = ""
+    company_url = ""
+    for tag in soup.find_all("a", href=True):
+        href = tag["href"]
+        if not user_url and "linkedin.com/in" in href:
+            user_url = common.extract_user_linkedin_page(href)
+        if not company_url and "linkedin.com/company" in href:
+            company_url = find_company_info.extract_company_page(href)
+        if user_url and company_url:
+            break
+    return user_url, company_url
+
+
 async def extract_multiple_companies_from_webpage(url: str) -> List[Company]:
     html = await _fetch_and_clean(url)
     if not html:
         return []
+    _user_link, org_link = _extract_linkedin_links(html)
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
     prompt = (
         "Extract all companies mentioned in the text below.\n"
@@ -95,7 +112,11 @@ async def extract_multiple_companies_from_webpage(url: str) -> List[Company]:
     result, status = await _get_structured_data_internal(prompt, CompanyList)
     if status != "SUCCESS" or result is None:
         return []
-    return result.companies
+    companies = result.companies
+    if org_link:
+        for c in companies:
+            c.organization_linkedin_url = org_link
+    return companies
 
 
 async def extract_comapy_from_webpage(url: str) -> Optional[Company]:
@@ -107,6 +128,7 @@ async def extract_multiple_leads_from_webpage(url: str) -> List[Lead]:
     html = await _fetch_and_clean(url)
     if not html:
         return []
+    user_link, org_link = _extract_linkedin_links(html)
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
     prompt = (
         "Extract all leads mentioned in the text below.\n"
@@ -116,7 +138,14 @@ async def extract_multiple_leads_from_webpage(url: str) -> List[Lead]:
     result, status = await _get_structured_data_internal(prompt, LeadList)
     if status != "SUCCESS" or result is None:
         return []
-    return result.leads
+    leads = result.leads
+    if user_link or org_link:
+        for lead in leads:
+            if user_link:
+                lead.user_linkedin_url = user_link
+            if org_link:
+                lead.organization_linkedin_url = org_link
+    return leads
 
 
 async def extract_lead_from_webpage(url: str) -> Optional[Lead]:
