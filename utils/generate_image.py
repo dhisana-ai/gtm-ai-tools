@@ -1,15 +1,14 @@
 """Create an image from a prompt with optional source image.
 
-The script uses the OpenAI responses API for generation and the images API for
-editing. Provide a text prompt and optionally an image URL to edit. The
-`OPENAI_API_KEY` environment variable must be set.
+The script uses the OpenAI responses API for generation and editing. Provide a
+text prompt and optionally an image URL to edit. The `OPENAI_API_KEY`
+environment variable must be set.
 """
 from __future__ import annotations
 
 import argparse
-import io
+import base64
 import os
-from typing import Optional
 from urllib import request
 from openai import OpenAI
 from utils import common
@@ -34,18 +33,30 @@ def main() -> None:
 
     if args.image_url:
         with request.urlopen(args.image_url) as resp:
-            img_bytes = io.BytesIO(resp.read())
-        img_bytes.name = "image.png"
-        result = client.images.edit(
-            model="gpt-image-1",
-            image=[img_bytes],
-            prompt=args.prompt,
-            size="1024x1024",
-            quality="standard",
-            response_format="b64_json",
-            n=1,
+            img_data = resp.read()
+        b64_image = base64.b64encode(img_data).decode()
+        response = client.responses.create(
+            model=common.get_openai_model(),
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": args.prompt},
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{b64_image}",
+                        },
+                    ],
+                }
+            ],
+            tools=[{"type": "image_generation"}],
         )
-        b64 = getattr(result.data[0], "b64_json", None)
+        image_data = [
+            output.result
+            for output in getattr(response, "output", [])
+            if getattr(output, "type", "") == "image_generation_call"
+        ]
+        b64 = image_data[0] if image_data else None
     else:
         response = client.responses.create(
             model=common.get_openai_model(),
