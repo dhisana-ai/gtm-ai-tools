@@ -56,6 +56,19 @@
       {% if download_name %}
         <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
       {% endif %}
+      {% if csv_rows %}
+        <h3 class="mt-4">CSV Preview</h3>
+        <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
+        <script>
+          const csvData = {{ csv_rows|tojson }};
+          const columnDefs = csvData.length ? Object.keys(csvData[0]).map(k => ({ field: k })) : [];
+          const gridOptions = { columnDefs, rowData: csvData, pagination: true, paginationPageSize: 20 };
+          document.addEventListener('DOMContentLoaded', () => {
+            const gridDiv = document.getElementById('csv-grid');
+            new agGrid.Grid(gridDiv, gridOptions);
+          });
+        </script>
+      {% endif %}
       {% if download_name or util_output %}
         <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
           <input type="hidden" name="csv_path" value="{{ download_name }}">
