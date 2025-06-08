@@ -5,7 +5,8 @@ import tempfile
 import csv
 import re
 import asyncio
-from utils import push_lead_to_dhisana_webhook, linkedin_search_to_csv
+import json
+from utils import push_lead_to_dhisana_webhook, linkedin_search_to_csv, apollo_info
 from flask import (
     Flask,
     render_template,
@@ -262,6 +263,20 @@ def run_utility():
                     linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
                         uploaded, out_path
                     )
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'apollo_info':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    apollo_info.apollo_info_from_csv(uploaded, out_path)
                     download_name = out_path
                     csv_path_for_grid = out_path
                     util_output = None

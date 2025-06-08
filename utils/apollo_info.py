@@ -7,6 +7,8 @@ import asyncio
 import json
 import os
 from typing import Any, Dict
+from pathlib import Path
+import csv
 
 import aiohttp
 
@@ -189,6 +191,41 @@ async def get_company_info(company_url: str = "", primary_domain: str = "") -> D
         url = f"{API_BASE}/organizations/enrich?domain={domain}"
         async with session.get(url, headers=headers) as resp:
             return await resp.json()
+
+
+def apollo_info_from_csv(input_file: str | Path, output_file: str | Path) -> None:
+    """Run ``get_person_info`` for rows in ``input_file`` and write results."""
+
+    in_path = Path(input_file)
+    out_path = Path(output_file)
+
+    with in_path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        if "user_linkedin_url" not in fieldnames and "email" not in fieldnames:
+            raise ValueError("upload csv with user_linkedin_url or email column")
+        rows = list(reader)
+
+    with out_path.open("w", newline="", encoding="utf-8") as out_fh:
+        writer = csv.DictWriter(out_fh, fieldnames=fieldnames + ["properties"])
+        writer.writeheader()
+        for row in rows:
+            linkedin = (row.get("user_linkedin_url") or "").strip()
+            email = (row.get("email") or "").strip()
+            if not linkedin and not email:
+                row["properties"] = ""
+                writer.writerow(row)
+                continue
+            result = asyncio.run(
+                get_person_info(
+                    linkedin,
+                    email,
+                    row.get("full_name", ""),
+                    row.get("company_domain", ""),
+                )
+            )
+            row["properties"] = json.dumps(result)
+            writer.writerow(row)
 
 
 def main() -> None:
