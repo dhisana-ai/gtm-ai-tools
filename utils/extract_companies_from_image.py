@@ -1,23 +1,18 @@
 """Detect company logos in an image and fetch company details.
 
-Provide an image URL which is downloaded and sent to OpenAI's vision API to
-identify company names present in logos or text. For each company name found it
-performs a Google search via Serper.dev to discover the organization's website,
-domain and LinkedIn URL.
+Provide an image URL which is sent directly to OpenAI's vision API to identify
+company names present in logos or text. For each company name found it performs
+a Google search via Serper.dev to discover the organization's website, domain
+and LinkedIn URL.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
-import base64
 import json
 import logging
 import os
-import tempfile
-from pathlib import Path
-from urllib import request
-from urllib.parse import urlparse
 
 from openai import OpenAI
 
@@ -27,30 +22,13 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
-def _encode_image(path: Path) -> str:
-    """Return the base64 string for the image at ``path``."""
-    with path.open("rb") as fh:
-        return base64.b64encode(fh.read()).decode("utf-8")
-
-
-def _download_image(url: str) -> Path:
-    """Download ``url`` to a temporary file and return its path."""
-    parsed = urlparse(url)
-    suffix = Path(parsed.path).suffix or ".png"
-    fd, tmp = tempfile.mkstemp(suffix=suffix)
-    with request.urlopen(url) as resp, os.fdopen(fd, "wb") as fh:
-        fh.write(resp.read())
-    return Path(tmp)
-
-
-def extract_company_names(image_path: Path) -> list[str]:
+def extract_company_names(image_url: str) -> list[str]:
     """Return company names detected in the image."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
     client = OpenAI(api_key=api_key)
-    b64 = _encode_image(image_path)
 
     response = client.responses.create(
         model=common.get_openai_model(),
@@ -69,7 +47,7 @@ def extract_company_names(image_path: Path) -> list[str]:
                     },
                     {
                         "type": "input_image",
-                        "image_url": f"data:image/png;base64,{b64}",
+                        "image_url": image_url,
                         "detail": "low",
                     },
                 ],
@@ -118,12 +96,7 @@ def main() -> None:
     parser.add_argument("image_url", help="URL of the image file")
     args = parser.parse_args()
 
-    img_path = _download_image(args.image_url)
-    names = extract_company_names(img_path)
-    try:
-        os.remove(img_path)
-    except Exception:
-        pass
+    names = extract_company_names(args.image_url)
     details = asyncio.run(_lookup_details(names))
     print(json.dumps(details, indent=2))
 
