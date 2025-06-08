@@ -61,8 +61,30 @@
         <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
         <script>
           const csvData = {{ csv_rows|tojson }};
-          const columnDefs = csvData.length ? Object.keys(csvData[0]).map(k => ({ field: k })) : [];
-          const gridOptions = { columnDefs, rowData: csvData, pagination: true, paginationPageSize: 20 };
+          const columnDefs = csvData.length
+            ? Object.keys(csvData[0]).map(k => {
+                if (k === 'user_linkedin_url') {
+                  return {
+                    field: k,
+                    cellRenderer: params => {
+                      if (!params.value) return '';
+                      const url = params.value.startsWith('http')
+                        ? params.value
+                        : `https://${params.value}`;
+                      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
+                    }
+                  };
+                }
+                return { field: k };
+              })
+            : [];
+          const gridOptions = {
+            columnDefs,
+            rowData: csvData,
+            pagination: true,
+            paginationPageSize: 20,
+            enableRangeSelection: true
+          };
           document.addEventListener('DOMContentLoaded', () => {
             const gridDiv = document.getElementById('csv-grid');
             agGrid.createGrid(gridDiv, gridOptions);
