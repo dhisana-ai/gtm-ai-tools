@@ -13,7 +13,10 @@ import json
 from typing import List, Optional, Tuple, Type
 
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
+try:
+    from pydantic import BaseModel
+except ImportError:  # pragma: no cover - fall back for tests without pydantic
+    from pydantic_stub import BaseModel
 from openai import AsyncOpenAI
 
 from utils import fetch_html_playwright, common, find_company_info
