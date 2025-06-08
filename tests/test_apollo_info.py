@@ -40,6 +40,17 @@ def test_get_person_info(monkeypatch):
     assert result["person"]["id"] == "1"
 
 
+def test_get_person_info_by_name_and_domain(monkeypatch):
+    session = DummySession({"person": {"id": "2"}})
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", lambda: session)
+    monkeypatch.setenv("APOLLO_API_KEY", "x")
+    result = asyncio.run(
+        mod.get_person_info(full_name="John Doe", company_domain="https://foo.com")
+    )
+    assert session.posts[0][1] == {"name": "John Doe", "domain": "foo.com"}
+    assert result["person"]["id"] == "2"
+
+
 def test_get_company_info(monkeypatch):
     session = DummySession({"id": "org"})
     monkeypatch.setattr(mod.aiohttp, "ClientSession", lambda: session)

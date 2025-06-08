@@ -37,6 +37,8 @@ UTILITY_PARAMETERS = {
     "apollo_info": [
         {"name": "--linkedin_url", "label": "LinkedIn URL"},
         {"name": "--email", "label": "Email"},
+        {"name": "--full_name", "label": "Full name"},
+        {"name": "--company_domain", "label": "Company domain"},
         {"name": "--company_url", "label": "Company URL"},
         {"name": "--primary_domain", "label": "Company domain"},
     ],
