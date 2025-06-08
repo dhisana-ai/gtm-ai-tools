@@ -10,6 +10,7 @@ from utils import (
     push_lead_to_dhisana_webhook,
     linkedin_search_to_csv,
     apollo_info,
+    check_email_zero_bounce,
     find_users_by_name_and_keywords,
 )
 from pathlib import Path
@@ -283,6 +284,20 @@ def run_utility():
                 )
                 try:
                     apollo_info.apollo_info_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'check_email_zero_bounce':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
                     download_name = out_path
                     csv_path_for_grid = out_path
                     util_output = None

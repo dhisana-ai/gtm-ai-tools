@@ -1,4 +1,5 @@
 import asyncio
+import csv
 from utils import check_email_zero_bounce as mod
 
 
@@ -50,3 +51,19 @@ def test_invalid(monkeypatch):
     result = asyncio.run(mod.check_email("a@b.com"))
     assert result["confidence"] == "low"
     assert result["is_valid"] is False
+
+
+async def fake_check_email(email: str) -> dict:
+    return {"email": email, "confidence": "high", "is_valid": True}
+
+
+def test_check_emails_from_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "check_email", fake_check_email)
+    in_file = tmp_path / "in.csv"
+    in_file.write_text("email,name\na@b.com,John\n")
+    out_file = tmp_path / "out.csv"
+    monkeypatch.setenv("ZERO_BOUNCE_API_KEY", "k")
+    mod.check_emails_from_csv(in_file, out_file)
+    rows = list(csv.DictReader(out_file.open()))
+    assert rows[0]["is_email_valid"] == "true"
+    assert rows[0]["email_confidence"] == "high"
