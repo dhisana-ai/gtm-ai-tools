@@ -7,9 +7,11 @@ import asyncio
 import csv
 import logging
 from pathlib import Path
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from utils.common import search_google_serper, extract_user_linkedin_page
+
+DEFAULT_QUERY = 'site:linkedin.com/in "CEO"'
 
 
 logger = logging.getLogger(__name__)
@@ -18,6 +20,7 @@ logging.basicConfig(level=logging.INFO)
 def linkedin_search_to_csv(query: str, number_of_results: int, output_file: str) -> None:
     """Search Google for LinkedIn profile URLs and write them to a CSV."""
 
+    query = query.strip() or DEFAULT_QUERY
     results = asyncio.run(search_google_serper(query, number_of_results))
     linkedin_urls: list[str] = []
 
@@ -58,11 +61,11 @@ def linkedin_search_to_csv_from_csv(input_file: str | Path, output_file: str | P
 
     aggregated: list[str] = []
     for row in rows:
-        query = (row.get("search_query") or "").strip()
+        query = (row.get("search_query") or "").strip() or DEFAULT_QUERY
         try:
-            num = int(row.get("number_of_responses", 0))
+            num = int(row.get("number_of_responses") or 10)
         except ValueError:
-            num = 0
+            num = 10
         results = asyncio.run(search_google_serper(query, num))
         for item in results:
             link = item.get("link", "")
@@ -96,7 +99,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    linkedin_search_to_csv(args.query, args.num, args.output_file)
+    query = args.query.strip() or DEFAULT_QUERY
+    linkedin_search_to_csv(query, args.num, args.output_file)
 
 
 if __name__ == "__main__":
