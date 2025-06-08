@@ -72,5 +72,7 @@ def test_edit(monkeypatch, capsys):
     mod.main()
     captured = capsys.readouterr()
     assert "img" in captured.out
-    assert dummy.images.edit_args["prompt"] == "hi"
+    inp = dummy.responses.create_args["input"]
+    assert inp[0]["content"][0]["text"] == "hi"
+    assert dummy.images.edit_args is None
     assert dummy_urlopen.called == "http://e.com/a.png"

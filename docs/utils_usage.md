@@ -259,7 +259,7 @@ task run:command -- send_slack_message "Deployment finished"
 
 ## Generate Image with OpenAI
 
-`generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script edits that picture using the prompt instead of generating a new one. It requires the `OPENAI_API_KEY` environment variable.
+`generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script sends the image along with the prompt to the OpenAI responses API for editing instead of calling the legacy `images.edit` endpoint. It requires the `OPENAI_API_KEY` environment variable.
 
 ```bash
 task run:command -- generate_image "an astronaut riding a horse"
