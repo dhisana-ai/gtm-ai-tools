@@ -206,16 +206,13 @@ def apollo_info_from_csv(input_file: str | Path, output_file: str | Path) -> Non
             raise ValueError("upload csv with user_linkedin_url or email column")
         rows = list(reader)
 
-    with out_path.open("w", newline="", encoding="utf-8") as out_fh:
-        writer = csv.DictWriter(out_fh, fieldnames=fieldnames + ["properties"])
-        writer.writeheader()
-        for row in rows:
-            linkedin = (row.get("user_linkedin_url") or "").strip()
-            email = (row.get("email") or "").strip()
-            if not linkedin and not email:
-                row["properties"] = ""
-                writer.writerow(row)
-                continue
+    processed_rows: list[dict] = []
+    extra_fields: list[str] = []
+
+    for row in rows:
+        linkedin = (row.get("user_linkedin_url") or "").strip()
+        email = (row.get("email") or "").strip()
+        if linkedin or email:
             result = asyncio.run(
                 get_person_info(
                     linkedin,
@@ -224,7 +221,16 @@ def apollo_info_from_csv(input_file: str | Path, output_file: str | Path) -> Non
                     row.get("company_domain", ""),
                 )
             )
-            row["properties"] = json.dumps(result)
+            for key, value in result.items():
+                if key not in fieldnames and key not in extra_fields:
+                    extra_fields.append(key)
+                row[key] = value
+        processed_rows.append(row)
+
+    with out_path.open("w", newline="", encoding="utf-8") as out_fh:
+        writer = csv.DictWriter(out_fh, fieldnames=fieldnames + extra_fields)
+        writer.writeheader()
+        for row in processed_rows:
             writer.writerow(row)
 
 
