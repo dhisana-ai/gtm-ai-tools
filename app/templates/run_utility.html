@@ -58,7 +58,15 @@
 
       <div id="output-section">
         {% if download_name %}
-          <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
+          {% set is_image = download_name.endswith('.png') %}
+          <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">
+            {{ 'Download Image' if is_image else 'Download CSV' }}
+          </a>
+        {% endif %}
+        {% if image_src %}
+          <div class="mt-3">
+            <img src="{{ image_src }}" class="img-fluid" alt="Generated Image">
+          </div>
         {% endif %}
         {% if csv_rows %}
           <h3 class="mt-4">Input or Output Preview</h3>
@@ -99,7 +107,7 @@
           <h3>Output</h3>
           <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
         {% endif %}
-        {% if download_name or util_output %}
+        {% if (download_name or util_output) and default_util != 'generate_image' %}
           <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
             <input type="hidden" name="csv_path" value="{{ download_name }}">
             <input type="hidden" name="output_text" value="{{ util_output }}">
