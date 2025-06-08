@@ -273,12 +273,12 @@ task run:command -- generate_image "add a beach background" --image-url http://e
 
 ## Extract Companies from Image
 
-`extract_companies_from_image.py` detects company logos in a picture and looks up
-each organization's website, primary domain and LinkedIn page. It requires the
-`OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
+`extract_companies_from_image.py` detects company logos in an image URL and looks
+up each organization's website, primary domain and LinkedIn page. It requires
+the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 
 ```bash
-task run:command -- extract_companies_from_image /workspace/logo.png
+task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
 
 

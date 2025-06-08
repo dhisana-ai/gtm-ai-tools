@@ -1,9 +1,9 @@
 """Detect company logos in an image and fetch company details.
 
-The script sends the image to OpenAI's vision API to identify company names
-present in logos or text. For each company name found it performs a Google
-search via Serper.dev to discover the organization's website, domain and
-LinkedIn URL.
+Provide an image URL which is downloaded and sent to OpenAI's vision API to
+identify company names present in logos or text. For each company name found it
+performs a Google search via Serper.dev to discover the organization's website,
+domain and LinkedIn URL.
 """
 
 from __future__ import annotations
@@ -14,8 +14,11 @@ import base64
 import json
 import logging
 import os
+import tempfile
 from pathlib import Path
 from typing import List
+from urllib import request
+from urllib.parse import urlparse
 
 from openai import OpenAI
 
@@ -29,6 +32,16 @@ def _encode_image(path: Path) -> str:
     """Return the base64 string for the image at ``path``."""
     with path.open("rb") as fh:
         return base64.b64encode(fh.read()).decode("utf-8")
+
+
+def _download_image(url: str) -> Path:
+    """Download ``url`` to a temporary file and return its path."""
+    parsed = urlparse(url)
+    suffix = Path(parsed.path).suffix or ".png"
+    fd, tmp = tempfile.mkstemp(suffix=suffix)
+    with request.urlopen(url) as resp, os.fdopen(fd, "wb") as fh:
+        fh.write(resp.read())
+    return Path(tmp)
 
 
 def extract_company_names(image_path: Path) -> List[str]:
@@ -88,10 +101,15 @@ def main() -> None:
             "and LinkedIn pages"
         )
     )
-    parser.add_argument("image_path", type=Path, help="Path to the image file")
+    parser.add_argument("image_url", help="URL of the image file")
     args = parser.parse_args()
 
-    names = extract_company_names(args.image_path)
+    img_path = _download_image(args.image_url)
+    names = extract_company_names(img_path)
+    try:
+        os.remove(img_path)
+    except Exception:
+        pass
     details = asyncio.run(_lookup_details(names))
     print(json.dumps(details, indent=2))
 
