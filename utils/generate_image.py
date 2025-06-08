@@ -40,6 +40,8 @@ def main() -> None:
             prompt=args.prompt,
             size="1024x1024",
             quality="standard",
+            response_format="b64_json",
+            n=1,
         )
     else:
         result = client.images.generate(
