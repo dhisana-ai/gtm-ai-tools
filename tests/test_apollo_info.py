@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import json
 import pytest
 from utils import apollo_info as mod
 
@@ -81,3 +83,25 @@ def test_missing_api_key(monkeypatch):
     monkeypatch.delenv("APOLLO_API_KEY", raising=False)
     with pytest.raises(RuntimeError):
         asyncio.run(mod.get_person_info(email="e@x.com"))
+
+
+async def fake_get_person_info(linkedin_url="", email="", full_name="", company_domain=""):
+    return {"linkedin_url": linkedin_url, "email": email}
+
+
+def test_apollo_info_from_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr(mod, "get_person_info", fake_get_person_info)
+    in_file = tmp_path / "in.csv"
+    in_file.write_text("user_linkedin_url,email\nhttps://linkedin.com/in/foo,foo@x.com\n")
+    out_file = tmp_path / "out.csv"
+    mod.apollo_info_from_csv(in_file, out_file)
+    with out_file.open() as fh:
+        rows = list(csv.DictReader(fh))
+    assert json.loads(rows[0]["properties"])["email"] == "foo@x.com"
+
+
+def test_apollo_info_from_csv_missing_cols(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text("foo,bar\n1,2\n")
+    with pytest.raises(ValueError):
+        mod.apollo_info_from_csv(bad, tmp_path / "out.csv")
