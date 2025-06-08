@@ -5,7 +5,7 @@ import tempfile
 import csv
 import re
 import asyncio
-from utils import push_lead_to_dhisana_webhook
+from utils import push_lead_to_dhisana_webhook, linkedin_search_to_csv
 from flask import (
     Flask,
     render_template,
@@ -253,23 +253,47 @@ def run_utility():
             return status, cmd_str, output.strip()
 
         if uploaded:
-            import csv
-            with open(uploaded, newline='', encoding='utf-8') as fh:
-                reader = csv.DictReader(fh)
-                rows = list(reader)
-                fieldnames = reader.fieldnames or []
-            out_path = os.path.join(tempfile.gettempdir(), os.path.basename(uploaded) + '.out.csv')
-            with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
-                writer = csv.DictWriter(out_fh, fieldnames=fieldnames + ['status', 'command', 'output'])
-                writer.writeheader()
-                for row in rows:
-                    cmd = build_cmd(row)
-                    status, cmd_str, out_text = run_cmd(cmd)
-                    row.update({'status': status, 'command': cmd_str, 'output': out_text})
-                    writer.writerow(row)
-            download_name = out_path
-            csv_path_for_grid = out_path
-            util_output = None
+            if util_name == 'linkedin_search_to_csv':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
+                        uploaded, out_path
+                    )
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            else:
+                import csv
+                with open(uploaded, newline='', encoding='utf-8') as fh:
+                    reader = csv.DictReader(fh)
+                    rows = list(reader)
+                    fieldnames = reader.fieldnames or []
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
+                    writer = csv.DictWriter(
+                        out_fh, fieldnames=fieldnames + ['status', 'command', 'output']
+                    )
+                    writer.writeheader()
+                    for row in rows:
+                        cmd = build_cmd(row)
+                        status, cmd_str, out_text = run_cmd(cmd)
+                        row.update(
+                            {'status': status, 'command': cmd_str, 'output': out_text}
+                        )
+                        writer.writerow(row)
+                download_name = out_path
+                csv_path_for_grid = out_path
+                util_output = None
         else:
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
             cmd = build_cmd(values)
