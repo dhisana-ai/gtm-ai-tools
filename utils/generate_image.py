@@ -1,7 +1,8 @@
 """Create an image from a prompt with optional source image.
 
-The script uses the OpenAI images API. Provide a text prompt and optionally
-an image URL to edit. The `OPENAI_API_KEY` environment variable must be set.
+The script uses the OpenAI responses API for generation and the images API for
+editing. Provide a text prompt and optionally an image URL to edit. The
+`OPENAI_API_KEY` environment variable must be set.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import os
 from typing import Optional
 from urllib import request
 from openai import OpenAI
+from utils import common
 
 
 def main() -> None:
@@ -43,17 +45,20 @@ def main() -> None:
             response_format="b64_json",
             n=1,
         )
+        b64 = getattr(result.data[0], "b64_json", None)
     else:
-        result = client.images.generate(
-            model="gpt-image-1",
-            prompt=args.prompt,
-            size="1024x1024",
-            quality="standard",
-            response_format="b64_json",
-            n=1,
+        response = client.responses.create(
+            model=common.get_openai_model(),
+            input=args.prompt,
+            tools=[{"type": "image_generation"}],
         )
+        image_data = [
+            output.result
+            for output in getattr(response, "output", [])
+            if getattr(output, "type", "") == "image_generation_call"
+        ]
+        b64 = image_data[0] if image_data else None
 
-    b64 = getattr(result.data[0], "b64_json", None)
     if b64:
         print(b64)
     else:
