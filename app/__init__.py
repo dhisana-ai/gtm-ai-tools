@@ -37,6 +37,7 @@ UTILITY_TITLES = {
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
+    "extract_companies_from_image": "Extract Companies from Image",
 }
 
 # Utilities that only support CSV upload mode
@@ -141,6 +142,9 @@ UTILITY_PARAMETERS = {
         {"name": "--tags", "label": "Tags"},
         {"name": "--notes", "label": "Notes"},
         {"name": "--webhook_url", "label": "Webhook URL"},
+    ],
+    "extract_companies_from_image": [
+        {"name": "image_url", "label": "Image URL"},
     ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
