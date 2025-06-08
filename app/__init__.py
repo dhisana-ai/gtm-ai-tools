@@ -286,7 +286,7 @@ def run_utility():
                     csv_path_for_grid = None
             else:
                 import csv
-                with open(uploaded, newline='', encoding='utf-8') as fh:
+                with open(uploaded, newline='', encoding='utf-8-sig') as fh:
                     reader = csv.DictReader(fh)
                     rows = list(reader)
                     fieldnames = reader.fieldnames or []
@@ -324,7 +324,7 @@ def run_utility():
     if csv_path_for_grid and os.path.exists(csv_path_for_grid):
         try:
             import csv
-            with open(csv_path_for_grid, newline='', encoding='utf-8') as fh:
+            with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
                 reader = csv.DictReader(fh)
                 for i, row in enumerate(reader):
                     if i >= 1000:
@@ -377,7 +377,7 @@ def push_to_dhisana():
     urls: set[str] = set()
     if csv_path and os.path.exists(csv_path):
         try:
-            with open(csv_path, newline='', encoding='utf-8') as fh:
+            with open(csv_path, newline='', encoding='utf-8-sig') as fh:
                 reader = csv.reader(fh)
                 for row in reader:
                     for cell in row:

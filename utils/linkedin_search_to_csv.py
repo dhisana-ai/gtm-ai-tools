@@ -48,9 +48,10 @@ def linkedin_search_to_csv_from_csv(input_file: str | Path, output_file: str | P
     in_path = Path(input_file)
     out_path = Path(output_file)
 
-    with in_path.open(newline="", encoding="utf-8") as fh:
+    with in_path.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
-        fieldnames = reader.fieldnames or []
+        raw_fieldnames = reader.fieldnames or []
+        fieldnames = [f.strip() for f in raw_fieldnames]
         if "search_query" not in fieldnames or "number_of_responses" not in fieldnames:
             raise ValueError("upload csv with these two columns: search_query and number_of_responses")
         rows = list(reader)
