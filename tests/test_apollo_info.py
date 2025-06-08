@@ -86,7 +86,7 @@ def test_missing_api_key(monkeypatch):
 
 
 async def fake_get_person_info(linkedin_url="", email="", full_name="", company_domain=""):
-    return {"linkedin_url": linkedin_url, "email": email}
+    return {"user_linkedin_url": linkedin_url, "email": email}
 
 
 def test_apollo_info_from_csv(tmp_path, monkeypatch):
@@ -97,7 +97,8 @@ def test_apollo_info_from_csv(tmp_path, monkeypatch):
     mod.apollo_info_from_csv(in_file, out_file)
     with out_file.open() as fh:
         rows = list(csv.DictReader(fh))
-    assert json.loads(rows[0]["properties"])["email"] == "foo@x.com"
+    assert rows[0]["email"] == "foo@x.com"
+    assert rows[0]["user_linkedin_url"] == "https://linkedin.com/in/foo"
 
 
 def test_apollo_info_from_csv_missing_cols(tmp_path):
