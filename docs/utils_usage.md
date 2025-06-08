@@ -14,6 +14,11 @@ task run:command -- call_openai_llm "Hello!"
 
 The script prints the text from the `responses.create` call.
 
+When running the tool on a CSV file through the web interface, provide a
+prompt in addition to the uploaded file. The prompt is concatenated with each
+row from the CSV and the responses are written to a new `llm_output` column in
+the output file.
+
 ## MCP Tool Sample
 
 `mcp_tool_sample.py` sends a prompt to OpenAI using an MCP server. It requires `OPENAI_API_KEY` along with `MCP_SERVER_URL`, `MCP_API_KEY_HEADER_NAME` and `MCP_API_KEY_HEADER_VALUE`. Optionally set `MCP_SERVER_LABEL`. The OpenAI model can also be set with `OPENAI_MODEL_NAME`.

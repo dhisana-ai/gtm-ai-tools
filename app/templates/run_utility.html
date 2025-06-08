@@ -183,7 +183,8 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
+        const paramsVisible = !(mode === 'file' && util !== 'call_openai_llm');
+        document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
     document.querySelectorAll('.util-card').forEach(card => {
         card.addEventListener('click', () => {

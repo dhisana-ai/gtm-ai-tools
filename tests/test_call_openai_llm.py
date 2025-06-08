@@ -29,3 +29,19 @@ def test_model_env(monkeypatch):
     mod.main()
     assert dummy.kwargs["model"] == "gpt-test"
 
+
+def test_from_csv(tmp_path, monkeypatch):
+    dummy = DummyClient()
+    monkeypatch.setattr(mod, "OpenAI", lambda api_key=None: dummy)
+    monkeypatch.setenv("OPENAI_API_KEY", "x")
+    in_file = tmp_path / "in.csv"
+    with in_file.open("w", newline="") as fh:
+        writer = mod.csv.DictWriter(fh, fieldnames=["name"])
+        writer.writeheader()
+        writer.writerow({"name": "Bob"})
+    out_file = tmp_path / "out.csv"
+    mod.call_openai_llm_from_csv(in_file, out_file, "Hello ")
+    with out_file.open(newline="") as fh:
+        rows = list(mod.csv.DictReader(fh))
+    assert rows[0]["llm_output"] == "hi"
+
