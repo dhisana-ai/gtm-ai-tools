@@ -196,6 +196,8 @@ def index():
 def run_utility():
     util_output = None
     download_name = None
+    csv_rows: list[dict[str, str]] = []
+    csv_path_for_grid: str | None = None
     utils_list = _list_utils()
     if request.method == 'POST':
         util_name = request.form.get('util_name', '')
@@ -258,6 +260,7 @@ def run_utility():
                     row.update({'status': status, 'command': cmd_str, 'output': out_text})
                     writer.writerow(row)
             download_name = out_path
+            csv_path_for_grid = out_path
             util_output = None
         else:
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
@@ -269,12 +272,25 @@ def run_utility():
                     path = os.path.abspath(arg)
                     if os.path.exists(path):
                         download_name = path
+                        csv_path_for_grid = path
                         break
+    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
+        try:
+            import csv
+            with open(csv_path_for_grid, newline='', encoding='utf-8') as fh:
+                reader = csv.DictReader(fh)
+                for i, row in enumerate(reader):
+                    if i >= 1000:
+                        break
+                    csv_rows.append(row)
+        except Exception:
+            csv_rows = []
     return render_template(
         'run_utility.html',
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
+        csv_rows=csv_rows,
         util_params=UTILITY_PARAMETERS,
         default_util='linkedin_search_to_csv',
     )
