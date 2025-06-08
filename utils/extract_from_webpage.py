@@ -9,6 +9,7 @@ import os
 import logging
 import argparse
 import asyncio
+import json
 from typing import List, Optional, Tuple, Type
 
 from bs4 import BeautifulSoup
@@ -67,7 +68,7 @@ async def _get_structured_data_internal(prompt: str, model: Type[BaseModel]) -> 
         text = response.choices[0].message.content or ""
         if not text:
             return None, "ERROR"
-        return model.parse_raw(text), "SUCCESS"
+        return model.model_validate_json(text), "SUCCESS"
     except Exception:  # pragma: no cover - network failures etc.
         logger.exception("OpenAI call failed")
         return None, "ERROR"
@@ -88,7 +89,7 @@ async def extract_multiple_companies_from_webpage(url: str) -> List[Company]:
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
     prompt = (
         "Extract all companies mentioned in the text below.\n"
-        f"Return JSON matching this schema:\n{CompanyList.schema_json(indent=2)}\n\n"
+        f"Return JSON matching this schema:\n{json.dumps(CompanyList.model_json_schema(), indent=2)}\n\n"
         f"Text:\n{text}"
     )
     result, status = await _get_structured_data_internal(prompt, CompanyList)
@@ -109,7 +110,7 @@ async def extract_multiple_leads_from_webpage(url: str) -> List[Lead]:
     text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
     prompt = (
         "Extract all leads mentioned in the text below.\n"
-        f"Return JSON matching this schema:\n{LeadList.schema_json(indent=2)}\n\n"
+        f"Return JSON matching this schema:\n{json.dumps(LeadList.model_json_schema(), indent=2)}\n\n"
         f"Text:\n{text}"
     )
     result, status = await _get_structured_data_internal(prompt, LeadList)
@@ -127,20 +128,20 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
     if args.lead:
         result = await extract_lead_from_webpage(url)
         if result:
-            print(result.json(indent=2))
+            print(result.model_dump_json(indent=2))
         return
     if args.leads:
         result = await extract_multiple_leads_from_webpage(url)
-        print("[]" if not result else LeadList(leads=result).json(indent=2))
+        print("[]" if not result else LeadList(leads=result).model_dump_json(indent=2))
         return
     if args.company:
         result = await extract_comapy_from_webpage(url)
         if result:
-            print(result.json(indent=2))
+            print(result.model_dump_json(indent=2))
         return
     if args.companies:
         result = await extract_multiple_companies_from_webpage(url)
-        print("[]" if not result else CompanyList(companies=result).json(indent=2))
+        print("[]" if not result else CompanyList(companies=result).model_dump_json(indent=2))
 
 
 def main() -> None:
