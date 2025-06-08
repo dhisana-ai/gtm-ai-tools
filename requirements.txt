@@ -1,5 +1,6 @@
 httpx
 openai
+pydantic>=2.0
 playwright==1.42.0
 playwright-stealth
 aiohttp
