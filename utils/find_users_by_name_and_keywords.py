@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.INFO)
 def read_input_rows(input_file: Path) -> list[dict[str, str]]:
     """Return rows from the CSV as dictionaries."""
     rows: list[dict[str, str]] = []
-    with input_file.open(newline="", encoding="utf-8") as fh:
+    with input_file.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
             rows.append(row)

@@ -199,7 +199,7 @@ def apollo_info_from_csv(input_file: str | Path, output_file: str | Path) -> Non
     in_path = Path(input_file)
     out_path = Path(output_file)
 
-    with in_path.open(newline="", encoding="utf-8") as fh:
+    with in_path.open(newline="", encoding="utf-8-sig") as fh:
         reader = csv.DictReader(fh)
         fieldnames = reader.fieldnames or []
         if "user_linkedin_url" not in fieldnames and "email" not in fieldnames:

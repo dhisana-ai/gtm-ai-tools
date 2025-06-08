@@ -15,6 +15,9 @@ async def search_google_serper(
 ) -> List[dict]:
     """Query Google via Serper.dev and return results as dictionaries."""
 
+    # Remove any Byte Order Mark or extraneous whitespace
+    query = query.replace("\ufeff", "").strip()
+
     serper_key = os.getenv("SERPER_API_KEY")
     if not serper_key:
         raise RuntimeError("SERPER_API_KEY environment variable is not set")
