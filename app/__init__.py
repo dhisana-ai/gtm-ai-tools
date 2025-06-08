@@ -6,6 +6,7 @@ import csv
 import re
 import asyncio
 import json
+import base64
 from utils import (
     push_lead_to_dhisana_webhook,
     linkedin_search_to_csv,
@@ -38,6 +39,7 @@ UTILITY_TITLES = {
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
+    "generate_image": "Generate Image",
 }
 
 # Utilities that only support CSV upload mode
@@ -146,6 +148,10 @@ UTILITY_PARAMETERS = {
     "extract_companies_from_image": [
         {"name": "image_url", "label": "Image URL"},
     ],
+    "generate_image": [
+        {"name": "prompt", "label": "Prompt"},
+        {"name": "--image-url", "label": "Image URL"},
+    ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
         {"name": "--lead", "label": "Fetch lead", "type": "boolean"},
@@ -218,6 +224,7 @@ def index():
 def run_utility():
     util_output = None
     download_name = None
+    image_src = None
     csv_rows: list[dict[str, str]] = []
     csv_path_for_grid: str | None = None
     utils_list = _list_utils()
@@ -354,14 +361,26 @@ def run_utility():
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
             cmd = build_cmd(values)
             status, cmd_str, out_text = run_cmd(cmd)
-            util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
-            for arg in cmd[3:]:
-                if arg.endswith('.csv'):
-                    path = os.path.abspath(arg)
-                    if os.path.exists(path):
-                        download_name = path
-                        csv_path_for_grid = path
-                        break
+            if util_name == 'generate_image' and status == 'SUCCESS':
+                try:
+                    img_bytes = base64.b64decode(out_text)
+                    fd, out_path = tempfile.mkstemp(suffix='.png', dir=tempfile.gettempdir())
+                    with os.fdopen(fd, 'wb') as fh:
+                        fh.write(img_bytes)
+                    download_name = out_path
+                    image_src = 'data:image/png;base64,' + out_text
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+            else:
+                util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+                for arg in cmd[3:]:
+                    if arg.endswith('.csv'):
+                        path = os.path.abspath(arg)
+                        if os.path.exists(path):
+                            download_name = path
+                            csv_path_for_grid = path
+                            break
     if csv_path_for_grid and os.path.exists(csv_path_for_grid):
         try:
             import csv
@@ -382,6 +401,7 @@ def run_utility():
         util_params=UTILITY_PARAMETERS,
         default_util=util_name,
         upload_only=UPLOAD_ONLY_UTILS,
+        image_src=image_src,
     )
 
 
