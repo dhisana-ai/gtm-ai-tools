@@ -40,7 +40,9 @@ UTILITY_TITLES = {
 }
 
 # Utilities that only support CSV upload mode
-UPLOAD_ONLY_UTILS = {"find_users_by_name_and_keywords"}
+# Use a list instead of a set so the value can be JSON serialised when passed
+# to templates.
+UPLOAD_ONLY_UTILS = ["find_users_by_name_and_keywords"]
 
 # Mapping of utility parameters for the Run a Utility form. Each utility maps
 # to a list of dictionaries describing the CLI argument name and display label.
