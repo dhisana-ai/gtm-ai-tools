@@ -24,7 +24,7 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 # Optional nicer titles for utilities when displayed in the UI
 UTILITY_TITLES = {
     "call_openai_llm": "OpenAI Tools",
-    "linkedin_search_to_csv": "LinkedIn Search to CSV",
+    "linkedin_search_to_csv": "Find Leads with Google Search",
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
@@ -184,7 +184,13 @@ def _list_utils() -> list[dict[str, str]]:
         except Exception:
             pass
         items.append({"name": base, "title": _format_title(base), "desc": desc})
-    return sorted(items, key=lambda x: x["title"])
+    return sorted(
+        items,
+        key=lambda x: (
+            0 if x["name"] == "linkedin_search_to_csv" else 1,
+            x["title"],
+        ),
+    )
 
 
 @app.route('/')
