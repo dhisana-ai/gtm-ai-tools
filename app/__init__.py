@@ -6,7 +6,13 @@ import csv
 import re
 import asyncio
 import json
-from utils import push_lead_to_dhisana_webhook, linkedin_search_to_csv, apollo_info
+from utils import (
+    push_lead_to_dhisana_webhook,
+    linkedin_search_to_csv,
+    apollo_info,
+    find_users_by_name_and_keywords,
+)
+from pathlib import Path
 from flask import (
     Flask,
     render_template,
@@ -31,6 +37,9 @@ UTILITY_TITLES = {
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
 }
+
+# Utilities that only support CSV upload mode
+UPLOAD_ONLY_UTILS = {"find_users_by_name_and_keywords"}
 
 # Mapping of utility parameters for the Run a Utility form. Each utility maps
 # to a list of dictionaries describing the CLI argument name and display label.
@@ -67,10 +76,7 @@ UTILITY_PARAMETERS = {
         {"name": "company_name", "label": "Company name"},
         {"name": "search_keywords", "label": "Search keywords"},
     ],
-    "find_users_by_name_and_keywords": [
-        {"name": "input_file", "label": "Input CSV"},
-        {"name": "output_file", "label": "Output CSV"},
-    ],
+    "find_users_by_name_and_keywords": [],
     "hubspot_add_note": [
         {"name": "--id", "label": "Contact ID"},
         {"name": "--note", "label": "Note"},
@@ -284,6 +290,20 @@ def run_utility():
                     util_output = f'Error: {exc}'
                     download_name = None
                     csv_path_for_grid = None
+            elif util_name == 'find_users_by_name_and_keywords':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
             else:
                 import csv
                 with open(uploaded, newline='', encoding='utf-8-sig') as fh:
@@ -340,6 +360,7 @@ def run_utility():
         csv_rows=csv_rows,
         util_params=UTILITY_PARAMETERS,
         default_util=util_name,
+        upload_only=UPLOAD_ONLY_UTILS,
     )
 
 

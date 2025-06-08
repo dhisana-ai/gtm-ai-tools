@@ -35,7 +35,7 @@
           <h4 id="util-title"></h4>
           <p id="util-desc" class="text-muted"></p>
         </div>
-        <div class="mb-3">
+        <div class="mb-3" id="input-mode-group">
           <label class="form-label">Input Mode</label><br>
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
@@ -107,21 +107,23 @@
 
   <script>
     const PARAM_MAP = {{ util_params|tojson }};
+    const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
     const utilInput = document.getElementById('util-name-input');
 
-    function selectUtil(name) {
-      utilInput.value = name;
-      document.querySelectorAll('.util-card').forEach(card => {
-        card.classList.toggle('border-primary', card.dataset.util === name);
-      });
-      const card = document.querySelector(`.util-card[data-util="${name}"]`);
-      if (card) {
-        const title = card.querySelector('.card-title')?.textContent || '';
-        const desc = card.querySelector('.card-text')?.textContent || '';
-        document.getElementById('util-title').textContent = title;
-        document.getElementById('util-desc').textContent = desc;
+      function selectUtil(name) {
+        utilInput.value = name;
+        document.querySelectorAll('.util-card').forEach(card => {
+          card.classList.toggle('border-primary', card.dataset.util === name);
+        });
+        const card = document.querySelector(`.util-card[data-util="${name}"]`);
+        if (card) {
+          const title = card.querySelector('.card-title')?.textContent || '';
+          const desc = card.querySelector('.card-text')?.textContent || '';
+          document.getElementById('util-title').textContent = title;
+          document.getElementById('util-desc').textContent = desc;
+        }
+        updateMode();
       }
-    }
 
     function renderParams() {
       const container = document.getElementById('params-container');
@@ -156,17 +158,26 @@
       });
     }
 
-    function updateMode() {
-      const mode = document.querySelector('input[name="input_mode"]:checked').value;
-      document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-      document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
-    }
+      function updateMode() {
+        const util = utilInput.value;
+        const isUploadOnly = UPLOAD_ONLY_UTILS.includes(util);
+        const inputGroup = document.getElementById('input-mode-group');
+        if (isUploadOnly) {
+          inputGroup.style.display = 'none';
+          document.getElementById('mode-upload').checked = true;
+        } else {
+          inputGroup.style.display = '';
+        }
+        const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
+        document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
+        document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
+      }
     document.querySelectorAll('.util-card').forEach(card => {
-      card.addEventListener('click', () => {
-        selectUtil(card.dataset.util);
-        renderParams();
+        card.addEventListener('click', () => {
+          selectUtil(card.dataset.util);
+          renderParams();
+        });
       });
-    });
     document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
     document.addEventListener('DOMContentLoaded', () => {
       selectUtil(utilInput.value);
