@@ -6,6 +6,7 @@ import argparse
 import asyncio
 import json
 import os
+import time
 
 import aiohttp
 
@@ -20,7 +21,7 @@ async def add_note(contact_id: str, note: str) -> dict:
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
     url = f"{API_BASE}/crm/v3/objects/notes"
     payload = {
-        "properties": {"hs_note_body": note},
+        "properties": {"hs_note_body": note, "hs_timestamp": int(time.time() * 1000)},
         "associations": [
             {
                 "to": {"id": contact_id, "type": "contact"},
