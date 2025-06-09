@@ -154,7 +154,11 @@ UTILITY_PARAMETERS = {
         {"name": "--webhook_url", "label": "Webhook URL"},
         {"name": "--api_key", "label": "API key"},
     ],
-    "push_ph_top_creators": []
+    "push_ph_top_creators": [
+        {"name": "--days-back", "label": "Number of days(default: 7) to look back from below date", "type": "number", "default": 7},
+        {"name": "--date", "label": "Date (YYYY-MM-DD)", "type": "date", "optional": True},
+
+    ]
 }
 
 
