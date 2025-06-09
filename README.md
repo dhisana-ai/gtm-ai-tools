@@ -27,7 +27,7 @@ Vibe code and add your own GTM workflow in 5 min! [Vibe coding instructions](doc
 
 View this project on [GitHub](https://github.com/dhisana-ai/gtm-ai-tools). Signup and get a 24/7 managed version of this service that runs an AI Agent for you in the cloud with all these workflows and more.
 
-Join the discussion on our [Slack community channel](https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-3543qqhoz-XThU6z1VOD21lNf3AI8K3Q).
+Join the discussion on our [Slack community channel](https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-37bzb09dc-VFgu_1PwM2CXORH1e6s8Xg).
 
 
 ## Quick Start

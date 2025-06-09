@@ -5,7 +5,17 @@ import tempfile
 import csv
 import re
 import asyncio
-from utils import push_lead_to_dhisana_webhook
+import json
+import base64
+from utils import (
+    push_lead_to_dhisana_webhook,
+    linkedin_search_to_csv,
+    apollo_info,
+    check_email_zero_bounce,
+    find_users_by_name_and_keywords,
+    call_openai_llm,
+)
+from pathlib import Path
 from flask import (
     Flask,
     render_template,
@@ -24,12 +34,19 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 # Optional nicer titles for utilities when displayed in the UI
 UTILITY_TITLES = {
     "call_openai_llm": "OpenAI Tools",
-    "linkedin_search_to_csv": "LinkedIn Search to CSV",
+    "linkedin_search_to_csv": "Find Leads with Google Search",
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
+    "extract_companies_from_image": "Extract Companies from Image",
+    "generate_image": "Generate Image",
 }
+
+# Utilities that only support CSV upload mode
+# Use a list instead of a set so the value can be JSON serialised when passed
+# to templates.
+UPLOAD_ONLY_UTILS = ["find_users_by_name_and_keywords"]
 
 # Mapping of utility parameters for the Run a Utility form. Each utility maps
 # to a list of dictionaries describing the CLI argument name and display label.
@@ -37,6 +54,8 @@ UTILITY_PARAMETERS = {
     "apollo_info": [
         {"name": "--linkedin_url", "label": "LinkedIn URL"},
         {"name": "--email", "label": "Email"},
+        {"name": "--full_name", "label": "Full name"},
+        {"name": "--company_domain", "label": "Company domain"},
         {"name": "--company_url", "label": "Company URL"},
         {"name": "--primary_domain", "label": "Company domain"},
     ],
@@ -64,10 +83,7 @@ UTILITY_PARAMETERS = {
         {"name": "company_name", "label": "Company name"},
         {"name": "search_keywords", "label": "Search keywords"},
     ],
-    "find_users_by_name_and_keywords": [
-        {"name": "input_file", "label": "Input CSV"},
-        {"name": "output_file", "label": "Output CSV"},
-    ],
+    "find_users_by_name_and_keywords": [],
     "hubspot_add_note": [
         {"name": "--id", "label": "Contact ID"},
         {"name": "--note", "label": "Note"},
@@ -130,6 +146,13 @@ UTILITY_PARAMETERS = {
         {"name": "--notes", "label": "Notes"},
         {"name": "--webhook_url", "label": "Webhook URL"},
     ],
+    "extract_companies_from_image": [
+        {"name": "image_url", "label": "Image URL"},
+    ],
+    "generate_image": [
+        {"name": "prompt", "label": "Prompt"},
+        {"name": "--image-url", "label": "Image URL"},
+    ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
         {"name": "--lead", "label": "Fetch lead", "type": "boolean"},
@@ -189,7 +212,13 @@ def _list_utils() -> list[dict[str, str]]:
         except Exception:
             pass
         items.append({"name": base, "title": _format_title(base), "desc": desc})
-    return sorted(items, key=lambda x: x["title"])
+    return sorted(
+        items,
+        key=lambda x: (
+            0 if x["name"] == "linkedin_search_to_csv" else 1,
+            x["title"],
+        ),
+    )
 
 
 @app.route('/')
@@ -201,9 +230,12 @@ def index():
 def run_utility():
     util_output = None
     download_name = None
+    image_src = None
+    csv_rows: list[dict[str, str]] = []
+    csv_path_for_grid: str | None = None
     utils_list = _list_utils()
+    util_name = request.form.get('util_name', 'linkedin_search_to_csv')
     if request.method == 'POST':
-        util_name = request.form.get('util_name', '')
         file = request.files.get('csv_file')
         uploaded = None
         if file and file.filename:
@@ -250,40 +282,149 @@ def run_utility():
             return status, cmd_str, output.strip()
 
         if uploaded:
-            import csv
-            with open(uploaded, newline='', encoding='utf-8') as fh:
-                reader = csv.DictReader(fh)
-                rows = list(reader)
-                fieldnames = reader.fieldnames or []
-            out_path = os.path.join(tempfile.gettempdir(), os.path.basename(uploaded) + '.out.csv')
-            with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
-                writer = csv.DictWriter(out_fh, fieldnames=fieldnames + ['status', 'command', 'output'])
-                writer.writeheader()
-                for row in rows:
-                    cmd = build_cmd(row)
-                    status, cmd_str, out_text = run_cmd(cmd)
-                    row.update({'status': status, 'command': cmd_str, 'output': out_text})
-                    writer.writerow(row)
-            download_name = out_path
-            util_output = None
+            if util_name == 'linkedin_search_to_csv':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
+                        uploaded, out_path
+                    )
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'apollo_info':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    apollo_info.apollo_info_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'check_email_zero_bounce':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'call_openai_llm':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                prompt_text = request.form.get('prompt', '')
+                try:
+                    call_openai_llm.call_openai_llm_from_csv(uploaded, out_path, prompt_text)
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            elif util_name == 'find_users_by_name_and_keywords':
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                try:
+                    find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
+                    download_name = out_path
+                    csv_path_for_grid = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    csv_path_for_grid = None
+            else:
+                import csv
+                with open(uploaded, newline='', encoding='utf-8-sig') as fh:
+                    reader = csv.DictReader(fh)
+                    rows = list(reader)
+                    fieldnames = reader.fieldnames or []
+                out_path = os.path.join(
+                    tempfile.gettempdir(),
+                    os.path.basename(uploaded) + '.out.csv',
+                )
+                with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
+                    writer = csv.DictWriter(
+                        out_fh, fieldnames=fieldnames + ['status', 'command', 'output']
+                    )
+                    writer.writeheader()
+                    for row in rows:
+                        cmd = build_cmd(row)
+                        status, cmd_str, out_text = run_cmd(cmd)
+                        row.update(
+                            {'status': status, 'command': cmd_str, 'output': out_text}
+                        )
+                        writer.writerow(row)
+                download_name = out_path
+                csv_path_for_grid = out_path
+                util_output = None
         else:
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
             cmd = build_cmd(values)
             status, cmd_str, out_text = run_cmd(cmd)
-            util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
-            for arg in cmd[3:]:
-                if arg.endswith('.csv'):
-                    path = os.path.abspath(arg)
-                    if os.path.exists(path):
-                        download_name = path
+            if util_name == 'generate_image' and status == 'SUCCESS':
+                try:
+                    img_bytes = base64.b64decode(out_text)
+                    fd, out_path = tempfile.mkstemp(suffix='.png', dir=tempfile.gettempdir())
+                    with os.fdopen(fd, 'wb') as fh:
+                        fh.write(img_bytes)
+                    download_name = out_path
+                    image_src = 'data:image/png;base64,' + out_text
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+            else:
+                util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+                for arg in cmd[3:]:
+                    if arg.endswith('.csv'):
+                        path = os.path.abspath(arg)
+                        if os.path.exists(path):
+                            download_name = path
+                            csv_path_for_grid = path
+                            break
+    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
+        try:
+            import csv
+            with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
+                reader = csv.DictReader(fh)
+                for i, row in enumerate(reader):
+                    if i >= 1000:
                         break
+                    csv_rows.append(row)
+        except Exception:
+            csv_rows = []
     return render_template(
         'run_utility.html',
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
+        csv_rows=csv_rows,
         util_params=UTILITY_PARAMETERS,
-        default_util='linkedin_search_to_csv',
+        default_util=util_name,
+        upload_only=UPLOAD_ONLY_UTILS,
+        image_src=image_src,
     )
 
 
@@ -321,7 +462,7 @@ def push_to_dhisana():
     urls: set[str] = set()
     if csv_path and os.path.exists(csv_path):
         try:
-            with open(csv_path, newline='', encoding='utf-8') as fh:
+            with open(csv_path, newline='', encoding='utf-8-sig') as fh:
                 reader = csv.reader(fh)
                 for row in reader:
                     for cell in row:

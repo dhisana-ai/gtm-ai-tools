@@ -1,16 +1,17 @@
 """Create an image from a prompt with optional source image.
 
-The script uses the OpenAI images API. Provide a text prompt and optionally
-an image URL to edit. The `OPENAI_API_KEY` environment variable must be set.
+The script uses the OpenAI responses API for generation and editing. Provide a
+text prompt and optionally an image URL to edit. The `OPENAI_API_KEY`
+environment variable must be set.
 """
 from __future__ import annotations
 
 import argparse
-import io
+import base64
 import os
-from typing import Optional
 from urllib import request
 from openai import OpenAI
+from utils import common
 
 
 def main() -> None:
@@ -32,26 +33,43 @@ def main() -> None:
 
     if args.image_url:
         with request.urlopen(args.image_url) as resp:
-            img_bytes = io.BytesIO(resp.read())
-        img_bytes.name = "image.png"
-        result = client.images.edit(
-            model="gpt-image-1",
-            image=[img_bytes],
-            prompt=args.prompt,
-            size="1024x1024",
-            quality="standard",
+            img_data = resp.read()
+        b64_image = base64.b64encode(img_data).decode()
+        response = client.responses.create(
+            model=common.get_openai_model(),
+            input=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "input_text", "text": args.prompt},
+                        {
+                            "type": "input_image",
+                            "image_url": f"data:image/png;base64,{b64_image}",
+                        },
+                    ],
+                }
+            ],
+            tools=[{"type": "image_generation"}],
         )
+        image_data = [
+            output.result
+            for output in getattr(response, "output", [])
+            if getattr(output, "type", "") == "image_generation_call"
+        ]
+        b64 = image_data[0] if image_data else None
     else:
-        result = client.images.generate(
-            model="gpt-image-1",
-            prompt=args.prompt,
-            size="1024x1024",
-            quality="standard",
-            response_format="b64_json",
-            n=1,
+        response = client.responses.create(
+            model=common.get_openai_model(),
+            input=args.prompt,
+            tools=[{"type": "image_generation"}],
         )
+        image_data = [
+            output.result
+            for output in getattr(response, "output", [])
+            if getattr(output, "type", "") == "image_generation_call"
+        ]
+        b64 = image_data[0] if image_data else None
 
-    b64 = getattr(result.data[0], "b64_json", None)
     if b64:
         print(b64)
     else:

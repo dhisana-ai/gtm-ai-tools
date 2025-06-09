@@ -27,13 +27,10 @@ def test_main(monkeypatch, tmp_path, capsys):
     monkeypatch.setenv("OPENAI_API_KEY", "x")
     monkeypatch.setattr(mod.find_company_info, "find_company_details", fake_details)
 
-    img = tmp_path / "logo.png"
-    img.write_bytes(b"img")
-
-    monkeypatch.setattr(sys, "argv", ["extract_companies_from_image.py", str(img)])
+    monkeypatch.setattr(sys, "argv", ["extract_companies_from_image.py", "http://e.com/logo.png"])
     mod.main()
     captured = capsys.readouterr()
     data = json.loads(captured.out)
     assert data[0]["company_name"] == "Acme"
     assert data[0]["company_domain"] == "acme.com"
-    assert "input" in dummy.kwargs
+    assert dummy.kwargs["input"][0]["content"][1]["image_url"] == "http://e.com/logo.png"

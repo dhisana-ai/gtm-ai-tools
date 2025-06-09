@@ -36,10 +36,26 @@ if 'aiohttp' not in sys.modules:
 if 'bs4' not in sys.modules:
     bs4 = types.ModuleType('bs4')
     class DummySoup:
-        def __init__(self, *a, **kw):
-            pass
-        def find_all(self, *a, **kw):
-            return []
+        def __init__(self, text="", *a, **kw):
+            self.text = text
+        def find_all(self, tag, href=False):
+            if tag != "a" or not href:
+                return []
+            import re
+            links = re.findall(r'href=["\\\'](.*?)["\\\']', self.text)
+            tags = []
+            for link in links:
+                class T:
+                    def __init__(self, href):
+                        self.href = href
+                    def __getitem__(self, key):
+                        if key == "href":
+                            return self.href
+                        raise KeyError
+                tags.append(T(link))
+            return tags
+        def get_text(self, *a, **kw):
+            return self.text
     bs4.BeautifulSoup = DummySoup
     sys.modules['bs4'] = bs4
 
@@ -49,6 +65,15 @@ if 'openai' not in sys.modules:
         def __init__(self, api_key=None):
             self.responses = types.SimpleNamespace(create=lambda **kw: types.SimpleNamespace(output_text="dummy"))
     openai.OpenAI = DummyClient
+    class DummyAsyncOpenAI:
+        def __init__(self, api_key=None):
+            pass
+        class chat:
+            class completions:
+                @staticmethod
+                async def create(**kwargs):
+                    return types.SimpleNamespace(choices=[types.SimpleNamespace(message=types.SimpleNamespace(content="{}"))])
+    openai.AsyncOpenAI = DummyAsyncOpenAI
     sys.modules['openai'] = openai
 
 if 'httpx' not in sys.modules:
