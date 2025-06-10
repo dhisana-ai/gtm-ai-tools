@@ -1,3 +1,4 @@
+# --- imports ---
 import os
 import sys
 import types
@@ -40,6 +41,12 @@ if 'flask' not in sys.modules:
     def send_from_directory(directory, filename, as_attachment=False):
         return os.path.join(directory, filename)
 
+    def jsonify(*args, **kwargs):
+        # Return a dict for testing purposes
+        if args and not kwargs:
+            return args[0] if len(args) == 1 else list(args)
+        return kwargs
+
     class DummyFlask:
         def __init__(self, *a, **kw):
             pass
@@ -55,10 +62,30 @@ if 'flask' not in sys.modules:
     flask.url_for = url_for
     flask.flash = flash
     flask.send_from_directory = send_from_directory
+    flask.jsonify = jsonify
     sys.modules['flask'] = flask
 
-from app import run_utility
+# Override openai.OpenAI in pytest conftest stub for build_utility_embeddings
+class DummyEmbeddings:
+    def create(self, **kwargs):
+        class DummyData:
+            def __init__(self):
+                self.data = [type('obj', (object,), {'embedding': [0.0] * 1536})()]
+        return DummyData()
+
+class DummyClient:
+    def __init__(self, api_key=None):
+        self.embeddings = DummyEmbeddings()
+
+# Use pytest conftest stub, overriding only OpenAI for this test
+_openai = sys.modules.get('openai')
+if _openai is None:
+    import openai as _openai
+_openai.OpenAI = lambda api_key=None: DummyClient(api_key)
+
+# --- third-party & application imports ---
 from flask import request as flask_request
+from app import run_utility
 
 
 def test_generate_image_route(monkeypatch):
