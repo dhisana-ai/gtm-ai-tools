@@ -47,13 +47,19 @@
         <div class="mb-3" id="input-mode-group">
           <label class="form-label">Input Mode</label><br>
           <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" {% if default_mode != 'file' %}checked{% endif %}>
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" {% if default_mode == 'single' %}checked{% endif %}>
             <label class="form-check-label" for="mode-single">Single Input</label>
           </div>
           <div class="form-check form-check-inline">
             <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file" {% if default_mode == 'file' %}checked{% endif %}>
             <label class="form-check-label" for="mode-upload">Upload input list</label>
           </div>
+          {% if prev_csv %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-prev" value="previous" {% if default_mode == 'previous' %}checked{% endif %}>
+            <label class="form-check-label" for="mode-prev">Use Previous Output</label>
+          </div>
+          {% endif %}
         </div>
         <div id="params-container"></div>
         <div class="mb-3" id="file-container" style="display:none;">
@@ -223,7 +229,7 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(mode === 'file' && !['call_openai_llm', 'score_lead'].includes(util));
+        const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
     document.querySelectorAll('.util-card').forEach(card => {
