@@ -3,7 +3,16 @@ from pathlib import Path
 from utils import find_users_by_name_and_keywords as mod
 
 async def fake_find(full_name: str, search_keywords: str = ""):
-    return f"https://www.linkedin.com/in/{full_name.lower().replace(' ', '')}"
+    return {
+        "full_name": full_name,
+        "user_linkedin_url": f"https://www.linkedin.com/in/{full_name.lower().replace(' ', '')}",
+        "first_name": full_name.split()[0],
+        "last_name": full_name.split()[-1],
+        "job_title": "CEO",
+        "follower_count": "",
+        "lead_location": "",
+        "summary_about_lead": "",
+    }
 
 def test_find_users(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "find_user_linkedin_url", fake_find)
@@ -16,4 +25,5 @@ def test_find_users(tmp_path, monkeypatch):
     mod.find_users(input_file, output_file)
     rows = list(csv.DictReader(output_file.open()))
     assert rows[0]["user_linkedin_url"] == "https://www.linkedin.com/in/johndoe"
+    assert rows[0]["first_name"] == "John"
 
