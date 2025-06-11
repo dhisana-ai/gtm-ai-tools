@@ -14,6 +14,8 @@ from utils import (
     check_email_zero_bounce,
     find_users_by_name_and_keywords,
     call_openai_llm,
+    score_lead,
+    generate_email,
     common,
 )
 from pathlib import Path
@@ -64,6 +66,20 @@ UTILITY_TITLES = {
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
     "generate_image": "Generate Image",
+    "score_lead": "Score Leads",
+    "check_email_zero_bounce": "Validate Email",
+    "generate_email": "Generate Email",
+    "send_email_smtp": "Send Email",
+}
+
+# Display order for the utilities list
+UTILITY_ORDER = {
+    "linkedin_search_to_csv": 0,
+    "apollo_info": 1,
+    "score_lead": 2,
+    "check_email_zero_bounce": 3,
+    "generate_email": 4,
+    "send_email_smtp": 5,
 }
 
 # Utilities that only support CSV upload mode
@@ -183,6 +199,12 @@ UTILITY_PARAMETERS = {
         {"name": "--company", "label": "Fetch company", "type": "boolean"},
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
     ],
+    "generate_email": [
+        {"name": "--instructions", "label": "Instructions"},
+    ],
+    "score_lead": [
+        {"name": "--instructions", "label": "Instructions"},
+    ],
     "send_email_smtp": [
         {"name": "recipient", "label": "Recipient"},
         {"name": "--subject", "label": "Subject"},
@@ -233,7 +255,7 @@ def _list_utils() -> list[dict[str, str]]:
     return sorted(
         items,
         key=lambda x: (
-            0 if x["name"] == "linkedin_search_to_csv" else 1,
+            UTILITY_ORDER.get(x["name"], 100),
             x["title"],
         ),
     )
@@ -384,6 +406,30 @@ def run_utility():
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == 'score_lead':
+                out_path = common.make_temp_csv_filename(util_name)
+                instructions = request.form.get('--instructions', '')
+                try:
+                    score_lead.score_leads_from_csv(uploaded, out_path, instructions)
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == 'generate_email':
+                out_path = common.make_temp_csv_filename(util_name)
+                instructions = request.form.get('--instructions', '')
+                try:
+                    generate_email.generate_emails_from_csv(uploaded, out_path, instructions)
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
