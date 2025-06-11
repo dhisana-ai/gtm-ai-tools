@@ -3,7 +3,7 @@
 # Reference: https://fly.io/docs/reference/configuration/
 
 app = "gtm-ai-tools"
-primary_region = "bom"
+primary_region = "iad"
 
 [build]
 # Specify Dockerfile path or builder here if needed
