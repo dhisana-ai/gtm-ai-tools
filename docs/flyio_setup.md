@@ -15,7 +15,10 @@ This project includes a `fly.toml` file so you can deploy the app to [Fly.io](ht
      ```bash
      fly launch
      ```
-   - Accept the defaults to create a new application. The command uses the existing `fly.toml` file and provisions a small machine.
+   - Accept the defaults to create a new application. When prompted for a region,
+     choose `iad` to deploy in the US&nbsp;East. The command uses the existing
+     `fly.toml` file (which sets `primary_region = "iad"`) and provisions a small
+     machine.
 
 3. **Add the required secrets**
    - Set the four mandatory environment variables:
@@ -27,13 +30,21 @@ This project includes a `fly.toml` file so you can deploy the app to [Fly.io](ht
      ```
    - Additional optional variables from `.env` can also be added with `fly secrets set`.
 
-4. **Deploy**
+4. **Create the data volume**
+   - Only required the first time you deploy.
+   - Run the following command, using the same region selected during
+     `fly launch` (the example below uses `iad` for US&nbsp;East):
+     ```bash
+     fly volume create gtm_data -r iad -s 1
+     ```
+
+5. **Deploy**
    ```bash
    fly deploy
    ```
    When the deployment completes, Fly.io prints the application URL.
 
-5. **Open the web interface**
+6. **Open the web interface**
    - Browse to the URL shown in the deploy output.
    - Log in with the username from `APP_USERNAME` (defaults to `user`) and the password you set in `APP_PASSWORD`.
 
