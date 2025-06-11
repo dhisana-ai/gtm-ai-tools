@@ -10,4 +10,5 @@ flask
 python-dotenv
 aiosmtplib
 requests
+tldextract
 pytest>=7.0.0

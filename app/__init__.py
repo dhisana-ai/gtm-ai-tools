@@ -66,6 +66,7 @@ UTILITY_TITLES = {
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
     "generate_image": "Generate Image",
+    "get_website_color": "Get website primary color",
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
     "generate_email": "Generate Email",
@@ -193,6 +194,9 @@ UTILITY_PARAMETERS = {
     "generate_image": [
         {"name": "prompt", "label": "Prompt"},
         {"name": "--image-url", "label": "Image URL"},
+    ],
+    "get_website_color": [
+        {"name": "url", "label": "Website URL"}
     ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
