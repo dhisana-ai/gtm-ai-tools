@@ -10,4 +10,5 @@ flask
 python-dotenv
 aiosmtplib
 requests
+simple_salesforce
 pytest>=7.0.0
