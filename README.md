@@ -60,11 +60,15 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    use.
 4. **Start the container and open the app**
    ```bash
-   docker run --env-file .env -p 8080:8080 gtm-ai-tools
+   docker run --env-file .env -p 8080:8080 \
+       -v $(pwd)/data:/data gtm-ai-tools
    ```
    Then browse to <http://localhost:8080>.
    Log in using the username from `APP_USERNAME` (defaults to `user`) and the
    password set in `APP_PASSWORD`.
+   Mounting a host directory to `/data` lets you access uploaded and generated
+   files outside the container. Replace `$(pwd)/data` with any path on your
+   system.
 
 ## Repository structure
 
@@ -197,8 +201,11 @@ in the `app/` directory. When the container starts without any command
 arguments, the web interface launches automatically on port `8080`:
 
 ```bash
-docker run -p 8080:8080 gtm-ai-tools
+docker run -p 8080:8080 \
+    -v $(pwd)/data:/data gtm-ai-tools
 ```
+Mounting `/data` in this way allows you to retain any uploaded or generated
+files on your host machine.
 
 Open <http://localhost:8080> in your browser to access the app. Log in with the
 username from `APP_USERNAME` and the password you set in `APP_PASSWORD`. The interface
