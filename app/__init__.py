@@ -8,6 +8,7 @@ import asyncio
 import json
 import base64
 import random
+import datetime
 from utils import (
     push_lead_to_dhisana_webhook,
     linkedin_search_to_csv,
@@ -660,6 +661,26 @@ def help_page():
     """Display simple help information about the app and utilities."""
     utils_list = _list_utils()
     return render_template("help.html", utils=utils_list)
+
+
+@app.route("/history")
+def history():
+    """Display recent CSV files from the data directory."""
+    out_dir = common.get_output_dir()
+    files: list[dict[str, str]] = []
+    if out_dir.is_dir():
+        csv_paths = [p for p in out_dir.iterdir() if p.suffix.lower() == ".csv"]
+        csv_paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        for p in csv_paths[:50]:
+            files.append(
+                {
+                    "name": p.name,
+                    "mtime": datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
+                }
+            )
+    return render_template("history.html", csv_files=files)
 
 
 @app.route("/download/<path:filename>")
