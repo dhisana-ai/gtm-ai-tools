@@ -402,10 +402,23 @@ def run_utility():
             import csv
             with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
                 reader = csv.DictReader(fh)
+                display_order = [
+                    "full_name",
+                    "user_linkedin_url",
+                    "job_title",
+                    "email",
+                ]
                 for i, row in enumerate(reader):
                     if i >= 1000:
                         break
-                    csv_rows.append(row)
+                    ordered = {}
+                    for key in display_order:
+                        if key in row:
+                            ordered[key] = row[key]
+                    for key, value in row.items():
+                        if key not in ordered:
+                            ordered[key] = value
+                    csv_rows.append(ordered)
         except Exception:
             csv_rows = []
     return render_template(

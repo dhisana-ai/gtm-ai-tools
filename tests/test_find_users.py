@@ -9,7 +9,7 @@ async def fake_find(full_name: str, search_keywords: str = ""):
         "first_name": full_name.split()[0],
         "last_name": full_name.split()[-1],
         "job_title": "CEO",
-        "follower_count": "",
+        "follower_count": 0,
         "lead_location": "",
         "summary_about_lead": "",
     }
