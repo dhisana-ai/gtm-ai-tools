@@ -69,6 +69,7 @@ UTILITY_TITLES = {
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
     "generate_email": "Generate Email",
+    "push_lead_to_dhisana_webhook": "Push Leads To Dhisana Webhook",
     "send_email_smtp": "Send Email",
 }
 
@@ -78,8 +79,8 @@ UTILITY_ORDER = {
     "apollo_info": 1,
     "score_lead": 2,
     "check_email_zero_bounce": 3,
-    "generate_email": 4,
-    "push_lead_to_dhisana_webhook": 5,
+    "push_lead_to_dhisana_webhook": 4,
+    "generate_email": 5,
     "send_email_smtp": 6,
 }
 
@@ -476,15 +477,16 @@ def run_utility():
                     fieldnames = reader.fieldnames or []
                 out_path = common.make_temp_csv_filename(util_name)
                 with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
+                    status_field = 'dhisanaai_webhook_push_status' if util_name == 'push_lead_to_dhisana_webhook' else 'status'
                     writer = csv.DictWriter(
-                        out_fh, fieldnames=fieldnames + ['status', 'command', 'output']
+                        out_fh, fieldnames=fieldnames + [status_field, 'command', 'output']
                     )
                     writer.writeheader()
                     for row in rows:
                         cmd = build_cmd(row)
                         status, cmd_str, out_text = run_cmd(cmd)
                         row.update(
-                            {'status': status, 'command': cmd_str, 'output': out_text}
+                            {status_field: status, 'command': cmd_str, 'output': out_text}
                         )
                         writer.writerow(row)
                 download_name = out_path
@@ -506,7 +508,12 @@ def run_utility():
                 except Exception as exc:
                     util_output = f'Error: {exc}'
             else:
-                util_output = f"status: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+                label = (
+                    'dhisanaai_webhook_push_status'
+                    if util_name == 'push_lead_to_dhisana_webhook'
+                    else 'status'
+                )
+                util_output = f"{label}: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
                 for arg in cmd[3:]:
                     if arg.endswith('.csv'):
                         path = os.path.abspath(arg)
