@@ -33,6 +33,7 @@ Join the discussion on our [Slack community channel](https://join.slack.com/t/dh
 ## Quick Start
 
 Follow these steps to spin up the container and run a utility.
+If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio_setup.md).
 
 1. **Clone the repository**
    ```bash
