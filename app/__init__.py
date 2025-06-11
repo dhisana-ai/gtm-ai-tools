@@ -308,6 +308,7 @@ def run_utility():
     if request.method == 'POST':
         file = request.files.get('csv_file')
         uploaded = None
+        input_mode = request.form.get('input_mode', 'single')
         selected_json = request.form.get('selected_rows', '')
         if selected_json:
             try:
@@ -329,10 +330,14 @@ def run_utility():
             uploaded = filename
         if (
             not uploaded
-            and (
-                request.form.get('input_mode') == 'file'
-                or util_name in UPLOAD_ONLY_UTILS
-            )
+            and input_mode == 'previous'
+            and prev_csv
+            and os.path.exists(prev_csv)
+        ):
+            uploaded = prev_csv
+        if (
+            not uploaded
+            and util_name in UPLOAD_ONLY_UTILS
             and prev_csv
             and os.path.exists(prev_csv)
         ):
@@ -526,7 +531,7 @@ def run_utility():
         upload_only=UPLOAD_ONLY_UTILS,
         image_src=image_src,
         prev_csv=prev_csv,
-        default_mode='file' if prev_csv else 'single',
+        default_mode='previous' if prev_csv else 'single',
     )
 
 
