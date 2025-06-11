@@ -39,7 +39,10 @@ This project uses several APIs. Follow the steps below to generate the required 
 
 ## Adding the keys to the environment
 
-Edit the `.env` file in the project root and set each key:
+Edit the `.env` file in the project root and set each key. At a minimum the app
+requires `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
+`APP_PASSWORD`. Other variables can be configured based on which utilities you
+plan to use:
 
 ```bash
 OPENAI_API_KEY=your_openai_key
@@ -52,6 +55,7 @@ CLAY_WEBHOOK_URL=https://clay.run/api/webhook/xxx
 SALESFORCE_INSTANCE_URL=https://example.my.salesforce.com
 SALESFORCE_ACCESS_TOKEN=your_salesforce_token
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/XXX/YYY/ZZZ
+APP_PASSWORD=your_password
 ```
 
 Save the file. The utilities will read these variables when run. If you use the
