@@ -38,3 +38,21 @@ This project includes a `fly.toml` file so you can deploy the app to [Fly.io](ht
    - Log in with the username from `APP_USERNAME` (defaults to `user`) and the password you set in `APP_PASSWORD`.
 
 Use `fly logs` to monitor output or troubleshoot any issues. When you are finished testing you can remove the app with `fly apps destroy <app-name>`.
+
+## Running locally on WSL or macOS
+
+The Fly CLI works the same on Windows (via WSL) and on macOS. After installing it with the command in step&nbsp;1 you can manage the app entirely from your terminal.
+
+1. **Authenticate**
+   ```bash
+   fly auth signup   # create an account if needed
+   # or
+   fly auth login
+   ```
+2. **Run Fly commands**
+   Use the standard CLI commands from above to set secrets and deploy:
+   ```bash
+   fly secrets set OPENAI_API_KEY=... SERPER_API_KEY=... DHISANA_API_KEY=... APP_PASSWORD=...
+   fly deploy
+   ```
+   Each run builds and releases a new version. You can also redeploy from the Fly dashboard at <https://fly.io/apps>.
