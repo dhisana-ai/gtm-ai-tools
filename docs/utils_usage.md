@@ -45,7 +45,7 @@ The Taskfile mounts the `output/` directory from your host to `/workspace`
 inside the container. By writing to `/workspace/results.csv` you will find the
 file at `output/results.csv` locally. Inspect it with `cat output/results.csv`.
 After the command finishes, everything in `output/` is also copied to
-`/tmp/outputs` for convenience.
+`/data/outputs` for convenience.
 
 ## Find Company Info
 
@@ -108,11 +108,12 @@ task run:command -- find_users_by_name_and_keywords \
 ```
 If you want to pass paths that are outside the project directory, mount the
 directory when invoking Docker and reference the files by that path inside the
-container:
+container. For example, map a local directory to `/data`:
 
 ```bash
-task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
-    /tmp/input.csv /tmp/output.csv
+docker run --env-file .env -v /tmp/dhisana_gtm_tools:/data gtm-ai-tools \
+    python -m utils.find_users_by_name_and_keywords \
+    /data/input.csv /data/output.csv
 ```
 
 The resulting CSV includes columns for the parsed lead details
