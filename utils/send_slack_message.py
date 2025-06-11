@@ -18,8 +18,7 @@ def send_slack_message(message: str, webhook: Optional[str] = None) -> None:
 
     webhook = webhook or os.getenv("SLACK_WEBHOOK_URL")
     if not webhook:
-        logger.info("SLACK_WEBHOOK_URL not configured; skipping Slack message")
-        return
+        raise RuntimeError("SLACK_WEBHOOK_URL environment variable is not set")
 
     try:
         requests.post(webhook, json={"text": message}, timeout=5)
