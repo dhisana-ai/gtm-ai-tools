@@ -75,23 +75,36 @@
       <div id="output-section">
         {% if (download_name or util_output) and default_util != 'generate_image' %}
           <div class="mt-2 d-flex gap-2">
-            <form method="post" action="{{ url_for('push_to_dhisana') }}">
+            <form method="post" action="{{ url_for('push_to_dhisana') }}" id="push-form">
               <input type="hidden" name="csv_path" value="{{ download_name }}">
               <input type="hidden" name="output_text" value="{{ util_output }}">
-              <button class="btn btn-secondary" type="submit">Push to Dhisana AI Contacts</button>
+              <input type="hidden" name="selected_rows" id="selected-output-rows">
+              <button class="btn btn-secondary" type="submit">Push Output to Dhisana AI Webhook</button>
             </form>
             {% if download_name %}
               {% set is_image = download_name.endswith('.png') %}
-              <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">
-                {{ 'Download Image' if is_image else 'Download Output CSV' }}
-              </a>
+              {% if is_image %}
+                <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">Download Image</a>
+              {% else %}
+                <form method="post" action="{{ url_for('download_selected') }}" id="download-form">
+                  <input type="hidden" name="csv_path" value="{{ download_name }}">
+                  <input type="hidden" name="selected_rows" id="download-selected">
+                  <button class="btn btn-secondary" type="submit">Download Output CSV</button>
+                </form>
+              {% endif %}
             {% endif %}
           </div>
         {% elif download_name %}
           {% set is_image = download_name.endswith('.png') %}
-          <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">
-            {{ 'Download Image' if is_image else 'Download Output CSV' }}
-          </a>
+          {% if is_image %}
+            <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">Download Image</a>
+          {% else %}
+            <form method="post" action="{{ url_for('download_selected') }}" id="download-form">
+              <input type="hidden" name="csv_path" value="{{ download_name }}">
+              <input type="hidden" name="selected_rows" id="download-selected">
+              <button class="btn btn-secondary" type="submit">Download Output CSV</button>
+            </form>
+          {% endif %}
         {% endif %}
         {% if image_src %}
           <div class="mt-3">
@@ -116,13 +129,14 @@
               'email'
             ];
             let inputGridApi = null;
+            let outputGridApi = null;
             function makeColumnDefs(data) {
               const allKeys = data.length ? Object.keys(data[0]) : [];
               const orderedKeys = [
                 ...preferredOrder.filter(k => allKeys.includes(k)),
                 ...allKeys.filter(k => !preferredOrder.includes(k))
               ];
-              return orderedKeys.map(k => {
+              const cols = orderedKeys.map(k => {
                 if (k === 'user_linkedin_url') {
                   return {
                     field: k,
@@ -135,6 +149,10 @@
                 }
                 return { field: k };
               });
+              if (cols.length) {
+                cols.unshift({ checkboxSelection: true, headerCheckboxSelection: true, width: 40 });
+              }
+              return cols;
             }
             function createGrid(id, data) {
               const gridOptions = {
@@ -143,14 +161,16 @@
                 pagination: true,
                 paginationPageSize: 20,
                 enableRangeSelection: true,
-                rowSelection: 'multiple'
+                rowSelection: 'multiple',
+                rowMultiSelectWithClick: true,
+                suppressRowClickSelection: true
               };
               const gridDiv = document.getElementById(id);
               return gridDiv ? agGrid.createGrid(gridDiv, gridOptions) : null;
             }
             document.addEventListener('DOMContentLoaded', () => {
               if (inputData.length) inputGridApi = createGrid('input-grid', inputData);
-              if (outputData.length) createGrid('output-grid', outputData);
+              if (outputData.length) outputGridApi = createGrid('output-grid', outputData);
             });
           </script>
         {% if util_output %}
@@ -247,6 +267,10 @@
     const runBtn = document.getElementById('run-button');
     const outputSection = document.getElementById('output-section');
     const selectedInput = document.getElementById('selected-rows');
+    const pushForm = document.getElementById('push-form');
+    const pushSelected = document.getElementById('selected-output-rows');
+    const downloadForm = document.getElementById('download-form');
+    const downloadSelected = document.getElementById('download-selected');
     form.addEventListener('submit', () => {
       if (spinner) spinner.style.display = 'inline-block';
       if (runBtn) runBtn.disabled = true;
@@ -256,6 +280,22 @@
         selectedInput.value = rows.length ? JSON.stringify(rows) : '';
       }
     });
+    if (pushForm) {
+      pushForm.addEventListener('submit', () => {
+        if (outputGridApi && pushSelected) {
+          const rows = outputGridApi.getSelectedRows();
+          pushSelected.value = rows.length ? JSON.stringify(rows) : '';
+        }
+      });
+    }
+    if (downloadForm) {
+      downloadForm.addEventListener('submit', () => {
+        if (outputGridApi && downloadSelected) {
+          const rows = outputGridApi.getSelectedRows();
+          downloadSelected.value = rows.length ? JSON.stringify(rows) : '';
+        }
+      });
+    }
     document.addEventListener('DOMContentLoaded', () => {
       selectUtil(utilInput.value);
       renderParams();
