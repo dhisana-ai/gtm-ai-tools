@@ -1,6 +1,8 @@
 # Quick Testing on Fly.io
 
-This project includes a `fly.toml` file so you can deploy the app to [Fly.io](https://fly.io) without installing Docker locally. Follow the steps below to launch the application in the cloud.
+This project includes a `fly.toml` file so you can deploy the app to [Fly.io](https://fly.io) without installing Docker locally. The first deployment requires a few setup steps. After that you simply deploy updates when the repository changes.
+
+## One‑time setup
 
 1. **Create an account**
    - Visit <https://fly.io/signup> and sign up using GitHub or email.
@@ -10,7 +12,7 @@ This project includes a `fly.toml` file so you can deploy the app to [Fly.io](ht
      ```
      Restart your terminal so `fly` is on your path.
 
-2. **Launch the app**
+2. **Launch the app** *(first deployment only)*
    - From your cloned `gtm-ai-tools` directory run:
      ```bash
      fly launch
@@ -38,15 +40,20 @@ This project includes a `fly.toml` file so you can deploy the app to [Fly.io](ht
      fly volume create gtm_data -r iad -s 1
      ```
 
-5. **Deploy**
-   ```bash
-   fly deploy
-   ```
-   When the deployment completes, Fly.io prints the application URL.
+## Deploying updates
 
-6. **Open the web interface**
-   - Browse to the URL shown in the deploy output.
-   - Log in with the username from `APP_USERNAME` (defaults to `user`) and the password you set in `APP_PASSWORD`.
+After you have launched the app once, use `fly deploy` to build and release a new version whenever you pull changes from this repository. If you update any environment variables, run `fly secrets set` again before deploying.
+
+```bash
+fly deploy
+```
+
+When the deployment completes, Fly.io prints the application URL.
+
+## Open the web interface
+
+- Browse to the URL shown in the deploy output.
+- Log in with the username from `APP_USERNAME` (defaults to `user`) and the password you set in `APP_PASSWORD`.
 
 Use `fly logs` to monitor output or troubleshoot any issues. When you are finished testing you can remove the app with `fly apps destroy <app-name>`.
 
