@@ -1,54 +1,95 @@
+import sys
 import os
+import pytest
+from types import SimpleNamespace
 from utils import get_website_color as mod
 
-def fake_capture_screenshot(url, output_path):
-    with open(output_path, "wb") as f:
-        f.write(b"fake image data")
+# Dummy async context manager for playwright_browser
+class DummyAsyncContext:
+    async def __aenter__(self):
+        return self
+    async def __aexit__(self, exc_type, exc, tb):
+        pass
+    async def new_page(self):
+        return DummyPage()
+    async def close(self):
+        pass
 
-def fake_analyze_colors_with_gpt(image_path):
-    return "Primary: #FFFFFF, Secondary: #000000"
+class DummyPage:
+    async def goto(self, url, wait_until=None, timeout=None):
+        DummyPage.called_url = url
+    async def screenshot(self, path=None, full_page=None):
+        DummyPage.screenshot_path = path
+        # Ensure directory exists before writing file
+        import os
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # Simulate file creation
+        with open(path, "wb") as f:
+            f.write(b"fake image data")
+    async def close(self):
+        pass
 
-def test_analyze_colors_with_gpt(monkeypatch, tmp_path):
-    class FakeChoice:
-        def __init__(self, content):
-            self.message = type("msg", (), {"content": content})
-    class FakeResponse:
-        choices = [FakeChoice("Primary: #FFFFFF, Secondary: #000000")]
-    monkeypatch.setattr(mod.openai.chat.completions, "create", lambda *a, **kw: FakeResponse())
+def dummy_analyze_colors_with_gpt(image_path):
+    dummy_analyze_colors_with_gpt.called = image_path
+    return "Primary: #123456, Secondary: #abcdef"
 
-    fake_img = tmp_path / "website_screenshot.png"
-    fake_img.write_bytes(b"fake")
-    result = mod.analyze_colors_with_gpt(str(fake_img))
-    assert "Primary" in result and "Secondary" in result
-
-def test_capture_screenshot(monkeypatch):
-    class DummyPage:
-        def goto(self, *a, **k): self._goto_called = True
-        def screenshot(self, path): self._screenshot_called = path
-    class DummyBrowser:
-        def __init__(self): self._closed = False
-        def new_page(self): self.page = DummyPage(); return self.page
-        def close(self): self._closed = True
-    class DummyPlaywright:
-        def __init__(self): self.chromium = self
-        def launch(self, *a, **k): self.browser = DummyBrowser(); return self.browser
-
-    monkeypatch.setattr(mod, "sync_playwright", lambda: type("mgr", (), {
-        "__enter__": lambda s: DummyPlaywright(),
-        "__exit__": lambda s, *a: None
-    })())
-
-    mod.capture_screenshot("http://example.com", "dummy.png")
-    # If no exception, test passes
-
-def test_main(monkeypatch, tmp_path):
+def test_main_prints_color_result(monkeypatch, capsys, tmp_path):
+    import asyncio
     test_url = "http://example.com"
-    img_path = tmp_path / "website_screenshot.png"
-    monkeypatch.setattr(mod, "capture_screenshot", lambda url, path: img_path.write_bytes(b"data"))
-    monkeypatch.setattr(mod, "analyze_colors_with_gpt", lambda path: "Primary: #FFF, Secondary: #000")
-    monkeypatch.setattr(mod.argparse.ArgumentParser, "parse_args", lambda self: type("Args", (), {"url": test_url})())
-    monkeypatch.setattr(mod, "print", lambda *a, **k: None)
-
-    os.chdir(tmp_path)
+    # Patch playwright_browser to use dummy async context
+    monkeypatch.setattr(mod, "playwright_browser", lambda: DummyAsyncContext())
+    monkeypatch.setattr(mod, "analyze_colors_with_gpt", dummy_analyze_colors_with_gpt)
+    monkeypatch.setattr(sys, "argv", ["get_website_color.py", test_url])
+    monkeypatch.setattr(mod.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(mod.os, "remove", lambda p: None)
+    # Patch asyncio.run to actually run the coroutine to completion
+    monkeypatch.setattr(mod.asyncio, "run", lambda coro: asyncio.get_event_loop().run_until_complete(coro))
+    # Patch uuid to return a fixed value for deterministic filename
+    monkeypatch.setattr(mod.uuid, "uuid4", lambda: "testuuid12345678")
     mod.main()
-    assert not img_path.exists()
+    captured = capsys.readouterr()
+    assert "Color Analysis Result" in captured.out
+    assert "#123456" in captured.out
+    assert DummyPage.called_url == test_url
+    assert dummy_analyze_colors_with_gpt.called.endswith("testuuid12_screenshot.png")
+
+def test_main_prompts_for_url(monkeypatch, capsys, tmp_path):
+    import asyncio
+    test_url = "http://input.com"
+    monkeypatch.setattr(mod, "playwright_browser", lambda: DummyAsyncContext())
+    monkeypatch.setattr(mod, "analyze_colors_with_gpt", dummy_analyze_colors_with_gpt)
+    monkeypatch.setattr(sys, "argv", ["get_website_color.py"])  # No URL
+    monkeypatch.setattr("builtins.input", lambda _: test_url)
+    monkeypatch.setattr(mod.os.path, "exists", lambda p: True)
+    monkeypatch.setattr(mod.os, "remove", lambda p: None)
+    monkeypatch.setattr(mod.asyncio, "run", lambda coro: asyncio.get_event_loop().run_until_complete(coro))
+    monkeypatch.setattr(mod.uuid, "uuid4", lambda: "testuuid12345678")
+    mod.main()
+    captured = capsys.readouterr()
+    assert "Color Analysis Result" in captured.out
+    assert "#123456" in captured.out
+    assert DummyPage.called_url == test_url
+    assert dummy_analyze_colors_with_gpt.called.endswith("testuuid12_screenshot.png")
+
+def test_analyze_colors_with_gpt_reads_file(monkeypatch, tmp_path):
+    image_path = tmp_path / "img.png"
+    with open(image_path, "wb") as f:
+        f.write(b"fake image data")
+    # Create dummy openai.chat.completions.create structure
+    class DummyCompletions:
+        @staticmethod
+        def create(**kwargs):
+            class DummyResponse:
+                class Choice:
+                    class Message:
+                        content = "Primary: Red, Secondary: Blue"
+                    message = Message()
+                choices = [Choice()]
+            return DummyResponse()
+    class DummyChat:
+        completions = DummyCompletions()
+    class DummyOpenAI:
+        chat = DummyChat()
+    monkeypatch.setattr(mod, "openai", DummyOpenAI())
+    result = mod.analyze_colors_with_gpt(str(image_path))
+    assert "Primary: Red" in result
