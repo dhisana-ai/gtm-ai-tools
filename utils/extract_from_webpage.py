@@ -58,8 +58,7 @@ async def _get_structured_data_internal(prompt: str, model: Type[BaseModel]) -> 
     """Send ``prompt`` to OpenAI and parse the response as ``model``."""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        logger.error("OPENAI_API_KEY environment variable is not set")
-        return None, "ERROR"
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
     client = AsyncOpenAI(api_key=api_key)
     try:
