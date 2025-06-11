@@ -31,6 +31,14 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 
+# Preferred column order when displaying CSV data in the grid
+DISPLAY_ORDER = [
+    "full_name",
+    "user_linkedin_url",
+    "job_title",
+    "email",
+]
+
 # Optional nicer titles for utilities when displayed in the UI
 UTILITY_TITLES = {
     "call_openai_llm": "OpenAI Tools",
@@ -402,12 +410,7 @@ def run_utility():
             import csv
             with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
                 reader = csv.DictReader(fh)
-                display_order = [
-                    "full_name",
-                    "user_linkedin_url",
-                    "job_title",
-                    "email",
-                ]
+                display_order = DISPLAY_ORDER
                 for i, row in enumerate(reader):
                     if i >= 1000:
                         break
