@@ -1,4 +1,5 @@
-"""Push lead details to a Dhisana webhook for enrichment."""
+"""Push a lead to the Dhisana API webhook and add it to automated
+hyper‑personal outreach across email and LinkedIn."""
 
 from __future__ import annotations
 
