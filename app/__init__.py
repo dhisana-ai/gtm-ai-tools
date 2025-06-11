@@ -570,10 +570,47 @@ def download_file(filename: str):
     return send_from_directory(tempfile.gettempdir(), os.path.basename(filename), as_attachment=True)
 
 
+@app.route('/download_selected', methods=['POST'])
+def download_selected():
+    csv_path = request.form.get('csv_path', '')
+    selected_json = request.form.get('selected_rows', '')
+    if selected_json:
+        try:
+            rows = json.loads(selected_json)
+            if rows:
+                tmp = common.make_temp_csv_filename('download')
+                with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                    writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
+                    writer.writeheader()
+                    for r in rows:
+                        writer.writerow(r)
+                csv_path = tmp
+        except Exception:
+            pass
+    if not csv_path or not os.path.exists(csv_path):
+        flash('No CSV found to download.')
+        return redirect(url_for('run_utility'))
+    return send_from_directory(tempfile.gettempdir(), os.path.basename(csv_path), as_attachment=True)
+
+
 @app.route('/push_to_dhisana', methods=['POST'])
 def push_to_dhisana():
     csv_path = request.form.get('csv_path', '')
+    selected_json = request.form.get('selected_rows', '')
     output_text = request.form.get('output_text', '')
+    if selected_json:
+        try:
+            rows = json.loads(selected_json)
+            if rows:
+                tmp = common.make_temp_csv_filename('push')
+                with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                    writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
+                    writer.writeheader()
+                    for r in rows:
+                        writer.writerow(r)
+                csv_path = tmp
+        except Exception:
+            pass
     linkedin_re = re.compile(r'https://www\.linkedin\.com/in/[A-Za-z0-9_-]+')
     urls: set[str] = set()
     if csv_path and os.path.exists(csv_path):
