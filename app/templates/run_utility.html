@@ -66,9 +66,23 @@
       </form>
 
       <div id="output-section">
-        {% if download_name %}
+        {% if (download_name or util_output) and default_util != 'generate_image' %}
+          <div class="mt-2 d-flex gap-2">
+            <form method="post" action="{{ url_for('push_to_dhisana') }}">
+              <input type="hidden" name="csv_path" value="{{ download_name }}">
+              <input type="hidden" name="output_text" value="{{ util_output }}">
+              <button class="btn btn-secondary" type="submit">Push to Dhisana AI Contacts</button>
+            </form>
+            {% if download_name %}
+              {% set is_image = download_name.endswith('.png') %}
+              <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">
+                {{ 'Download Image' if is_image else 'Download CSV' }}
+              </a>
+            {% endif %}
+          </div>
+        {% elif download_name %}
           {% set is_image = download_name.endswith('.png') %}
-          <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">
+          <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">
             {{ 'Download Image' if is_image else 'Download CSV' }}
           </a>
         {% endif %}
@@ -125,13 +139,6 @@
           <h3>Output</h3>
           <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
         {% endif %}
-        {% if (download_name or util_output) and default_util != 'generate_image' %}
-          <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
-            <input type="hidden" name="csv_path" value="{{ download_name }}">
-            <input type="hidden" name="output_text" value="{{ util_output }}">
-            <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
-          </form>
-        {% endif %}
       </div>
     </div>
   </div>
@@ -167,6 +174,9 @@
         const label = document.createElement('label');
         label.textContent = p.label;
         input.name = p.name;
+        if (util === 'linkedin_search_to_csv' && p.name === '--num') {
+          input.value = '10';
+        }
         if (p.type === 'boolean') {
           div.className = 'form-check mb-3';
           input.type = 'checkbox';

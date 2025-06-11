@@ -14,6 +14,7 @@ from utils import (
     check_email_zero_bounce,
     find_users_by_name_and_keywords,
     call_openai_llm,
+    common,
 )
 from pathlib import Path
 try:
@@ -274,6 +275,8 @@ def run_utility():
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec['name']
                 val = (values.get(name) or '').strip()
+                if util_name == 'linkedin_search_to_csv' and name == '--num' and not val:
+                    val = '10'
                 if not val:
                     continue
                 if spec.get('type') == 'boolean':
@@ -284,8 +287,7 @@ def run_utility():
                 else:
                     cmd.append(val)
             if util_name == 'linkedin_search_to_csv':
-                fd, out_path = tempfile.mkstemp(suffix='.csv', dir=tempfile.gettempdir())
-                os.close(fd)
+                out_path = common.make_temp_csv_filename(util_name)
                 insert_at = len(cmd)
                 for i, arg in enumerate(cmd[3:], start=3):
                     if arg.startswith('-'):
@@ -306,10 +308,7 @@ def run_utility():
 
         if uploaded:
             if util_name == 'linkedin_search_to_csv':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
                         uploaded, out_path
@@ -322,10 +321,7 @@ def run_utility():
                     download_name = None
                     csv_path_for_grid = None
             elif util_name == 'apollo_info':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     apollo_info.apollo_info_from_csv(uploaded, out_path)
                     download_name = out_path
@@ -336,10 +332,7 @@ def run_utility():
                     download_name = None
                     csv_path_for_grid = None
             elif util_name == 'check_email_zero_bounce':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
                     download_name = out_path
@@ -350,10 +343,7 @@ def run_utility():
                     download_name = None
                     csv_path_for_grid = None
             elif util_name == 'call_openai_llm':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 prompt_text = request.form.get('prompt', '')
                 try:
                     call_openai_llm.call_openai_llm_from_csv(uploaded, out_path, prompt_text)
@@ -365,10 +355,7 @@ def run_utility():
                     download_name = None
                     csv_path_for_grid = None
             elif util_name == 'find_users_by_name_and_keywords':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
                     download_name = out_path
@@ -384,10 +371,7 @@ def run_utility():
                     reader = csv.DictReader(fh)
                     rows = list(reader)
                     fieldnames = reader.fieldnames or []
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
                     writer = csv.DictWriter(
                         out_fh, fieldnames=fieldnames + ['status', 'command', 'output']
@@ -443,7 +427,7 @@ def run_utility():
                     for key, value in row.items():
                         if key not in ordered:
                             ordered[key] = value
-                csv_rows.append(ordered)
+                    csv_rows.append(ordered)
         except Exception:
             csv_rows = []
     if csv_path_for_grid and os.path.exists(csv_path_for_grid):
