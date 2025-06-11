@@ -238,6 +238,28 @@ def _list_utils() -> list[dict[str, str]]:
     )
 
 
+def _load_csv_preview(path: str) -> list[dict[str, str]]:
+    """Return up to 1000 rows from a CSV file in display order."""
+    rows: list[dict[str, str]] = []
+    try:
+        with open(path, newline='', encoding='utf-8-sig') as fh:
+            reader = csv.DictReader(fh)
+            for i, row in enumerate(reader):
+                if i >= 1000:
+                    break
+                ordered: dict[str, str] = {}
+                for key in DISPLAY_ORDER:
+                    if key in row:
+                        ordered[key] = row[key]
+                for key, value in row.items():
+                    if key not in ordered:
+                        ordered[key] = value
+                rows.append(ordered)
+    except Exception:
+        rows = []
+    return rows
+
+
 @app.route('/')
 def index():
     return redirect(url_for('run_utility'))
@@ -248,27 +270,53 @@ def run_utility():
     util_output = None
     download_name = None
     image_src = None
-    csv_rows: list[dict[str, str]] = []
-    csv_path_for_grid: str | None = None
+    input_rows: list[dict[str, str]] = []
+    output_rows: list[dict[str, str]] = []
+    input_csv_path: str | None = None
+    output_csv_path: str | None = None
     utils_list = _list_utils()
     util_name = request.form.get('util_name', 'linkedin_search_to_csv')
     prev_csv = session.get('prev_csv_path')
+    if prev_csv and os.path.exists(prev_csv):
+        input_csv_path = prev_csv
     if request.method == 'POST' and request.form.get('action') == 'clear_csv':
         session.pop('prev_csv_path', None)
         return redirect(url_for('run_utility'))
     if request.method == 'POST':
         file = request.files.get('csv_file')
         uploaded = None
-        if file and file.filename:
+        selected_json = request.form.get('selected_rows', '')
+        if selected_json:
+            try:
+                rows = json.loads(selected_json)
+                if rows:
+                    tmp = common.make_temp_csv_filename('selected')
+                    with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                        writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
+                        writer.writeheader()
+                        for r in rows:
+                            writer.writerow(r)
+                    uploaded = tmp
+            except Exception:
+                uploaded = None
+        if not uploaded and file and file.filename:
             tmp_dir = tempfile.gettempdir()
             filename = os.path.join(tmp_dir, os.path.basename(file.filename))
             file.save(filename)
             uploaded = filename
-        elif (
-            request.form.get('input_mode') == 'file'
-            or util_name in UPLOAD_ONLY_UTILS
-        ) and prev_csv and os.path.exists(prev_csv):
+        if (
+            not uploaded
+            and (
+                request.form.get('input_mode') == 'file'
+                or util_name in UPLOAD_ONLY_UTILS
+            )
+            and prev_csv
+            and os.path.exists(prev_csv)
+        ):
             uploaded = prev_csv
+
+        if uploaded:
+            input_csv_path = uploaded
 
         def build_cmd(values: dict[str, str]) -> list[str]:
             cmd = ['python', '-m', f'utils.{util_name}']
@@ -314,57 +362,57 @@ def run_utility():
                         uploaded, out_path
                     )
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'apollo_info':
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     apollo_info.apollo_info_from_csv(uploaded, out_path)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'check_email_zero_bounce':
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'call_openai_llm':
                 out_path = common.make_temp_csv_filename(util_name)
                 prompt_text = request.form.get('prompt', '')
                 try:
                     call_openai_llm.call_openai_llm_from_csv(uploaded, out_path, prompt_text)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'find_users_by_name_and_keywords':
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             else:
                 import csv
                 with open(uploaded, newline='', encoding='utf-8-sig') as fh:
@@ -385,7 +433,7 @@ def run_utility():
                         )
                         writer.writerow(row)
                 download_name = out_path
-                csv_path_for_grid = out_path
+                output_csv_path = out_path
                 util_output = None
         else:
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
@@ -409,35 +457,21 @@ def run_utility():
                         path = os.path.abspath(arg)
                         if os.path.exists(path):
                             download_name = path
-                            csv_path_for_grid = path
+                            output_csv_path = path
                             break
-    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
-        try:
-            import csv
-            with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
-                reader = csv.DictReader(fh)
-                display_order = DISPLAY_ORDER
-                for i, row in enumerate(reader):
-                    if i >= 1000:
-                        break
-                    ordered = {}
-                    for key in display_order:
-                        if key in row:
-                            ordered[key] = row[key]
-                    for key, value in row.items():
-                        if key not in ordered:
-                            ordered[key] = value
-                    csv_rows.append(ordered)
-        except Exception:
-            csv_rows = []
-    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
-        session['prev_csv_path'] = csv_path_for_grid
+    if output_csv_path and os.path.exists(output_csv_path):
+        output_rows = _load_csv_preview(output_csv_path)
+    if input_csv_path and os.path.exists(input_csv_path):
+        input_rows = _load_csv_preview(input_csv_path)
+    if output_csv_path and os.path.exists(output_csv_path):
+        session['prev_csv_path'] = output_csv_path
     return render_template(
         'run_utility.html',
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
-        csv_rows=csv_rows,
+        input_rows=input_rows,
+        output_rows=output_rows,
         util_params=UTILITY_PARAMETERS,
         default_util=util_name,
         upload_only=UPLOAD_ONLY_UTILS,
