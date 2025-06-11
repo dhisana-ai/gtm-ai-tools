@@ -73,23 +73,32 @@
           <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
           <script>
             const csvData = {{ csv_rows|tojson }};
-            const columnDefs = csvData.length
-              ? Object.keys(csvData[0]).map(k => {
-                  if (k === 'user_linkedin_url') {
-                    return {
-                      field: k,
-                      cellRenderer: params => {
-                        if (!params.value) return '';
-                        const url = params.value.startsWith('http')
-                          ? params.value
-                          : `https://${params.value}`;
-                        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
-                      }
-                    };
+            const preferredOrder = [
+              'full_name',
+              'user_linkedin_url',
+              'job_title',
+              'email'
+            ];
+            const allKeys = csvData.length ? Object.keys(csvData[0]) : [];
+            const orderedKeys = [
+              ...preferredOrder.filter(k => allKeys.includes(k)),
+              ...allKeys.filter(k => !preferredOrder.includes(k))
+            ];
+            const columnDefs = orderedKeys.map(k => {
+              if (k === 'user_linkedin_url') {
+                return {
+                  field: k,
+                  cellRenderer: params => {
+                    if (!params.value) return '';
+                    const url = params.value.startsWith('http')
+                      ? params.value
+                      : `https://${params.value}`;
+                    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
                   }
-                  return { field: k };
-                })
-              : [];
+                };
+              }
+              return { field: k };
+            });
             const gridOptions = {
               columnDefs,
               rowData: csvData,
