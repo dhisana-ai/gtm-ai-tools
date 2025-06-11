@@ -232,10 +232,26 @@ def load_env():
     return dotenv_values(ENV_FILE)
 
 
+def get_default_username() -> str:
+    """Return the default username for the login form."""
+    env = load_env()
+    return (
+        env.get("APP_USER")
+        or os.environ.get("APP_USER")
+        or "user"
+    )
+
+
 def get_credentials() -> tuple[str, str]:
     """Return (username, password) for the login page."""
     env = load_env()
-    username = env.get("APP_USERNAME") or os.environ.get("APP_USERNAME") or "user"
+    username = (
+        env.get("APP_USERNAME")
+        or os.environ.get("APP_USERNAME")
+        or env.get("APP_USER")
+        or os.environ.get("APP_USER")
+        or "user"
+    )
     password = env.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not password:
         password = f"user_{random.randint(1000, 9999)}"
@@ -321,7 +337,7 @@ def login():
             session['logged_in'] = True
             return redirect(url_for('run_utility'))
         flash('Invalid credentials.')
-    return render_template('login.html')
+    return render_template('login.html', default_username=get_default_username())
 
 
 @app.route('/logout')
