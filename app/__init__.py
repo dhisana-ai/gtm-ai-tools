@@ -79,7 +79,8 @@ UTILITY_ORDER = {
     "score_lead": 2,
     "check_email_zero_bounce": 3,
     "generate_email": 4,
-    "send_email_smtp": 5,
+    "push_lead_to_dhisana_webhook": 5,
+    "send_email_smtp": 6,
 }
 
 # Utilities that only support CSV upload mode
