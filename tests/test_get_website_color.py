@@ -41,8 +41,14 @@ def test_main_prints_color_result(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(sys, "argv", ["get_website_color.py", test_url])
     monkeypatch.setattr(mod.os.path, "exists", lambda p: True)
     monkeypatch.setattr(mod.os, "remove", lambda p: None)
-    # Patch uuid to return a fixed value for deterministic filename
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "testuuid12345678")
+    # Patch screenshot path to use tmp_path
+    orig_join = mod.os.path.join
+    def join_patch(a, *args):
+        if a == "/workspace":
+            return str(tmp_path.joinpath(*args))
+        return orig_join(a, *args)
+    monkeypatch.setattr(mod.os.path, "join", join_patch)
     mod.main()
     captured = capsys.readouterr()
     assert "Color Analysis Result" in captured.out
@@ -59,6 +65,13 @@ def test_main_prompts_for_url(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(mod.os.path, "exists", lambda p: True)
     monkeypatch.setattr(mod.os, "remove", lambda p: None)
     monkeypatch.setattr(mod.uuid, "uuid4", lambda: "testuuid12345678")
+    # Patch screenshot path to use tmp_path
+    orig_join = mod.os.path.join
+    def join_patch(a, *args):
+        if a == "/workspace":
+            return str(tmp_path.joinpath(*args))
+        return orig_join(a, *args)
+    monkeypatch.setattr(mod.os.path, "join", join_patch)
     mod.main()
     captured = capsys.readouterr()
     assert "Color Analysis Result" in captured.out
