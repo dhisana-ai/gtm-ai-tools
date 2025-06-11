@@ -519,6 +519,7 @@ def run_utility():
         input_rows = _load_csv_preview(input_csv_path)
     if output_csv_path and os.path.exists(output_csv_path):
         session['prev_csv_path'] = output_csv_path
+        prev_csv = output_csv_path
     return render_template(
         'run_utility.html',
         utils=utils_list,
