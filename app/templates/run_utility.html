@@ -59,6 +59,7 @@
         <div class="mb-3" id="file-container" style="display:none;">
           <input class="form-control" type="file" name="csv_file">
         </div>
+        <input type="hidden" name="selected_rows" id="selected-rows">
         <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
         <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
           <span class="visually-hidden">Loading...</span>
@@ -91,47 +92,59 @@
             <img src="{{ image_src }}" class="img-fluid" alt="Generated Image">
           </div>
         {% endif %}
-        {% if csv_rows %}
-          <h3 class="mt-4">Input or Output Preview</h3>
-          <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
-          <script>
-            const csvData = {{ csv_rows|tojson }};
+        {% if input_rows %}
+          <h3 class="mt-4">Input Preview</h3>
+          <div id="input-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        {% if output_rows %}
+          <h3 class="mt-4">Output Preview</h3>
+          <div id="output-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        <script>
+            const inputData = {{ input_rows|tojson }};
+            const outputData = {{ output_rows|tojson }};
             const preferredOrder = [
               'full_name',
               'user_linkedin_url',
               'job_title',
               'email'
             ];
-            const allKeys = csvData.length ? Object.keys(csvData[0]) : [];
-            const orderedKeys = [
-              ...preferredOrder.filter(k => allKeys.includes(k)),
-              ...allKeys.filter(k => !preferredOrder.includes(k))
-            ];
-            const columnDefs = orderedKeys.map(k => {
-              if (k === 'user_linkedin_url') {
-                return {
-                  field: k,
-                  cellRenderer: params => {
-                    if (!params.value) return '';
-                    const url = params.value.startsWith('http')
-                      ? params.value
-                      : `https://${params.value}`;
-                    return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
-                  }
-                };
-              }
-              return { field: k };
-            });
-            const gridOptions = {
-              columnDefs,
-              rowData: csvData,
-              pagination: true,
-              paginationPageSize: 20,
-              enableRangeSelection: true
-            };
+            let inputGridApi = null;
+            function makeColumnDefs(data) {
+              const allKeys = data.length ? Object.keys(data[0]) : [];
+              const orderedKeys = [
+                ...preferredOrder.filter(k => allKeys.includes(k)),
+                ...allKeys.filter(k => !preferredOrder.includes(k))
+              ];
+              return orderedKeys.map(k => {
+                if (k === 'user_linkedin_url') {
+                  return {
+                    field: k,
+                    cellRenderer: params => {
+                      if (!params.value) return '';
+                      const url = params.value.startsWith('http') ? params.value : `https://${params.value}`;
+                      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
+                    }
+                  };
+                }
+                return { field: k };
+              });
+            }
+            function createGrid(id, data) {
+              const gridOptions = {
+                columnDefs: makeColumnDefs(data),
+                rowData: data,
+                pagination: true,
+                paginationPageSize: 20,
+                enableRangeSelection: true,
+                rowSelection: 'multiple'
+              };
+              const gridDiv = document.getElementById(id);
+              return gridDiv ? agGrid.createGrid(gridDiv, gridOptions) : null;
+            }
             document.addEventListener('DOMContentLoaded', () => {
-              const gridDiv = document.getElementById('csv-grid');
-              agGrid.createGrid(gridDiv, gridOptions);
+              if (inputData.length) inputGridApi = createGrid('input-grid', inputData);
+              if (outputData.length) createGrid('output-grid', outputData);
             });
           </script>
         {% endif %}
@@ -225,10 +238,15 @@
     const spinner = document.getElementById('run-spinner');
     const runBtn = document.getElementById('run-button');
     const outputSection = document.getElementById('output-section');
+    const selectedInput = document.getElementById('selected-rows');
     form.addEventListener('submit', () => {
       if (spinner) spinner.style.display = 'inline-block';
       if (runBtn) runBtn.disabled = true;
       if (outputSection) outputSection.innerHTML = '';
+      if (inputGridApi && selectedInput) {
+        const rows = inputGridApi.getSelectedRows();
+        selectedInput.value = rows.length ? JSON.stringify(rows) : '';
+      }
     });
     document.addEventListener('DOMContentLoaded', () => {
       selectUtil(utilInput.value);
