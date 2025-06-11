@@ -20,6 +20,7 @@ from utils import (
     common,
 )
 from pathlib import Path
+
 try:
     from flask import (
         Flask,
@@ -41,6 +42,7 @@ except Exception:  # pragma: no cover - fallback for test stubs
         flash,
         send_from_directory,
     )
+
     session = {}
 from dotenv import dotenv_values, set_key
 
@@ -203,7 +205,10 @@ UTILITY_PARAMETERS = {
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
     ],
     "generate_email": [
-        {"name": "--email_generation_instructions", "label": "Email generation instructions"},
+        {
+            "name": "--email_generation_instructions",
+            "label": "Email generation instructions",
+        },
     ],
     "score_lead": [
         {"name": "--instructions", "label": "Instructions"},
@@ -235,11 +240,7 @@ def load_env():
 def get_default_username() -> str:
     """Return the default username for the login form."""
     env = load_env()
-    return (
-        env.get("APP_USER")
-        or os.environ.get("APP_USER")
-        or "user"
-    )
+    return env.get("APP_USER") or os.environ.get("APP_USER") or "user"
 
 
 def get_credentials() -> tuple[str, str]:
@@ -298,7 +299,7 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
     """Return up to 1000 rows from a CSV file in display order."""
     rows: list[dict[str, str]] = []
     try:
-        with open(path, newline='', encoding='utf-8-sig') as fh:
+        with open(path, newline="", encoding="utf-8-sig") as fh:
             reader = csv.DictReader(fh)
             for i, row in enumerate(reader):
                 if i >= 1000:
@@ -317,6 +318,7 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
 
 
 if hasattr(app, "before_request"):
+
     @app.before_request
     def require_login():
         endpoint = request.endpoint or ""
@@ -324,34 +326,39 @@ if hasattr(app, "before_request"):
             return
         if not session.get("logged_in"):
             return redirect(url_for("login"))
+
 else:  # pragma: no cover - for tests with DummyFlask
+
     def require_login():
         return
 
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     username, password = get_credentials()
-    if request.method == 'POST':
-        if request.form.get('password') == password and request.form.get('username') == username:
-            session['logged_in'] = True
-            return redirect(url_for('run_utility'))
-        flash('Invalid credentials.')
-    return render_template('login.html', default_username=get_default_username())
+    if request.method == "POST":
+        if (
+            request.form.get("password") == password
+            and request.form.get("username") == username
+        ):
+            session["logged_in"] = True
+            return redirect(url_for("run_utility"))
+        flash("Invalid credentials.")
+    return render_template("login.html", default_username=get_default_username())
 
 
-@app.route('/logout')
+@app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for('login'))
+    return redirect(url_for("login"))
 
 
-@app.route('/')
+@app.route("/")
 def index():
-    return redirect(url_for('run_utility'))
+    return redirect(url_for("run_utility"))
 
 
-@app.route('/utility', methods=['GET', 'POST'])
+@app.route("/utility", methods=["GET", "POST"])
 def run_utility():
     util_output = None
     download_name = None
@@ -361,24 +368,24 @@ def run_utility():
     input_csv_path: str | None = None
     output_csv_path: str | None = None
     utils_list = _list_utils()
-    util_name = request.form.get('util_name', 'linkedin_search_to_csv')
-    prev_csv = session.get('prev_csv_path')
+    util_name = request.form.get("util_name", "linkedin_search_to_csv")
+    prev_csv = session.get("prev_csv_path")
     if prev_csv and os.path.exists(prev_csv):
         input_csv_path = prev_csv
-    if request.method == 'POST' and request.form.get('action') == 'clear_csv':
-        session.pop('prev_csv_path', None)
-        return redirect(url_for('run_utility'))
-    if request.method == 'POST':
-        file = request.files.get('csv_file')
+    if request.method == "POST" and request.form.get("action") == "clear_csv":
+        session.pop("prev_csv_path", None)
+        return redirect(url_for("run_utility"))
+    if request.method == "POST":
+        file = request.files.get("csv_file")
         uploaded = None
-        input_mode = request.form.get('input_mode', 'single')
-        selected_json = request.form.get('selected_rows', '')
+        input_mode = request.form.get("input_mode", "single")
+        selected_json = request.form.get("selected_rows", "")
         if selected_json:
             try:
                 rows = json.loads(selected_json)
                 if rows:
-                    tmp = common.make_temp_csv_filename('selected')
-                    with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                    tmp = common.make_temp_csv_filename("selected")
+                    with open(tmp, "w", newline="", encoding="utf-8") as fh:
                         writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
                         writer.writeheader()
                         for r in rows:
@@ -387,13 +394,13 @@ def run_utility():
             except Exception:
                 uploaded = None
         if not uploaded and file and file.filename:
-            tmp_dir = tempfile.gettempdir()
+            tmp_dir = common.get_output_dir()
             filename = os.path.join(tmp_dir, os.path.basename(file.filename))
             file.save(filename)
             uploaded = filename
         if (
             not uploaded
-            and input_mode == 'previous'
+            and input_mode == "previous"
             and prev_csv
             and os.path.exists(prev_csv)
         ):
@@ -410,26 +417,30 @@ def run_utility():
             input_csv_path = uploaded
 
         def build_cmd(values: dict[str, str]) -> list[str]:
-            cmd = ['python', '-m', f'utils.{util_name}']
+            cmd = ["python", "-m", f"utils.{util_name}"]
             for spec in UTILITY_PARAMETERS.get(util_name, []):
-                name = spec['name']
-                val = (values.get(name) or '').strip()
-                if util_name == 'linkedin_search_to_csv' and name == '--num' and not val:
-                    val = '10'
+                name = spec["name"]
+                val = (values.get(name) or "").strip()
+                if (
+                    util_name == "linkedin_search_to_csv"
+                    and name == "--num"
+                    and not val
+                ):
+                    val = "10"
                 if not val:
                     continue
-                if spec.get('type') == 'boolean':
-                    if val.lower() in ('1', 'true', 'yes', 'on'):
+                if spec.get("type") == "boolean":
+                    if val.lower() in ("1", "true", "yes", "on"):
                         cmd.append(name)
-                elif name.startswith('-'):
+                elif name.startswith("-"):
                     cmd.extend([name, val])
                 else:
                     cmd.append(val)
-            if util_name == 'linkedin_search_to_csv':
+            if util_name == "linkedin_search_to_csv":
                 out_path = common.make_temp_csv_filename(util_name)
                 insert_at = len(cmd)
                 for i, arg in enumerate(cmd[3:], start=3):
-                    if arg.startswith('-'):
+                    if arg.startswith("-"):
                         insert_at = i
                         break
                 cmd.insert(insert_at, out_path)
@@ -437,16 +448,20 @@ def run_utility():
 
         def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
             env = os.environ.copy()
-            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-            env['PYTHONPATH'] = env.get('PYTHONPATH', '') + ':' + root_dir
+            root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+            env["PYTHONPATH"] = env.get("PYTHONPATH", "") + ":" + root_dir
             proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
-            status = 'SUCCESS' if proc.returncode == 0 else 'FAIL'
-            output = proc.stdout if proc.returncode == 0 else (proc.stderr or 'Error running command')
-            cmd_str = ' '.join(shlex.quote(c) for c in cmd)
+            status = "SUCCESS" if proc.returncode == 0 else "FAIL"
+            output = (
+                proc.stdout
+                if proc.returncode == 0
+                else (proc.stderr or "Error running command")
+            )
+            cmd_str = " ".join(shlex.quote(c) for c in cmd)
             return status, cmd_str, output.strip()
 
         if uploaded:
-            if util_name == 'linkedin_search_to_csv':
+            if util_name == "linkedin_search_to_csv":
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
@@ -456,10 +471,10 @@ def run_utility():
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'apollo_info':
+            elif util_name == "apollo_info":
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     apollo_info.apollo_info_from_csv(uploaded, out_path)
@@ -467,10 +482,10 @@ def run_utility():
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'check_email_zero_bounce':
+            elif util_name == "check_email_zero_bounce":
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
@@ -478,24 +493,26 @@ def run_utility():
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'score_lead':
+            elif util_name == "score_lead":
                 out_path = common.make_temp_csv_filename(util_name)
-                instructions = request.form.get('--instructions', '')
+                instructions = request.form.get("--instructions", "")
                 try:
                     score_lead.score_leads_from_csv(uploaded, out_path, instructions)
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'generate_email':
+            elif util_name == "generate_email":
                 out_path = common.make_temp_csv_filename(util_name)
-                email_instructions = request.form.get('--email_generation_instructions', '')
+                email_instructions = request.form.get(
+                    "--email_generation_instructions", ""
+                )
                 try:
                     generate_email.generate_emails_from_csv(
                         uploaded, out_path, email_instructions
@@ -504,79 +521,100 @@ def run_utility():
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'call_openai_llm':
+            elif util_name == "call_openai_llm":
                 out_path = common.make_temp_csv_filename(util_name)
-                prompt_text = request.form.get('prompt', '')
+                prompt_text = request.form.get("prompt", "")
                 try:
-                    call_openai_llm.call_openai_llm_from_csv(uploaded, out_path, prompt_text)
+                    call_openai_llm.call_openai_llm_from_csv(
+                        uploaded, out_path, prompt_text
+                    )
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
-            elif util_name == 'find_users_by_name_and_keywords':
+            elif util_name == "find_users_by_name_and_keywords":
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
-                    find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
+                    find_users_by_name_and_keywords.find_users(
+                        Path(uploaded), Path(out_path)
+                    )
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
             else:
                 import csv
-                with open(uploaded, newline='', encoding='utf-8-sig') as fh:
+
+                with open(uploaded, newline="", encoding="utf-8-sig") as fh:
                     reader = csv.DictReader(fh)
                     rows = list(reader)
                     fieldnames = reader.fieldnames or []
                 out_path = common.make_temp_csv_filename(util_name)
-                with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
-                    status_field = 'dhisanaai_webhook_push_status' if util_name == 'push_lead_to_dhisana_webhook' else 'status'
+                with open(out_path, "w", newline="", encoding="utf-8") as out_fh:
+                    status_field = (
+                        "dhisanaai_webhook_push_status"
+                        if util_name == "push_lead_to_dhisana_webhook"
+                        else "status"
+                    )
                     writer = csv.DictWriter(
-                        out_fh, fieldnames=fieldnames + [status_field, 'command', 'output']
+                        out_fh,
+                        fieldnames=fieldnames + [status_field, "command", "output"],
                     )
                     writer.writeheader()
                     for row in rows:
                         cmd = build_cmd(row)
                         status, cmd_str, out_text = run_cmd(cmd)
                         row.update(
-                            {status_field: status, 'command': cmd_str, 'output': out_text}
+                            {
+                                status_field: status,
+                                "command": cmd_str,
+                                "output": out_text,
+                            }
                         )
                         writer.writerow(row)
                 download_name = out_path
                 output_csv_path = out_path
                 util_output = None
         else:
-            values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
+            values = {
+                spec["name"]: request.form.get(spec["name"], "")
+                for spec in UTILITY_PARAMETERS.get(util_name, [])
+            }
             cmd = build_cmd(values)
             status, cmd_str, out_text = run_cmd(cmd)
-            if util_name == 'generate_image' and status == 'SUCCESS':
+            if util_name == "generate_image" and status == "SUCCESS":
                 try:
                     img_bytes = base64.b64decode(out_text)
-                    fd, out_path = tempfile.mkstemp(suffix='.png', dir=tempfile.gettempdir())
-                    with os.fdopen(fd, 'wb') as fh:
+                    fd, out_path = tempfile.mkstemp(
+                        suffix=".png", dir=common.get_output_dir()
+                    )
+                    with os.fdopen(fd, "wb") as fh:
                         fh.write(img_bytes)
                     download_name = out_path
-                    image_src = 'data:image/png;base64,' + out_text
+                    image_src = "data:image/png;base64," + out_text
                     util_output = None
                 except Exception as exc:
-                    util_output = f'Error: {exc}'
+                    util_output = f"Error: {exc}"
             else:
                 label = (
-                    'dhisanaai_webhook_push_status'
-                    if util_name == 'push_lead_to_dhisana_webhook'
-                    else 'status'
+                    "dhisanaai_webhook_push_status"
+                    if util_name == "push_lead_to_dhisana_webhook"
+                    else "status"
                 )
-                util_output = f"{label}: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+                util_output = (
+                    f"{label}: {status}\ncommand: {cmd_str}\noutput:\n{out_text}"
+                )
                 for arg in cmd[3:]:
-                    if arg.endswith('.csv'):
+                    if arg.endswith(".csv"):
                         path = os.path.abspath(arg)
                         if os.path.exists(path):
                             download_name = path
@@ -587,10 +625,10 @@ def run_utility():
     if input_csv_path and os.path.exists(input_csv_path):
         input_rows = _load_csv_preview(input_csv_path)
     if output_csv_path and os.path.exists(output_csv_path):
-        session['prev_csv_path'] = output_csv_path
+        session["prev_csv_path"] = output_csv_path
         prev_csv = output_csv_path
     return render_template(
-        'run_utility.html',
+        "run_utility.html",
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
@@ -601,46 +639,47 @@ def run_utility():
         upload_only=UPLOAD_ONLY_UTILS,
         image_src=image_src,
         prev_csv=prev_csv,
-        default_mode='previous' if prev_csv else 'single',
+        default_mode="previous" if prev_csv else "single",
     )
 
 
-
-@app.route('/settings', methods=['GET', 'POST'])
+@app.route("/settings", methods=["GET", "POST"])
 def settings():
     env_vars = load_env()
-    if request.method == 'POST':
+    if request.method == "POST":
         for key in env_vars:
-            value = request.form.get(key, '')
+            value = request.form.get(key, "")
             set_key(ENV_FILE, key, value)
-        flash('Settings saved.')
-        return redirect(url_for('settings'))
-    return render_template('settings.html', env_vars=env_vars)
+        flash("Settings saved.")
+        return redirect(url_for("settings"))
+    return render_template("settings.html", env_vars=env_vars)
 
 
-@app.route('/help')
+@app.route("/help")
 def help_page():
     """Display simple help information about the app and utilities."""
     utils_list = _list_utils()
-    return render_template('help.html', utils=utils_list)
+    return render_template("help.html", utils=utils_list)
 
 
-@app.route('/download/<path:filename>')
+@app.route("/download/<path:filename>")
 def download_file(filename: str):
-    """Send a file from the temporary directory."""
-    return send_from_directory(tempfile.gettempdir(), os.path.basename(filename), as_attachment=True)
+    """Send a file from the output directory."""
+    return send_from_directory(
+        common.get_output_dir(), os.path.basename(filename), as_attachment=True
+    )
 
 
-@app.route('/download_selected', methods=['POST'])
+@app.route("/download_selected", methods=["POST"])
 def download_selected():
-    csv_path = request.form.get('csv_path', '')
-    selected_json = request.form.get('selected_rows', '')
+    csv_path = request.form.get("csv_path", "")
+    selected_json = request.form.get("selected_rows", "")
     if selected_json:
         try:
             rows = json.loads(selected_json)
             if rows:
-                tmp = common.make_temp_csv_filename('download')
-                with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                tmp = common.make_temp_csv_filename("download")
+                with open(tmp, "w", newline="", encoding="utf-8") as fh:
                     writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
                     writer.writeheader()
                     for r in rows:
@@ -649,22 +688,24 @@ def download_selected():
         except Exception:
             pass
     if not csv_path or not os.path.exists(csv_path):
-        flash('No CSV found to download.')
-        return redirect(url_for('run_utility'))
-    return send_from_directory(tempfile.gettempdir(), os.path.basename(csv_path), as_attachment=True)
+        flash("No CSV found to download.")
+        return redirect(url_for("run_utility"))
+    return send_from_directory(
+        common.get_output_dir(), os.path.basename(csv_path), as_attachment=True
+    )
 
 
-@app.route('/push_to_dhisana', methods=['POST'])
+@app.route("/push_to_dhisana", methods=["POST"])
 def push_to_dhisana():
-    csv_path = request.form.get('csv_path', '')
-    selected_json = request.form.get('selected_rows', '')
-    output_text = request.form.get('output_text', '')
+    csv_path = request.form.get("csv_path", "")
+    selected_json = request.form.get("selected_rows", "")
+    output_text = request.form.get("output_text", "")
     if selected_json:
         try:
             rows = json.loads(selected_json)
             if rows:
-                tmp = common.make_temp_csv_filename('push')
-                with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                tmp = common.make_temp_csv_filename("push")
+                with open(tmp, "w", newline="", encoding="utf-8") as fh:
                     writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
                     writer.writeheader()
                     for r in rows:
@@ -672,34 +713,34 @@ def push_to_dhisana():
                 csv_path = tmp
         except Exception:
             pass
-    linkedin_re = re.compile(r'https://www\.linkedin\.com/in/[A-Za-z0-9_-]+')
+    linkedin_re = re.compile(r"https://www\.linkedin\.com/in/[A-Za-z0-9_-]+")
     urls: set[str] = set()
     if csv_path and os.path.exists(csv_path):
         try:
-            with open(csv_path, newline='', encoding='utf-8-sig') as fh:
+            with open(csv_path, newline="", encoding="utf-8-sig") as fh:
                 reader = csv.reader(fh)
                 for row in reader:
                     for cell in row:
                         urls.update(linkedin_re.findall(str(cell)))
         except Exception:
             pass
-    urls.update(linkedin_re.findall(output_text or ''))
+    urls.update(linkedin_re.findall(output_text or ""))
     if not urls:
-        flash('No LinkedIn profile URLs found to push.')
-        return redirect(url_for('run_utility'))
+        flash("No LinkedIn profile URLs found to push.")
+        return redirect(url_for("run_utility"))
 
-    webhook_url = os.getenv('DHISANA_WEBHOOK_URL')
-    api_key = os.getenv('DHISANA_API_KEY')
+    webhook_url = os.getenv("DHISANA_WEBHOOK_URL")
+    api_key = os.getenv("DHISANA_API_KEY")
     if not webhook_url or not api_key:
-        flash('Please set DHISANA_WEBHOOK_URL and DHISANA_API_KEY in Settings.')
-        return redirect(url_for('settings'))
+        flash("Please set DHISANA_WEBHOOK_URL and DHISANA_API_KEY in Settings.")
+        return redirect(url_for("settings"))
 
     pushed = 0
     for url in urls:
         try:
             asyncio.run(
                 push_lead_to_dhisana_webhook.push_lead_to_dhisana_webhook(
-                    '',
+                    "",
                     linkedin_url=url,
                     webhook_url=webhook_url,
                 )
@@ -707,5 +748,5 @@ def push_to_dhisana():
             pushed += 1
         except Exception:
             pass
-    flash(f'Pushed {pushed} leads to Dhisana.')
-    return redirect(url_for('run_utility'))
+    flash(f"Pushed {pushed} leads to Dhisana.")
+    return redirect(url_for("run_utility"))

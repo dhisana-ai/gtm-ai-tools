@@ -22,7 +22,7 @@ import httpx
 from playwright.async_api import async_playwright, TimeoutError as PwTimeout
 from playwright_stealth import stealth_async
 
-COOKIE_FILE = "/tmp/playwright_state.json"
+COOKIE_FILE = str(common.get_output_dir() / "playwright_state.json")
 CF_TITLE_JS = "document.title.toLowerCase().includes('just a moment')"
 
 USER_AGENTS = [
@@ -51,7 +51,11 @@ logger = logging.getLogger(__name__)
 
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
     u = urlparse(proxy_url)
-    return {"server": f"{u.scheme}://{u.hostname}:{u.port}", "username": u.username or "", "password": u.password or ""}
+    return {
+        "server": f"{u.scheme}://{u.hostname}:{u.port}",
+        "username": u.username or "",
+        "password": u.password or "",
+    }
 
 
 def fingerprint() -> Dict[str, Any]:
@@ -65,7 +69,9 @@ def fingerprint() -> Dict[str, Any]:
     }
 
 
-async def _submit_and_poll(method: str, sitekey: str, page_url: str, api_key: str) -> Optional[str]:
+async def _submit_and_poll(
+    method: str, sitekey: str, page_url: str, api_key: str
+) -> Optional[str]:
     data = {
         "key": api_key,
         "method": method,
@@ -82,7 +88,10 @@ async def _submit_and_poll(method: str, sitekey: str, page_url: str, api_key: st
         cap_id = j["request"]
         for _ in range(24):
             await asyncio.sleep(5)
-            res = await client.get("http://2captcha.com/res.php", params={"key": api_key, "action": "get", "id": cap_id, "json": 1})
+            res = await client.get(
+                "http://2captcha.com/res.php",
+                params={"key": api_key, "action": "get", "id": cap_id, "json": 1},
+            )
             jr = res.json()
             if jr.get("status") == 1:
                 return jr["request"]
@@ -100,7 +109,9 @@ async def solve_any_captcha(page, url: str, api_key: Optional[str]):
         sk = await ts_div.get_attribute("data-sitekey")
         token = await _submit_and_poll("turnstile", sk, url, api_key)
         if token:
-            await page.evaluate("(tok)=>{window.postMessage({cf-turnstile-response:tok},'*');}", token)
+            await page.evaluate(
+                "(tok)=>{window.postMessage({cf-turnstile-response:tok},'*');}", token
+            )
             await asyncio.sleep(2)
             return
     h_iframe = await page.query_selector("iframe[src*='hcaptcha.com']")
@@ -132,7 +143,11 @@ async def browser_ctx(proxy_url: Optional[str]):
     async with async_playwright() as p:
         launch: Dict[str, Any] = {
             "headless": os.getenv("HEADLESS", "true").lower() != "false",
-            "args": ["--disable-blink-features=AutomationControlled", "--no-sandbox", "--ignore-certificate-errors"],
+            "args": [
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--ignore-certificate-errors",
+            ],
         }
         if proxy_url:
             launch["proxy"] = parse_proxy(proxy_url)
@@ -156,11 +171,15 @@ async def browser_ctx(proxy_url: Optional[str]):
 
 
 async def apply_stealth(page):
-    await page.add_init_script("Object.defineProperty(navigator,'webdriver',{get:()=>false});")
+    await page.add_init_script(
+        "Object.defineProperty(navigator,'webdriver',{get:()=>false});"
+    )
     await stealth_async(page)
 
 
-async def _do_fetch(url: str, proxy_url: Optional[str], captcha_key: Optional[str]) -> str:
+async def _do_fetch(
+    url: str, proxy_url: Optional[str], captcha_key: Optional[str]
+) -> str:
     async with browser_ctx(proxy_url) as ctx:
         page = await ctx.new_page()
         await apply_stealth(page)
@@ -183,7 +202,9 @@ async def _do_fetch(url: str, proxy_url: Optional[str], captcha_key: Optional[st
         return await page.content()
 
 
-async def fetch_html(url: str, proxy_url: Optional[str] = None, captcha_key: Optional[str] = None) -> str:
+async def fetch_html(
+    url: str, proxy_url: Optional[str] = None, captcha_key: Optional[str] = None
+) -> str:
     if not proxy_url:
         return await _do_fetch(url, None, captcha_key)
     try:
@@ -212,7 +233,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch HTML using Playwright")
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument("--summarize", action="store_true", help="Summarize content")
-    parser.add_argument("--instructions", default="Summarize the following text", help="Summarization instructions")
+    parser.add_argument(
+        "--instructions",
+        default="Summarize the following text",
+        help="Summarization instructions",
+    )
     args = parser.parse_args()
     proxy_url = os.getenv("PROXY_URL")
     captcha = os.getenv("TWO_CAPTCHA_API_KEY")

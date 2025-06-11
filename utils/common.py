@@ -118,16 +118,27 @@ def get_openai_model() -> str:
     return os.getenv("OPENAI_MODEL_NAME", "gpt-4.1")
 
 
+def get_output_dir() -> Path:
+    """Return a directory for writing outputs and intermediate files."""
+    import tempfile
+    from pathlib import Path
+
+    data_root = Path("/data")
+    if data_root.is_dir():
+        out_dir = data_root / "interim_tool_outputs"
+    else:
+        out_dir = Path(tempfile.gettempdir())
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
+
+
 def make_temp_csv_filename(tool: str) -> str:
     """Return a lowercase CSV path like ``toolname_YYYYMMDD_HHMMSS.csv``."""
-    import tempfile
     import datetime
     from pathlib import Path
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     name = f"{tool}_{ts}.csv".lower()
-    path = Path(tempfile.gettempdir()) / name
-    # Ensure the file exists
+    path = get_output_dir() / name
     path.touch()
     return str(path)
-

@@ -124,18 +124,17 @@ task run:command -- linkedin_search_to_csv \
 ```
 
 After the run you will find `results.csv` inside the `output/` directory.
-The Taskfile also copies any files created in `output/` to `/tmp/outputs`,
+The Taskfile also copies any files created in `output/` to `/data/outputs`,
 creating that directory if it does not already exist. This provides a stable
 location for retrieving results outside the project tree.
 
-To use files from an arbitrary directory on your host, mount that directory when
-starting the container. For example to read `/tmp/input.csv` and produce
-`/tmp/output.csv`:
+To use files from an arbitrary directory on your host, mount that directory to
+/data when starting the container. For example to read `/tmp/dhisana_gtm_tools/input.csv` and produce `/tmp/dhisana_gtm_tools/output.csv`:
 
 ```bash
-docker run --env-file .env -v /tmp:/tmp gtm-ai-tools \
+docker run --env-file .env -v /tmp/dhisana_gtm_tools/:/data gtm-ai-tools \
     python -m utils.find_users_by_name_and_keywords \
-    /tmp/input.csv /tmp/output.csv
+    /data/input.csv /data/output.csv
 ```
 
 ### Running utilities locally
