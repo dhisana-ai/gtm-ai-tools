@@ -52,12 +52,18 @@ Follow these steps to spin up the container and run a utility.
    HUBSPOT_API_KEY=...
    CLAY_API_KEY=...
    CLAY_WEBHOOK_URL=...
+   APP_PASSWORD=...
    ```
+   At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
+   `APP_PASSWORD`. Other variables are optional based on which tools you plan to
+   use.
 4. **Start the container and open the app**
    ```bash
    docker run --env-file .env -p 8080:8080 gtm-ai-tools
    ```
    Then browse to <http://localhost:8080>.
+   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+   password set in `APP_PASSWORD`.
 
 ## Repository structure
 
@@ -194,7 +200,8 @@ arguments, the web interface launches automatically on port `8080`:
 docker run -p 8080:8080 gtm-ai-tools
 ```
 
-Open <http://localhost:8080> in your browser to access the app. The interface
+Open <http://localhost:8080> in your browser to access the app. Log in with the
+username from `APP_USERNAME` and the password you set in `APP_PASSWORD`. The interface
 shows a **Run a Utility** page where you can choose a tool and provide the
 required command‑line parameters. If a utility requires a CSV input you can
 upload the file directly in the form. When a utility produces a CSV output a
