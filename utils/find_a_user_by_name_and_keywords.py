@@ -27,7 +27,7 @@ class LeadSearchResult(BaseModel):
     last_name: str = ""
     full_name: str = ""
     job_title: str = ""
-    follower_count: str = ""
+    follower_count: int = 0
     lead_location: str = ""
     summary_about_lead: str = ""
     user_linkedin_url: str = ""
