@@ -32,8 +32,8 @@ task run:command -- mcp_tool_sample "Ping"
 
 ## Search LinkedIn URLs
 
-`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERPER_API_KEY` environment variable.
-All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format.
+`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and extracts basic lead details from the search snippets. The results are written to a CSV file and require the `SERPER_API_KEY` environment variable.
+All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format and each row includes the parsed lead information.
 
 Example usage fetching 20 results:
 

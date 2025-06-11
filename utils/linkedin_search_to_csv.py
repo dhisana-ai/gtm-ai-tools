@@ -6,10 +6,15 @@ import argparse
 import asyncio
 import csv
 import logging
+import json
 from pathlib import Path
 from urllib.parse import urlparse
 
 from utils.common import search_google_serper, extract_user_linkedin_page
+from utils.find_a_user_by_name_and_keywords import (
+    LeadSearchResult,
+    get_structured_output,
+)
 
 DEFAULT_QUERY = 'site:linkedin.com/in "CEO"'
 
@@ -22,23 +27,38 @@ def linkedin_search_to_csv(query: str, number_of_results: int, output_file: str)
 
     query = query.strip() or DEFAULT_QUERY
     results = asyncio.run(search_google_serper(query, number_of_results))
-    linkedin_urls: list[str] = []
+    infos: list[LeadSearchResult] = []
 
     for item in results:
         link = item.get("link", "")
         if not link:
             continue
         parsed_url = urlparse(link)
+        text = " ".join(
+            [item.get("title", ""), item.get("subtitle", ""), item.get("snippet", "")] 
+        ).strip()
+        structured = asyncio.run(get_structured_output(text))
         if "linkedin.com/in" in (parsed_url.netloc + parsed_url.path):
-            linkedin_urls.append(extract_user_linkedin_page(link))
+            structured.user_linkedin_url = extract_user_linkedin_page(link)
+            infos.append(structured)
 
+    fieldnames = [
+        "first_name",
+        "last_name",
+        "full_name",
+        "job_title",
+        "follower_count",
+        "lead_location",
+        "summary_about_lead",
+        "user_linkedin_url",
+    ]
     with open(output_file, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["user_linkedin_url"])
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        for url in linkedin_urls:
-            writer.writerow({"user_linkedin_url": url})
+        for info in infos:
+            writer.writerow(json.loads(info.model_dump_json()))
 
-    logger.info("Wrote %d LinkedIn URLs to %s", len(linkedin_urls), output_file)
+    logger.info("Wrote %d LinkedIn URLs to %s", len(infos), output_file)
 
 
 def linkedin_search_to_csv_from_csv(input_file: str | Path, output_file: str | Path) -> None:
@@ -59,7 +79,7 @@ def linkedin_search_to_csv_from_csv(input_file: str | Path, output_file: str | P
             raise ValueError("upload csv with these two columns: search_query and number_of_responses")
         rows = list(reader)
 
-    aggregated: list[str] = []
+    aggregated: list[LeadSearchResult] = []
     for row in rows:
         query = (row.get("search_query") or "").strip() or DEFAULT_QUERY
         try:
@@ -72,14 +92,29 @@ def linkedin_search_to_csv_from_csv(input_file: str | Path, output_file: str | P
             if not link:
                 continue
             parsed_url = urlparse(link)
+            text = " ".join(
+                [item.get("title", ""), item.get("subtitle", ""), item.get("snippet", "")] 
+            ).strip()
+            structured = asyncio.run(get_structured_output(text))
             if "linkedin.com/in" in (parsed_url.netloc + parsed_url.path):
-                aggregated.append(extract_user_linkedin_page(link))
+                structured.user_linkedin_url = extract_user_linkedin_page(link)
+                aggregated.append(structured)
 
+    fieldnames = [
+        "first_name",
+        "last_name",
+        "full_name",
+        "job_title",
+        "follower_count",
+        "lead_location",
+        "summary_about_lead",
+        "user_linkedin_url",
+    ]
     with out_path.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=["user_linkedin_url"])
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
         writer.writeheader()
-        for url in aggregated:
-            writer.writerow({"user_linkedin_url": url})
+        for info in aggregated:
+            writer.writerow(json.loads(info.model_dump_json()))
 
     logger.info("Wrote %d LinkedIn URLs to %s", len(aggregated), out_path)
 
