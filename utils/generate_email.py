@@ -26,12 +26,14 @@ class EmailCopy(BaseModel):
     body: str
 
 
-async def _generate_email_async(lead: Dict[str, Any], instructions: str) -> EmailCopy:
-    """Return ``EmailCopy`` generated for ``lead`` following ``instructions``."""
+async def _generate_email_async(
+    lead: Dict[str, Any], email_generation_instructions: str
+) -> EmailCopy:
+    """Return ``EmailCopy`` generated for ``lead`` using ``email_generation_instructions``."""
 
     prompt = (
         "Compose a short sales email as JSON.\n"
-        f"Instructions:\n{instructions}\n\n"
+        f"Email generation instructions:\n{email_generation_instructions}\n\n"
         f"Lead information:\n{json.dumps(lead)}\n\n"
         "Return valid JSON with keys 'subject' and 'body'."
     )
@@ -42,14 +44,20 @@ async def _generate_email_async(lead: Dict[str, Any], instructions: str) -> Emai
     return result
 
 
-def generate_email(lead: Dict[str, Any], instructions: str) -> Dict[str, str]:
+def generate_email(
+    lead: Dict[str, Any], email_generation_instructions: str
+) -> Dict[str, str]:
     """Generate an email synchronously for ``lead``."""
-    result = asyncio.run(_generate_email_async(lead, instructions))
+    result = asyncio.run(
+        _generate_email_async(lead, email_generation_instructions)
+    )
     return json.loads(result.model_dump_json())
 
 
 def generate_emails_from_csv(
-    input_file: str | Path, output_file: str | Path, instructions: str
+    input_file: str | Path,
+    output_file: str | Path,
+    email_generation_instructions: str,
 ) -> None:
     """Generate emails for each row of ``input_file`` and write results."""
 
@@ -69,7 +77,7 @@ def generate_emails_from_csv(
 
     processed: list[dict[str, str]] = []
     for row in rows:
-        result = generate_email(row, instructions)
+        result = generate_email(row, email_generation_instructions)
         row["email_subject"] = result.get("subject", "")
         row["email_body"] = result.get("body", "")
         processed.append(row)
@@ -89,7 +97,9 @@ def main() -> None:
     group.add_argument("--lead", help="JSON string with lead info")
     group.add_argument("--csv", help="Input CSV file with leads")
     parser.add_argument(
-        "--instructions", required=True, help="Instructions for generating the email"
+        "--email_generation_instructions",
+        required=True,
+        help="Email generation instructions",
     )
     parser.add_argument("--output_csv", help="Output CSV path when using --csv")
     args = parser.parse_args()
@@ -99,12 +109,14 @@ def main() -> None:
             data = json.loads(args.lead)
         except json.JSONDecodeError as exc:
             raise ValueError("lead must be valid JSON") from exc
-        result = generate_email(data, args.instructions)
+        result = generate_email(data, args.email_generation_instructions)
         print(json.dumps(result, indent=2))
     else:
         if not args.output_csv:
             raise ValueError("--output_csv is required when using --csv")
-        generate_emails_from_csv(args.csv, args.output_csv, args.instructions)
+        generate_emails_from_csv(
+            args.csv, args.output_csv, args.email_generation_instructions
+        )
 
 
 if __name__ == "__main__":

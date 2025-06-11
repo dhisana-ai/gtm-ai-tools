@@ -200,7 +200,7 @@ UTILITY_PARAMETERS = {
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
     ],
     "generate_email": [
-        {"name": "--instructions", "label": "Instructions"},
+        {"name": "--email_generation_instructions", "label": "Email generation instructions"},
     ],
     "score_lead": [
         {"name": "--instructions", "label": "Instructions"},
@@ -427,9 +427,11 @@ def run_utility():
                     output_csv_path = None
             elif util_name == 'generate_email':
                 out_path = common.make_temp_csv_filename(util_name)
-                instructions = request.form.get('--instructions', '')
+                email_instructions = request.form.get('--email_generation_instructions', '')
                 try:
-                    generate_email.generate_emails_from_csv(uploaded, out_path, instructions)
+                    generate_email.generate_emails_from_csv(
+                        uploaded, out_path, email_instructions
+                    )
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None

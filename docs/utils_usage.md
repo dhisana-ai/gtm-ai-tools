@@ -271,7 +271,7 @@ task run:command -- send_slack_message "Deployment finished"
 
 ```bash
 task run:command -- generate_email --lead '{"full_name": "John Doe"}' \
-    --instructions "Write a short intro email"
+    --email_generation_instructions "Write a short intro email"
 ```
 
 ## Generate Image with OpenAI
