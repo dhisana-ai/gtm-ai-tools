@@ -7,6 +7,7 @@ import re
 import asyncio
 import json
 import base64
+import random
 from utils import (
     push_lead_to_dhisana_webhook,
     linkedin_search_to_csv,
@@ -231,6 +232,20 @@ def load_env():
     return dotenv_values(ENV_FILE)
 
 
+def get_credentials() -> tuple[str, str]:
+    """Return (username, password) for the login page."""
+    env = load_env()
+    username = env.get("APP_USERNAME") or os.environ.get("APP_USERNAME") or "user"
+    password = env.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
+    if not password:
+        password = f"user_{random.randint(1000, 9999)}"
+        try:
+            set_key(ENV_FILE, "APP_PASSWORD", password)
+        except Exception:
+            pass
+    return username, password
+
+
 def _format_title(name: str) -> str:
     """Return a human friendly title from a module name."""
     return UTILITY_TITLES.get(name, name.replace("_", " ").title())
@@ -283,6 +298,36 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
     except Exception:
         rows = []
     return rows
+
+
+if hasattr(app, "before_request"):
+    @app.before_request
+    def require_login():
+        endpoint = request.endpoint or ""
+        if endpoint.startswith("static") or endpoint == "login":
+            return
+        if not session.get("logged_in"):
+            return redirect(url_for("login"))
+else:  # pragma: no cover - for tests with DummyFlask
+    def require_login():
+        return
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    username, password = get_credentials()
+    if request.method == 'POST':
+        if request.form.get('password') == password and request.form.get('username') == username:
+            session['logged_in'] = True
+            return redirect(url_for('run_utility'))
+        flash('Invalid credentials.')
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 
 @app.route('/')
