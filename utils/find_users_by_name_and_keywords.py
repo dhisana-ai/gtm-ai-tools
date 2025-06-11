@@ -8,7 +8,7 @@ import csv
 import logging
 from pathlib import Path
 
-from utils.find_a_user_by_name_and_keywords import find_user_linkedin_url
+from utils.find_a_user_by_name_and_keywords import find_user_linkedin_url, LeadSearchResult
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +29,17 @@ def write_output_rows(output_file: Path, rows: list[dict[str, str]]) -> None:
     with output_file.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.DictWriter(
             fh,
-            fieldnames=["full_name", "user_linkedin_url", "search_keywords"],
+            fieldnames=[
+                "full_name",
+                "user_linkedin_url",
+                "first_name",
+                "last_name",
+                "job_title",
+                "follower_count",
+                "lead_location",
+                "summary_about_lead",
+                "search_keywords",
+            ],
         )
         writer.writeheader()
         writer.writerows(rows)
@@ -44,14 +54,11 @@ def find_users(input_file: Path, output_file: Path) -> None:
         full_name = (row.get("full_name") or "").strip()
         search_keywords = (row.get("search_keywords") or "").strip()
         logger.info("Searching LinkedIn for %s", full_name)
-        url = asyncio.run(find_user_linkedin_url(full_name, search_keywords))
-        results.append(
-            {
-                "full_name": full_name,
-                "user_linkedin_url": url,
-                "search_keywords": search_keywords,
-            }
-        )
+        info = asyncio.run(find_user_linkedin_url(full_name, search_keywords))
+        if not info.get("full_name"):
+            info["full_name"] = full_name
+        info["search_keywords"] = search_keywords
+        results.append(info)
 
     write_output_rows(output_file, results)
     logger.info("Wrote results to %s", output_file)
