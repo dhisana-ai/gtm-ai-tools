@@ -6,6 +6,9 @@ import base64
 import subprocess
 import tempfile
 
+# Record any existing flask module to restore later
+_original_flask = sys.modules.get('flask')
+
 # Provide minimal python-dotenv stub if missing
 if 'dotenv' not in sys.modules:
     dotenv = types.ModuleType('dotenv')
@@ -13,7 +16,7 @@ if 'dotenv' not in sys.modules:
     dotenv.set_key = lambda *a, **kw: None
     sys.modules['dotenv'] = dotenv
 
-# Provide minimal flask stub if not installed
+# Provide minimal flask stub if not installed, and restore original after app import
 if 'flask' not in sys.modules:
     flask = types.ModuleType('flask')
 
@@ -65,6 +68,7 @@ if 'flask' not in sys.modules:
     flask.jsonify = jsonify
     sys.modules['flask'] = flask
 
+
 # Override openai.OpenAI in pytest conftest stub for build_utility_embeddings
 class DummyEmbeddings:
     def create(self, **kwargs):
@@ -112,3 +116,11 @@ def test_generate_image_route(monkeypatch):
     ctx = run_utility()
     assert ctx['image_src'].startswith('data:image/png;base64,')
     assert os.path.exists(ctx['download_name'])
+
+# Restore real flask module so stub does not leak to other tests
+if _original_flask is not None:
+    sys.modules['flask'] = _original_flask
+else:
+    sys.modules.pop('flask', None)
+# Remove stub-loaded app module so it will be re-imported under real flask
+sys.modules.pop('app', None)
