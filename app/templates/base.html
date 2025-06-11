@@ -37,6 +37,15 @@
           <li class="nav-item">
             <a class="nav-link" href="https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-37bzb09dc-VFgu_1PwM2CXORH1e6s8Xg" target="_blank">Join our Slack community</a>
           </li>
+          {% if session.get('logged_in') %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+          </li>
+          {% else %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+          </li>
+          {% endif %}
         </ul>
       </div>
     </nav>
