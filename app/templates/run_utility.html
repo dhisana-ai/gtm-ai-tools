@@ -223,7 +223,7 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(mode === 'file' && util !== 'call_openai_llm');
+        const paramsVisible = !(mode === 'file' && !['call_openai_llm', 'score_lead'].includes(util));
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
     document.querySelectorAll('.util-card').forEach(card => {
