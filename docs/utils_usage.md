@@ -265,6 +265,15 @@ task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body 
 task run:command -- send_slack_message "Deployment finished"
 ```
 
+### Generate Email Copy
+
+`generate_email.py` produces a subject and body for a lead using OpenAI. Pass the lead data as JSON with `--lead` or provide a CSV via `--csv` and `--output_csv`. The `OPENAI_API_KEY` environment variable must be set.
+
+```bash
+task run:command -- generate_email --lead '{"full_name": "John Doe"}' \
+    --instructions "Write a short intro email"
+```
+
 ## Generate Image with OpenAI
 
 `generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script sends the image along with the prompt to the OpenAI responses API for editing instead of calling the legacy `images.edit` endpoint. It requires the `OPENAI_API_KEY` environment variable.
