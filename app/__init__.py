@@ -16,15 +16,28 @@ from utils import (
     call_openai_llm,
 )
 from pathlib import Path
-from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-    send_from_directory,
-)
+try:
+    from flask import (
+        Flask,
+        render_template,
+        request,
+        redirect,
+        url_for,
+        flash,
+        send_from_directory,
+        session,
+    )
+except Exception:  # pragma: no cover - fallback for test stubs
+    from flask import (
+        Flask,
+        render_template,
+        request,
+        redirect,
+        url_for,
+        flash,
+        send_from_directory,
+    )
+    session = {}
 from dotenv import dotenv_values, set_key
 
 app = Flask(__name__)
@@ -238,6 +251,10 @@ def run_utility():
     csv_path_for_grid: str | None = None
     utils_list = _list_utils()
     util_name = request.form.get('util_name', 'linkedin_search_to_csv')
+    prev_csv = session.get('prev_csv_path')
+    if request.method == 'POST' and request.form.get('action') == 'clear_csv':
+        session.pop('prev_csv_path', None)
+        return redirect(url_for('run_utility'))
     if request.method == 'POST':
         file = request.files.get('csv_file')
         uploaded = None
@@ -246,6 +263,11 @@ def run_utility():
             filename = os.path.join(tmp_dir, os.path.basename(file.filename))
             file.save(filename)
             uploaded = filename
+        elif (
+            request.form.get('input_mode') == 'file'
+            or util_name in UPLOAD_ONLY_UTILS
+        ) and prev_csv and os.path.exists(prev_csv):
+            uploaded = prev_csv
 
         def build_cmd(values: dict[str, str]) -> list[str]:
             cmd = ['python', '-m', f'utils.{util_name}']
@@ -421,9 +443,11 @@ def run_utility():
                     for key, value in row.items():
                         if key not in ordered:
                             ordered[key] = value
-                    csv_rows.append(ordered)
+                csv_rows.append(ordered)
         except Exception:
             csv_rows = []
+    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
+        session['prev_csv_path'] = csv_path_for_grid
     return render_template(
         'run_utility.html',
         utils=utils_list,
@@ -434,6 +458,8 @@ def run_utility():
         default_util=util_name,
         upload_only=UPLOAD_ONLY_UTILS,
         image_src=image_src,
+        prev_csv=prev_csv,
+        default_mode='file' if prev_csv else 'single',
     )
 
 
