@@ -195,6 +195,9 @@
         if (util === 'linkedin_search_to_csv' && p.name === '--num') {
           input.value = '10';
         }
+        if (util === 'linkedin_search_to_csv' && p.name === 'query') {
+          input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
+        }
         if (p.type === 'boolean') {
           div.className = 'form-check mb-3';
           input.type = 'checkbox';
