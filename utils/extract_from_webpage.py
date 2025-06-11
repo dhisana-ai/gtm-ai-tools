@@ -47,7 +47,7 @@ class Lead(BaseModel):
     organization_linkedin_url: str = ""
     email: str = ""
     phone: str = ""
-    follower_count: int = 0
+    linkedin_follower_count: int = 0
 
 
 class LeadList(BaseModel):
