@@ -27,7 +27,7 @@ class LeadSearchResult(BaseModel):
     last_name: str = ""
     full_name: str = ""
     job_title: str = ""
-    follower_count: int = 0
+    linkedin_follower_count: int = 0
     lead_location: str = ""
     summary_about_lead: str = ""
     user_linkedin_url: str = ""
@@ -38,6 +38,7 @@ async def get_structured_output(text: str) -> LeadSearchResult:
 
     prompt = (
         "Extract lead details from the text below.\n"
+        "If follower counts are mentioned, convert values like '1.5k+ followers' to an integer (e.g. 1500).\n"
         f"Return JSON matching this schema:\n{json.dumps(LeadSearchResult.model_json_schema(), indent=2)}\n\n"
         f"Text:\n{text}"
     )

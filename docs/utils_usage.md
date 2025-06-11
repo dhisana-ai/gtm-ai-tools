@@ -116,7 +116,7 @@ task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
 ```
 
 The resulting CSV includes columns for the parsed lead details
-(`first_name`, `last_name`, `job_title`, `follower_count`, `lead_location`,
+(`first_name`, `last_name`, `job_title`, `linkedin_follower_count`, `lead_location`,
 `summary_about_lead`) alongside the normalized `user_linkedin_url` and
 `search_keywords`.
 

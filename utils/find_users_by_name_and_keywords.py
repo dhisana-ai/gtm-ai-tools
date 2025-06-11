@@ -35,7 +35,7 @@ def write_output_rows(output_file: Path, rows: list[dict[str, str]]) -> None:
                 "first_name",
                 "last_name",
                 "job_title",
-                "follower_count",
+                "linkedin_follower_count",
                 "lead_location",
                 "summary_about_lead",
                 "search_keywords",
