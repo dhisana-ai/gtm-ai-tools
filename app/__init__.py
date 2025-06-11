@@ -60,6 +60,7 @@ UTILITY_TITLES = {
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
+    "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
     "generate_image": "Generate Image",

@@ -30,7 +30,7 @@
     <div class="col-md-8">
       {% if prev_csv %}
       <div class="alert alert-secondary d-flex align-items-center mb-3">
-        <div class="flex-grow-1">Using previous CSV: {{ prev_csv }}</div>
+        <div class="flex-grow-1">Using previous output CSV as input: {{ prev_csv }}</div>
         <form method="post" class="ms-2">
           <input type="hidden" name="action" value="clear_csv">
           <button class="btn btn-sm btn-outline-danger" type="submit">Clear</button>
@@ -77,14 +77,14 @@
             {% if download_name %}
               {% set is_image = download_name.endswith('.png') %}
               <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">
-                {{ 'Download Image' if is_image else 'Download CSV' }}
+                {{ 'Download Image' if is_image else 'Download Output CSV' }}
               </a>
             {% endif %}
           </div>
         {% elif download_name %}
           {% set is_image = download_name.endswith('.png') %}
           <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">
-            {{ 'Download Image' if is_image else 'Download CSV' }}
+            {{ 'Download Image' if is_image else 'Download Output CSV' }}
           </a>
         {% endif %}
         {% if image_src %}
