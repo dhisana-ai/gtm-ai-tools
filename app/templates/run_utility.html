@@ -28,6 +28,15 @@
       {% endfor %}
     </div>
     <div class="col-md-8">
+      {% if prev_csv %}
+      <div class="alert alert-secondary d-flex align-items-center mb-3">
+        <div class="flex-grow-1">Using previous output CSV as input: {{ prev_csv }}</div>
+        <form method="post" class="ms-2">
+          <input type="hidden" name="action" value="clear_csv">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Clear</button>
+        </form>
+      </div>
+      {% endif %}
       <form method="post" enctype="multipart/form-data" class="mb-4" id="util-form">
         <input type="hidden" name="mode" value="util">
         <input type="hidden" name="util_name" id="util-name-input" value="{{ default_util }}">
@@ -38,18 +47,25 @@
         <div class="mb-3" id="input-mode-group">
           <label class="form-label">Input Mode</label><br>
           <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" {% if default_mode == 'single' %}checked{% endif %}>
             <label class="form-check-label" for="mode-single">Single Input</label>
           </div>
           <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file" {% if default_mode == 'file' %}checked{% endif %}>
             <label class="form-check-label" for="mode-upload">Upload input list</label>
           </div>
+          {% if prev_csv %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-prev" value="previous" {% if default_mode == 'previous' %}checked{% endif %}>
+            <label class="form-check-label" for="mode-prev">Use Previous Output</label>
+          </div>
+          {% endif %}
         </div>
         <div id="params-container"></div>
         <div class="mb-3" id="file-container" style="display:none;">
           <input class="form-control" type="file" name="csv_file">
         </div>
+        <input type="hidden" name="selected_rows" id="selected-rows">
         <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
         <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
           <span class="visually-hidden">Loading...</span>
@@ -57,10 +73,24 @@
       </form>
 
       <div id="output-section">
-        {% if download_name %}
+        {% if (download_name or util_output) and default_util != 'generate_image' %}
+          <div class="mt-2 d-flex gap-2">
+            <form method="post" action="{{ url_for('push_to_dhisana') }}">
+              <input type="hidden" name="csv_path" value="{{ download_name }}">
+              <input type="hidden" name="output_text" value="{{ util_output }}">
+              <button class="btn btn-secondary" type="submit">Push to Dhisana AI Contacts</button>
+            </form>
+            {% if download_name %}
+              {% set is_image = download_name.endswith('.png') %}
+              <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">
+                {{ 'Download Image' if is_image else 'Download Output CSV' }}
+              </a>
+            {% endif %}
+          </div>
+        {% elif download_name %}
           {% set is_image = download_name.endswith('.png') %}
-          <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">
-            {{ 'Download Image' if is_image else 'Download CSV' }}
+          <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">
+            {{ 'Download Image' if is_image else 'Download Output CSV' }}
           </a>
         {% endif %}
         {% if image_src %}
@@ -68,51 +98,64 @@
             <img src="{{ image_src }}" class="img-fluid" alt="Generated Image">
           </div>
         {% endif %}
-        {% if csv_rows %}
-          <h3 class="mt-4">Input or Output Preview</h3>
-          <div id="csv-grid" class="ag-theme-alpine" style="height:400px;width:100%;"></div>
-          <script>
-            const csvData = {{ csv_rows|tojson }};
-            const columnDefs = csvData.length
-              ? Object.keys(csvData[0]).map(k => {
-                  if (k === 'user_linkedin_url') {
-                    return {
-                      field: k,
-                      cellRenderer: params => {
-                        if (!params.value) return '';
-                        const url = params.value.startsWith('http')
-                          ? params.value
-                          : `https://${params.value}`;
-                        return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
-                      }
-                    };
-                  }
-                  return { field: k };
-                })
-              : [];
-            const gridOptions = {
-              columnDefs,
-              rowData: csvData,
-              pagination: true,
-              paginationPageSize: 20,
-              enableRangeSelection: true
-            };
+        {% if input_rows %}
+          <h3 class="mt-4">Input Preview</h3>
+          <div id="input-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        {% if output_rows %}
+          <h3 class="mt-4">Output Preview</h3>
+          <div id="output-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        <script>
+            const inputData = {{ input_rows|tojson }};
+            const outputData = {{ output_rows|tojson }};
+            const preferredOrder = [
+              'full_name',
+              'user_linkedin_url',
+              'job_title',
+              'email'
+            ];
+            let inputGridApi = null;
+            function makeColumnDefs(data) {
+              const allKeys = data.length ? Object.keys(data[0]) : [];
+              const orderedKeys = [
+                ...preferredOrder.filter(k => allKeys.includes(k)),
+                ...allKeys.filter(k => !preferredOrder.includes(k))
+              ];
+              return orderedKeys.map(k => {
+                if (k === 'user_linkedin_url') {
+                  return {
+                    field: k,
+                    cellRenderer: params => {
+                      if (!params.value) return '';
+                      const url = params.value.startsWith('http') ? params.value : `https://${params.value}`;
+                      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
+                    }
+                  };
+                }
+                return { field: k };
+              });
+            }
+            function createGrid(id, data) {
+              const gridOptions = {
+                columnDefs: makeColumnDefs(data),
+                rowData: data,
+                pagination: true,
+                paginationPageSize: 20,
+                enableRangeSelection: true,
+                rowSelection: 'multiple'
+              };
+              const gridDiv = document.getElementById(id);
+              return gridDiv ? agGrid.createGrid(gridDiv, gridOptions) : null;
+            }
             document.addEventListener('DOMContentLoaded', () => {
-              const gridDiv = document.getElementById('csv-grid');
-              agGrid.createGrid(gridDiv, gridOptions);
+              if (inputData.length) inputGridApi = createGrid('input-grid', inputData);
+              if (outputData.length) createGrid('output-grid', outputData);
             });
           </script>
-        {% endif %}
         {% if util_output %}
           <h3>Output</h3>
           <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
-        {% endif %}
-        {% if (download_name or util_output) and default_util != 'generate_image' %}
-          <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
-            <input type="hidden" name="csv_path" value="{{ download_name }}">
-            <input type="hidden" name="output_text" value="{{ util_output }}">
-            <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
-          </form>
         {% endif %}
       </div>
     </div>
@@ -149,6 +192,12 @@
         const label = document.createElement('label');
         label.textContent = p.label;
         input.name = p.name;
+        if (util === 'linkedin_search_to_csv' && p.name === '--num') {
+          input.value = '10';
+        }
+        if (util === 'linkedin_search_to_csv' && p.name === 'query') {
+          input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
+        }
         if (p.type === 'boolean') {
           div.className = 'form-check mb-3';
           input.type = 'checkbox';
@@ -183,7 +232,7 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(mode === 'file' && util !== 'call_openai_llm');
+        const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
     document.querySelectorAll('.util-card').forEach(card => {
@@ -197,10 +246,15 @@
     const spinner = document.getElementById('run-spinner');
     const runBtn = document.getElementById('run-button');
     const outputSection = document.getElementById('output-section');
+    const selectedInput = document.getElementById('selected-rows');
     form.addEventListener('submit', () => {
       if (spinner) spinner.style.display = 'inline-block';
       if (runBtn) runBtn.disabled = true;
       if (outputSection) outputSection.innerHTML = '';
+      if (inputGridApi && selectedInput) {
+        const rows = inputGridApi.getSelectedRows();
+        selectedInput.value = rows.length ? JSON.stringify(rows) : '';
+      }
     });
     document.addEventListener('DOMContentLoaded', () => {
       selectUtil(utilInput.value);

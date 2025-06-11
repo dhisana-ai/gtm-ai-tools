@@ -14,22 +14,46 @@ from utils import (
     check_email_zero_bounce,
     find_users_by_name_and_keywords,
     call_openai_llm,
+    score_lead,
+    generate_email,
+    common,
 )
 from pathlib import Path
-from flask import (
-    Flask,
-    render_template,
-    request,
-    redirect,
-    url_for,
-    flash,
-    send_from_directory,
-)
+try:
+    from flask import (
+        Flask,
+        render_template,
+        request,
+        redirect,
+        url_for,
+        flash,
+        send_from_directory,
+        session,
+    )
+except Exception:  # pragma: no cover - fallback for test stubs
+    from flask import (
+        Flask,
+        render_template,
+        request,
+        redirect,
+        url_for,
+        flash,
+        send_from_directory,
+    )
+    session = {}
 from dotenv import dotenv_values, set_key
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
+
+# Preferred column order when displaying CSV data in the grid
+DISPLAY_ORDER = [
+    "full_name",
+    "user_linkedin_url",
+    "job_title",
+    "email",
+]
 
 # Optional nicer titles for utilities when displayed in the UI
 UTILITY_TITLES = {
@@ -38,10 +62,26 @@ UTILITY_TITLES = {
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
+    "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
     "generate_image": "Generate Image",
     "get_website_color": "Get website primary color",
+    "score_lead": "Score Leads",
+    "check_email_zero_bounce": "Validate Email",
+    "generate_email": "Generate Email",
+    "send_email_smtp": "Send Email",
+}
+
+# Display order for the utilities list
+UTILITY_ORDER = {
+    "linkedin_search_to_csv": 0,
+    "apollo_info": 1,
+    "score_lead": 2,
+    "check_email_zero_bounce": 3,
+    "generate_email": 4,
+    "push_lead_to_dhisana_webhook": 5,
+    "send_email_smtp": 6,
 }
 
 # Utilities that only support CSV upload mode
@@ -164,6 +204,12 @@ UTILITY_PARAMETERS = {
         {"name": "--company", "label": "Fetch company", "type": "boolean"},
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
     ],
+    "generate_email": [
+        {"name": "--email_generation_instructions", "label": "Email generation instructions"},
+    ],
+    "score_lead": [
+        {"name": "--instructions", "label": "Instructions"},
+    ],
     "send_email_smtp": [
         {"name": "recipient", "label": "Recipient"},
         {"name": "--subject", "label": "Subject"},
@@ -214,10 +260,32 @@ def _list_utils() -> list[dict[str, str]]:
     return sorted(
         items,
         key=lambda x: (
-            0 if x["name"] == "linkedin_search_to_csv" else 1,
+            UTILITY_ORDER.get(x["name"], 100),
             x["title"],
         ),
     )
+
+
+def _load_csv_preview(path: str) -> list[dict[str, str]]:
+    """Return up to 1000 rows from a CSV file in display order."""
+    rows: list[dict[str, str]] = []
+    try:
+        with open(path, newline='', encoding='utf-8-sig') as fh:
+            reader = csv.DictReader(fh)
+            for i, row in enumerate(reader):
+                if i >= 1000:
+                    break
+                ordered: dict[str, str] = {}
+                for key in DISPLAY_ORDER:
+                    if key in row:
+                        ordered[key] = row[key]
+                for key, value in row.items():
+                    if key not in ordered:
+                        ordered[key] = value
+                rows.append(ordered)
+    except Exception:
+        rows = []
+    return rows
 
 
 @app.route('/')
@@ -230,24 +298,66 @@ def run_utility():
     util_output = None
     download_name = None
     image_src = None
-    csv_rows: list[dict[str, str]] = []
-    csv_path_for_grid: str | None = None
+    input_rows: list[dict[str, str]] = []
+    output_rows: list[dict[str, str]] = []
+    input_csv_path: str | None = None
+    output_csv_path: str | None = None
     utils_list = _list_utils()
     util_name = request.form.get('util_name', 'linkedin_search_to_csv')
+    prev_csv = session.get('prev_csv_path')
+    if prev_csv and os.path.exists(prev_csv):
+        input_csv_path = prev_csv
+    if request.method == 'POST' and request.form.get('action') == 'clear_csv':
+        session.pop('prev_csv_path', None)
+        return redirect(url_for('run_utility'))
     if request.method == 'POST':
         file = request.files.get('csv_file')
         uploaded = None
-        if file and file.filename:
+        input_mode = request.form.get('input_mode', 'single')
+        selected_json = request.form.get('selected_rows', '')
+        if selected_json:
+            try:
+                rows = json.loads(selected_json)
+                if rows:
+                    tmp = common.make_temp_csv_filename('selected')
+                    with open(tmp, 'w', newline='', encoding='utf-8') as fh:
+                        writer = csv.DictWriter(fh, fieldnames=rows[0].keys())
+                        writer.writeheader()
+                        for r in rows:
+                            writer.writerow(r)
+                    uploaded = tmp
+            except Exception:
+                uploaded = None
+        if not uploaded and file and file.filename:
             tmp_dir = tempfile.gettempdir()
             filename = os.path.join(tmp_dir, os.path.basename(file.filename))
             file.save(filename)
             uploaded = filename
+        if (
+            not uploaded
+            and input_mode == 'previous'
+            and prev_csv
+            and os.path.exists(prev_csv)
+        ):
+            uploaded = prev_csv
+        if (
+            not uploaded
+            and util_name in UPLOAD_ONLY_UTILS
+            and prev_csv
+            and os.path.exists(prev_csv)
+        ):
+            uploaded = prev_csv
+
+        if uploaded:
+            input_csv_path = uploaded
 
         def build_cmd(values: dict[str, str]) -> list[str]:
             cmd = ['python', '-m', f'utils.{util_name}']
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec['name']
                 val = (values.get(name) or '').strip()
+                if util_name == 'linkedin_search_to_csv' and name == '--num' and not val:
+                    val = '10'
                 if not val:
                     continue
                 if spec.get('type') == 'boolean':
@@ -258,8 +368,7 @@ def run_utility():
                 else:
                     cmd.append(val)
             if util_name == 'linkedin_search_to_csv':
-                fd, out_path = tempfile.mkstemp(suffix='.csv', dir=tempfile.gettempdir())
-                os.close(fd)
+                out_path = common.make_temp_csv_filename(util_name)
                 insert_at = len(cmd)
                 for i, arg in enumerate(cmd[3:], start=3):
                     if arg.startswith('-'):
@@ -280,88 +389,96 @@ def run_utility():
 
         if uploaded:
             if util_name == 'linkedin_search_to_csv':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     linkedin_search_to_csv.linkedin_search_to_csv_from_csv(
                         uploaded, out_path
                     )
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'apollo_info':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     apollo_info.apollo_info_from_csv(uploaded, out_path)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'check_email_zero_bounce':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     check_email_zero_bounce.check_emails_from_csv(uploaded, out_path)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
+            elif util_name == 'score_lead':
+                out_path = common.make_temp_csv_filename(util_name)
+                instructions = request.form.get('--instructions', '')
+                try:
+                    score_lead.score_leads_from_csv(uploaded, out_path, instructions)
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == 'generate_email':
+                out_path = common.make_temp_csv_filename(util_name)
+                email_instructions = request.form.get('--email_generation_instructions', '')
+                try:
+                    generate_email.generate_emails_from_csv(
+                        uploaded, out_path, email_instructions
+                    )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f'Error: {exc}'
+                    download_name = None
+                    output_csv_path = None
             elif util_name == 'call_openai_llm':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 prompt_text = request.form.get('prompt', '')
                 try:
                     call_openai_llm.call_openai_llm_from_csv(uploaded, out_path, prompt_text)
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             elif util_name == 'find_users_by_name_and_keywords':
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 try:
                     find_users_by_name_and_keywords.find_users(Path(uploaded), Path(out_path))
                     download_name = out_path
-                    csv_path_for_grid = out_path
+                    output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
                     util_output = f'Error: {exc}'
                     download_name = None
-                    csv_path_for_grid = None
+                    output_csv_path = None
             else:
                 import csv
                 with open(uploaded, newline='', encoding='utf-8-sig') as fh:
                     reader = csv.DictReader(fh)
                     rows = list(reader)
                     fieldnames = reader.fieldnames or []
-                out_path = os.path.join(
-                    tempfile.gettempdir(),
-                    os.path.basename(uploaded) + '.out.csv',
-                )
+                out_path = common.make_temp_csv_filename(util_name)
                 with open(out_path, 'w', newline='', encoding='utf-8') as out_fh:
                     writer = csv.DictWriter(
                         out_fh, fieldnames=fieldnames + ['status', 'command', 'output']
@@ -375,7 +492,7 @@ def run_utility():
                         )
                         writer.writerow(row)
                 download_name = out_path
-                csv_path_for_grid = out_path
+                output_csv_path = out_path
                 util_output = None
         else:
             values = {spec['name']: request.form.get(spec['name'], '') for spec in UTILITY_PARAMETERS.get(util_name, [])}
@@ -399,29 +516,28 @@ def run_utility():
                         path = os.path.abspath(arg)
                         if os.path.exists(path):
                             download_name = path
-                            csv_path_for_grid = path
+                            output_csv_path = path
                             break
-    if csv_path_for_grid and os.path.exists(csv_path_for_grid):
-        try:
-            import csv
-            with open(csv_path_for_grid, newline='', encoding='utf-8-sig') as fh:
-                reader = csv.DictReader(fh)
-                for i, row in enumerate(reader):
-                    if i >= 1000:
-                        break
-                    csv_rows.append(row)
-        except Exception:
-            csv_rows = []
+    if output_csv_path and os.path.exists(output_csv_path):
+        output_rows = _load_csv_preview(output_csv_path)
+    if input_csv_path and os.path.exists(input_csv_path):
+        input_rows = _load_csv_preview(input_csv_path)
+    if output_csv_path and os.path.exists(output_csv_path):
+        session['prev_csv_path'] = output_csv_path
+        prev_csv = output_csv_path
     return render_template(
         'run_utility.html',
         utils=utils_list,
         util_output=util_output,
         download_name=download_name,
-        csv_rows=csv_rows,
+        input_rows=input_rows,
+        output_rows=output_rows,
         util_params=UTILITY_PARAMETERS,
         default_util=util_name,
         upload_only=UPLOAD_ONLY_UTILS,
         image_src=image_src,
+        prev_csv=prev_csv,
+        default_mode='previous' if prev_csv else 'single',
     )
 
 

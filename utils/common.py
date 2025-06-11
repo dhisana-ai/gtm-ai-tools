@@ -117,3 +117,17 @@ def get_openai_model() -> str:
     """Return the OpenAI model name from the environment or the default."""
     return os.getenv("OPENAI_MODEL_NAME", "gpt-4.1")
 
+
+def make_temp_csv_filename(tool: str) -> str:
+    """Return a lowercase CSV path like ``toolname_YYYYMMDD_HHMMSS.csv``."""
+    import tempfile
+    import datetime
+    from pathlib import Path
+
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    name = f"{tool}_{ts}.csv".lower()
+    path = Path(tempfile.gettempdir()) / name
+    # Ensure the file exists
+    path.touch()
+    return str(path)
+

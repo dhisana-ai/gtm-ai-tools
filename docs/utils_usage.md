@@ -32,8 +32,8 @@ task run:command -- mcp_tool_sample "Ping"
 
 ## Search LinkedIn URLs
 
-`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERPER_API_KEY` environment variable.
-All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format.
+`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and extracts basic lead details from the search snippets. The results are written to a CSV file and require the `SERPER_API_KEY` environment variable.
+All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format and each row includes the parsed lead information.
 
 Example usage fetching 20 results:
 
@@ -62,7 +62,7 @@ The script prints a JSON object containing `company_website`, `company_domain` a
 
 ## Find User by Name and Keywords
 
-`find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object containing the full name, the LinkedIn profile URL and the search keywords used.
+`find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object with lead details parsed from the search results, including the LinkedIn profile URL.
 The profile URL is normalized to the `https://www.linkedin.com/in/<id>` format.
 
 Run it with a name and keywords:
@@ -94,8 +94,9 @@ The script prints the resulting JSON to stdout.
 
 `find_users_by_name_and_keywords.py` reads a CSV containing `full_name` and
 `search_keywords` columns. For each row it looks up the person's LinkedIn profile
-using Google search through Serper.dev and writes the results to a new CSV file.
-All profile URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` form.
+using Google search through Serper.dev. The resulting CSV contains lead details
+extracted from the search results (name, title, location, followers, summary) and
+the normalized `user_linkedin_url`.
 
 Run it with an input and output file. When using the Docker based `task` command
 the paths should point inside the container (the local `output/` directory is
@@ -114,8 +115,10 @@ task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
     /tmp/input.csv /tmp/output.csv
 ```
 
-The resulting CSV contains `full_name`, `user_linkedin_url` and
-`search_keywords` for each entry.
+The resulting CSV includes columns for the parsed lead details
+(`first_name`, `last_name`, `job_title`, `linkedin_follower_count`, `lead_location`,
+`summary_about_lead`) alongside the normalized `user_linkedin_url` and
+`search_keywords`.
 
 ## Find Email and Phone
 
@@ -260,6 +263,15 @@ task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body 
 
 ```bash
 task run:command -- send_slack_message "Deployment finished"
+```
+
+### Generate Email Copy
+
+`generate_email.py` produces a subject and body for a lead using OpenAI. Pass the lead data as JSON with `--lead` or provide a CSV via `--csv` and `--output_csv`. The `OPENAI_API_KEY` environment variable must be set.
+
+```bash
+task run:command -- generate_email --lead '{"full_name": "John Doe"}' \
+    --email_generation_instructions "Write a short intro email"
 ```
 
 ## Generate Image with OpenAI
