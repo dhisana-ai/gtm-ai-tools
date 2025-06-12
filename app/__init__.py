@@ -838,6 +838,7 @@ def generate_utility():
             model="gpt-4o-mini",
             input=codex_prompt
         )
+        prev_response_id = getattr(response, 'id', None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if hasattr(response, "output") and isinstance(response.output, list) and len(response.output) > 0:
@@ -854,6 +855,48 @@ def generate_utility():
     except Exception as e:
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
+
+    # Validate generated code by attempting to compile; if syntax errors occur,
+    # ask the LLM to correct up to 10 retries.
+    for attempt in range(10):
+        try:
+            compile(code, '<generated>', 'exec')
+            break
+        except Exception as compile_err:
+            logging.warning("Generated code failed to compile (attempt %d): %s",
+                            attempt + 1, compile_err)
+            commented_code = "\n".join(f"# {line}" for line in code.splitlines())
+            correction_prompt = (
+                codex_prompt
+                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"{commented_code}\n"
+                + "# Please provide the full corrected utility code below:\n"
+            )
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                input=correction_prompt,
+                previous_response_id=prev_response_id,
+            )
+            prev_response_id = getattr(response, 'id', prev_response_id)
+            # Extract corrected code same as before
+            new_code = None
+            if hasattr(response, "output") and isinstance(response.output, list):
+                for msg in response.output:
+                    if hasattr(msg, "content") and isinstance(msg.content, list):
+                        for c in msg.content:
+                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                                new_code = c.text.strip()
+                                break
+                        if new_code:
+                            break
+            if not new_code:
+                continue
+            code = new_code
+    else:
+        # Exhausted retries without valid code
+        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
+        logging.error(err_msg)
+        return jsonify({"success": False, "error": err_msg}), 500
 
     return jsonify({
         "success": True,
