@@ -1011,10 +1011,11 @@ def generate_utility():
         except Exception as compile_err:
             logging.warning("Generated code failed to compile (attempt %d): %s",
                             attempt + 1, compile_err)
-            # Ask the model to correct the code based on the compile error, carrying conversation state
+            commented_code = "\n".join(f"# {line}" for line in code.splitlines())
             correction_prompt = (
                 codex_prompt
-                + f"# The previous code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"{commented_code}\n"
                 + "# Please provide the full corrected utility code below:\n"
             )
             response = client.responses.create(
