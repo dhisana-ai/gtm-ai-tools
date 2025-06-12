@@ -122,5 +122,8 @@ if _original_flask is not None:
     sys.modules['flask'] = _original_flask
 else:
     sys.modules.pop('flask', None)
+    # Re-import real Flask package
+    import importlib
+    sys.modules['flask'] = importlib.import_module('flask')
 # Remove stub-loaded app module so it will be re-imported under real flask
 sys.modules.pop('app', None)

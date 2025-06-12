@@ -329,17 +329,16 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
 
 
 if hasattr(app, "before_request"):
-
     @app.before_request
     def require_login():
         endpoint = request.endpoint or ""
-        if endpoint.startswith("static") or endpoint == "login":
+        # Allow static files, login, and utility generation without authentication
+        if endpoint.startswith("static") or endpoint in ("login", "generate_utility"):
             return
         if not session.get("logged_in"):
             return redirect(url_for("login"))
 
 else:  # pragma: no cover - for tests with DummyFlask
-
     def require_login():
         return
 
@@ -860,4 +859,3 @@ def generate_utility():
         "success": True,
         "code": code
     })
->>>>>>> b6d0f5f (Changes to support creating new GTM utility from user prompt)
