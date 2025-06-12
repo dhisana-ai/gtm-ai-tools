@@ -16,6 +16,38 @@
     Vibe code and add your own GTM workflow in 5 min!
     <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">Vibe coding instructions</a>
   </p>
+  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
+    Create New GTM Utility
+  </button>
+  <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content shadow-lg border-0" style="border-radius: 1rem;">
+        <form id="generate-utility-form" method="post" action="{{ url_for('generate_utility') }}">
+          <div class="modal-header bg-primary text-white" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
+            <h4 class="modal-title fw-bold" id="generateUtilityModalLabel">Create New GTM Utility</h4>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body bg-light">
+            <label for="utilityPrompt" class="form-label fw-semibold">Describe your GTM utility:</label>
+            <textarea class="form-control mb-3" id="utilityPrompt" name="prompt" rows="5" required style="font-size:1.1em; border-radius:0.5em;"></textarea>
+            <div id="generate-utility-status" class="mt-2"></div>
+            <div id="generated-code-container" style="display:none;">
+              <label for="generated-code" class="form-label mt-3 fw-semibold">Generated Code:</label>
+              <div class="position-relative">
+                <pre id="generated-code" class="bg-white border rounded p-3" style="font-size:1em; max-height:400px; overflow:auto;"></pre>
+                <button type="button" class="btn btn-outline-secondary btn-sm position-absolute top-0 end-0 m-2" id="copy-code-btn" title="Copy to clipboard">
+                  <i class="bi bi-clipboard"></i> Copy
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
+            <button type="submit" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
   <div class="row">
     <div class="col-md-4 mb-4" style="max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       {% for util in utils %}
@@ -181,10 +213,11 @@
     </div>
   </div>
 
-  <script>
-    const PARAM_MAP = {{ util_params|tojson }};
+{% block scripts %}
+<script>
+  const PARAM_MAP = {{ util_params|tojson|safe }};
     const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
-    const utilInput = document.getElementById('util-name-input');
+  const utilInput = document.getElementById('util-name-input');
 
       function selectUtil(name) {
         utilInput.value = name;
@@ -255,23 +288,20 @@
         const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
-    document.querySelectorAll('.util-card').forEach(card => {
+  document.querySelectorAll('.util-card').forEach(card => {
         card.addEventListener('click', () => {
           selectUtil(card.dataset.util);
           renderParams();
         });
       });
-    document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
-    const form = document.getElementById('util-form');
-    const spinner = document.getElementById('run-spinner');
-    const runBtn = document.getElementById('run-button');
-    const outputSection = document.getElementById('output-section');
-    const selectedInput = document.getElementById('selected-rows');
-    const pushForm = document.getElementById('push-form');
-    const pushSelected = document.getElementById('selected-output-rows');
-    const downloadForm = document.getElementById('download-form');
-    const downloadSelected = document.getElementById('download-selected');
-    form.addEventListener('submit', () => {
+  document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
+  const utilForm = document.getElementById('util-form');
+  const spinner = document.getElementById('run-spinner');
+  const runBtn = document.getElementById('run-button');
+  const outputSection = document.getElementById('output-section');
+  const selectedInput = document.getElementById('selected-rows');
+  if (utilForm) {
+    utilForm.addEventListener('submit', () => {
       if (spinner) spinner.style.display = 'inline-block';
       if (runBtn) runBtn.disabled = true;
       if (outputSection) outputSection.innerHTML = '';
@@ -280,27 +310,54 @@
         selectedInput.value = rows.length ? JSON.stringify(rows) : '';
       }
     });
-    if (pushForm) {
-      pushForm.addEventListener('submit', () => {
-        if (outputGridApi && pushSelected) {
-          const rows = outputGridApi.getSelectedRows();
-          pushSelected.value = rows.length ? JSON.stringify(rows) : '';
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    selectUtil(utilInput.value);
+    renderParams();
+    updateMode();
+  });
+  // Codex utility modal form handler
+  const genForm = document.getElementById('generate-utility-form');
+  if (genForm) {
+    genForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const prompt = document.getElementById('utilityPrompt').value;
+      const statusDiv = document.getElementById('generate-utility-status');
+      statusDiv.textContent = 'Generating...';
+      fetch('/generate_utility', {
+        method: 'POST',
+        body: new URLSearchParams({prompt}),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          statusDiv.textContent = 'Utility created! Here is your code:';
+          document.getElementById('generated-code').textContent = data.code;
+          document.getElementById('generated-code-container').style.display = '';
+        } else {
+          statusDiv.textContent = 'Failed to generate utility.';
+          document.getElementById('generated-code-container').style.display = 'none';
         }
+      })
+      .catch(() => {
+        statusDiv.textContent = 'Error contacting server.';
       });
-    }
-    if (downloadForm) {
-      downloadForm.addEventListener('submit', () => {
-        if (outputGridApi && downloadSelected) {
-          const rows = outputGridApi.getSelectedRows();
-          downloadSelected.value = rows.length ? JSON.stringify(rows) : '';
-        }
-      });
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-      selectUtil(utilInput.value);
-      renderParams();
-      updateMode();
     });
-  </script>
-
+  }
+  // Copy to clipboard functionality
+  const copyBtn = document.getElementById('copy-code-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      const code = document.getElementById('generated-code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        copyBtn.innerHTML = '<i class="bi bi-clipboard-check"></i> Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+        }, 1500);
+      });
+    });
+  }
+</script>
+{% endblock %}
 {% endblock %}

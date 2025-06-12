@@ -63,7 +63,15 @@ if 'openai' not in sys.modules:
     openai = types.ModuleType('openai')
     class DummyClient:
         def __init__(self, api_key=None):
-            self.responses = types.SimpleNamespace(create=lambda **kw: types.SimpleNamespace(output_text="dummy"))
+            # Stub both responses and embeddings for embed_text/build_utility_embeddings
+            self.responses = types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(output_text="dummy")
+            )
+            self.embeddings = types.SimpleNamespace(
+                create=lambda **kw: types.SimpleNamespace(
+                    data=[types.SimpleNamespace(embedding=[0.0])]
+                )
+            )
     openai.OpenAI = DummyClient
     class DummyAsyncOpenAI:
         def __init__(self, api_key=None):

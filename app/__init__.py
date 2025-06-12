@@ -1,5 +1,6 @@
 import os
 import shlex
+import shutil
 import subprocess
 import tempfile
 import csv
@@ -32,6 +33,7 @@ try:
         flash,
         send_from_directory,
         session,
+        jsonify,
     )
 except Exception:  # pragma: no cover - fallback for test stubs
     from flask import (
@@ -42,14 +44,22 @@ except Exception:  # pragma: no cover - fallback for test stubs
         url_for,
         flash,
         send_from_directory,
+        jsonify,
     )
 
     session = {}
 from dotenv import dotenv_values, set_key
+import openai
+import numpy as np
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
+UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
+UTILITY_EMBEDDINGS = []
 
 # Preferred column order when displaying CSV data in the grid
 DISPLAY_ORDER = [
@@ -319,17 +329,16 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
 
 
 if hasattr(app, "before_request"):
-
     @app.before_request
     def require_login():
         endpoint = request.endpoint or ""
-        if endpoint.startswith("static") or endpoint == "login":
+        # Allow static files, login, and utility generation without authentication
+        if endpoint.startswith("static") or endpoint in ("login", "generate_utility"):
             return
         if not session.get("logged_in"):
             return redirect(url_for("login"))
 
 else:  # pragma: no cover - for tests with DummyFlask
-
     def require_login():
         return
 
@@ -771,3 +780,82 @@ def push_to_dhisana():
             pass
     flash(f"Pushed {pushed} leads to Dhisana.")
     return redirect(url_for("run_utility"))
+
+def embed_text(text):
+    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002"
+    )
+    return np.array(response.data[0].embedding)
+
+def build_utility_embeddings():
+    global UTILITY_EMBEDDINGS
+    UTILITY_EMBEDDINGS = []
+    for fname in os.listdir(UTILS_DIR):
+        if fname.endswith('.py') and fname != 'common.py':
+            path = os.path.join(UTILS_DIR, fname)
+            with open(path, 'r', encoding='utf-8') as f:
+                code = f.read()
+            emb = embed_text(code[:2000])
+            UTILITY_EMBEDDINGS.append({
+                'filename': fname,
+                'code': code,
+                'embedding': emb
+            })
+
+def get_top_k_utilities(prompt, k=3):
+    prompt_emb = embed_text(prompt)
+    scored = []
+    for util in UTILITY_EMBEDDINGS:
+        score = np.dot(prompt_emb, util['embedding']) / (np.linalg.norm(prompt_emb) * np.linalg.norm(util['embedding']))
+        scored.append((score, util))
+    scored.sort(reverse=True, key=lambda x: x[0])
+    return [util['code'] for score, util in scored[:k]]
+
+build_utility_embeddings()
+
+@app.route('/generate_utility', methods=['POST'])
+def generate_utility():
+    user_prompt = request.form['prompt']
+    top_examples = get_top_k_utilities(user_prompt, k=3)
+    prompt_lines = [
+        "# The following are Python utilities for GTM automation, lead generation, enrichment, outreach, or sales/marketing workflows.",
+    ]
+    for idx, example in enumerate(top_examples, start=1):
+        prompt_lines.append(f"# Example {idx}:")
+        for line in example.splitlines():
+            prompt_lines.append(f"# {line}")
+    prompt_lines.append("# User wants a new GTM utility:")
+    prompt_lines.append(f"# {user_prompt}")
+    prompt_lines.append("# Please provide the Python code for this utility below:")
+    codex_prompt = "\n".join(prompt_lines) + "\n"
+    logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
+
+    try:
+        client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=codex_prompt
+        )
+        # Only handle the new format: response.output is a list of ResponseOutputMessage
+        code = None
+        if hasattr(response, "output") and isinstance(response.output, list) and len(response.output) > 0:
+            for msg in response.output:
+                if hasattr(msg, "content") and isinstance(msg.content, list):
+                    for c in msg.content:
+                        if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                            code = c.text.strip()
+                            break
+                    if code:
+                        break
+        if not code:
+            raise ValueError(f"Unexpected OpenAI response format: {response!r}")
+    except Exception as e:
+        logging.error("OpenAI API error: %s", str(e))
+        return jsonify({"success": False, "error": str(e)}), 500
+
+    return jsonify({
+        "success": True,
+        "code": code
+    })
