@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <h2>History</h2>
+  {% if csv_files %}
+  <table class="table">
+    <thead>
+      <tr><th>Filename</th><th>Modified</th></tr>
+    </thead>
+    <tbody>
+      {% for f in csv_files %}
+      <tr>
+        <td><a href="{{ url_for('download_file', filename=f.name) }}">{{ f.name }}</a></td>
+        <td>{{ f.mtime }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p>No CSV files found.</p>
+  {% endif %}
+{% endblock %}

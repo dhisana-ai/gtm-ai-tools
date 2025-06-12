@@ -5,21 +5,36 @@ from utils import generate_image as mod
 
 class DummyImages:
     def __init__(self):
-        self.generate_args = None
         self.edit_args = None
 
     def generate(self, **kwargs):
-        self.generate_args = kwargs
-        return SimpleNamespace(data=[SimpleNamespace(b64_json="img")])
+        raise AssertionError("images.generate should not be called")
 
     def edit(self, **kwargs):
         self.edit_args = kwargs
         return SimpleNamespace(data=[SimpleNamespace(b64_json="img")])
 
 
+class DummyResponses:
+    def __init__(self):
+        self.create_args = None
+
+    def create(self, **kwargs):
+        self.create_args = kwargs
+        return SimpleNamespace(
+            output=[
+                SimpleNamespace(
+                    type="image_generation_call",
+                    result="img",
+                )
+            ]
+        )
+
+
 class DummyClient:
     def __init__(self):
         self.images = DummyImages()
+        self.responses = DummyResponses()
 
 
 class DummyResp:
@@ -45,7 +60,7 @@ def test_generate(monkeypatch, capsys):
     mod.main()
     captured = capsys.readouterr()
     assert "img" in captured.out
-    assert dummy.images.generate_args["prompt"] == "hello"
+    assert dummy.responses.create_args["input"] == "hello"
 
 
 def test_edit(monkeypatch, capsys):
@@ -57,5 +72,7 @@ def test_edit(monkeypatch, capsys):
     mod.main()
     captured = capsys.readouterr()
     assert "img" in captured.out
-    assert dummy.images.edit_args["prompt"] == "hi"
+    inp = dummy.responses.create_args["input"]
+    assert inp[0]["content"][0]["text"] == "hi"
+    assert dummy.images.edit_args is None
     assert dummy_urlopen.called == "http://e.com/a.png"

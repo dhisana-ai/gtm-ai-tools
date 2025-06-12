@@ -1,4 +1,5 @@
 import types
+import pytest
 from utils import send_slack_message as mod
 
 class DummyReq:
@@ -18,9 +19,10 @@ def test_send_with_env(monkeypatch):
     assert dummy.calls[0][1] == {"text": "hello"}
 
 
-def test_skip_without_webhook(monkeypatch):
+def test_error_without_webhook(monkeypatch):
     dummy = DummyReq()
     monkeypatch.setattr(mod, "requests", types.SimpleNamespace(post=dummy.post))
     monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
-    mod.send_slack_message("hi")
+    with pytest.raises(RuntimeError):
+        mod.send_slack_message("hi")
     assert dummy.calls == []

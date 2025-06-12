@@ -27,12 +27,13 @@ Vibe code and add your own GTM workflow in 5 min! [Vibe coding instructions](doc
 
 View this project on [GitHub](https://github.com/dhisana-ai/gtm-ai-tools). Signup and get a 24/7 managed version of this service that runs an AI Agent for you in the cloud with all these workflows and more.
 
-Join the discussion on our [Slack community channel](https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-3543qqhoz-XThU6z1VOD21lNf3AI8K3Q).
+Join the discussion on our [Slack community channel](https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-37bzb09dc-VFgu_1PwM2CXORH1e6s8Xg).
 
 
 ## Quick Start
 
 Follow these steps to spin up the container and run a utility.
+If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio_setup.md).
 
 1. **Clone the repository**
    ```bash
@@ -52,12 +53,22 @@ Follow these steps to spin up the container and run a utility.
    HUBSPOT_API_KEY=...
    CLAY_API_KEY=...
    CLAY_WEBHOOK_URL=...
+   APP_PASSWORD=...
    ```
+   At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
+   `APP_PASSWORD`. Other variables are optional based on which tools you plan to
+   use.
 4. **Start the container and open the app**
    ```bash
-   docker run --env-file .env -p 8080:8080 gtm-ai-tools
+   docker run --env-file .env -p 8080:8080 \
+       -v $(pwd)/data:/data gtm-ai-tools
    ```
    Then browse to <http://localhost:8080>.
+   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+   password set in `APP_PASSWORD`.
+   Mounting a host directory to `/data` lets you access uploaded and generated
+   files outside the container. Replace `$(pwd)/data` with any path on your
+   system.
 
 ## Repository structure
 
@@ -118,18 +129,17 @@ task run:command -- linkedin_search_to_csv \
 ```
 
 After the run you will find `results.csv` inside the `output/` directory.
-The Taskfile also copies any files created in `output/` to `/tmp/outputs`,
+The Taskfile also copies any files created in `output/` to `/data/outputs`,
 creating that directory if it does not already exist. This provides a stable
 location for retrieving results outside the project tree.
 
-To use files from an arbitrary directory on your host, mount that directory when
-starting the container. For example to read `/tmp/input.csv` and produce
-`/tmp/output.csv`:
+To use files from an arbitrary directory on your host, mount that directory to
+/data when starting the container. For example to read `/tmp/dhisana_gtm_tools/input.csv` and produce `/tmp/dhisana_gtm_tools/output.csv`:
 
 ```bash
-docker run --env-file .env -v /tmp:/tmp gtm-ai-tools \
+docker run --env-file .env -v /tmp/dhisana_gtm_tools/:/data gtm-ai-tools \
     python -m utils.find_users_by_name_and_keywords \
-    /tmp/input.csv /tmp/output.csv
+    /data/input.csv /data/output.csv
 ```
 
 ### Running utilities locally
@@ -191,10 +201,14 @@ in the `app/` directory. When the container starts without any command
 arguments, the web interface launches automatically on port `8080`:
 
 ```bash
-docker run -p 8080:8080 gtm-ai-tools
+docker run -p 8080:8080 \
+    -v $(pwd)/data:/data gtm-ai-tools
 ```
+Mounting `/data` in this way allows you to retain any uploaded or generated
+files on your host machine.
 
-Open <http://localhost:8080> in your browser to access the app. The interface
+Open <http://localhost:8080> in your browser to access the app. Log in with the
+username from `APP_USERNAME` and the password you set in `APP_PASSWORD`. The interface
 shows a **Run a Utility** page where you can choose a tool and provide the
 required command‑line parameters. If a utility requires a CSV input you can
 upload the file directly in the form. When a utility produces a CSV output a

@@ -6,10 +6,14 @@
   <title>Dhisana AI Agent</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/styles/ag-grid.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/styles/ag-theme-alpine.css">
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-community/dist/ag-grid-community.min.noStyle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ag-grid-enterprise/dist/ag-grid-enterprise.min.js"></script>
 </head>
 <body class="d-flex flex-column min-vh-100">
   <header class="bg-light border-bottom mb-4">
-    <nav class="navbar navbar-expand-lg navbar-light container">
+    <nav class="navbar navbar-expand-lg navbar-light container-fluid">
       <a class="navbar-brand d-flex align-items-center" href="https://www.dhisana.ai">
         <img src="https://www.dhisana.ai/assets/images/color-logo-no-background.svg" alt="Dhisana" height="30" class="me-2">
       </a>
@@ -18,12 +22,15 @@
           <li class="nav-item">
             <a class="nav-link" href="{{ url_for('run_utility') }}">Run a Utility</a>
           </li>
-          <li class="nav-item">
+        <li class="nav-item">
             <a class="nav-link" href="{{ url_for('settings') }}">Settings</a>
-          </li>
-          <li class="nav-item">
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('history') }}">History</a>
+        </li>
+        <li class="nav-item">
             <a class="nav-link" href="{{ url_for('help_page') }}">Help</a>
-          </li>
+        </li>
           <li class="nav-item">
             <a class="nav-link" href="https://github.com/dhisana-ai/gtm-ai-tools" target="_blank">GitHub</a>
           </li>
@@ -31,14 +38,23 @@
             <a class="nav-link" href="https://www.dhisana.ai" target="_blank">Signup for 24/7 managed AI Agents</a>
           </li>
           <li class="nav-item">
-            <a class="nav-link" href="https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-3543qqhoz-XThU6z1VOD21lNf3AI8K3Q" target="_blank">Join our Slack community</a>
+            <a class="nav-link" href="https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-37bzb09dc-VFgu_1PwM2CXORH1e6s8Xg" target="_blank">Join our Slack community</a>
           </li>
+          {% if session.get('logged_in') %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('logout') }}">Logout</a>
+          </li>
+          {% else %}
+          <li class="nav-item">
+            <a class="nav-link" href="{{ url_for('login') }}">Login</a>
+          </li>
+          {% endif %}
         </ul>
       </div>
     </nav>
   </header>
 
-  <main class="container flex-fill">
+  <main class="container-fluid flex-fill">
     {% block content %}{% endblock %}
   </main>
 
@@ -53,10 +69,12 @@
           Vibe code your own GTM workflow free in 5 min
         </a>
         &middot;
-        <a href="https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-3543qqhoz-XThU6z1VOD21lNf3AI8K3Q" target="_blank" class="text-decoration-none">
+        <a href="https://join.slack.com/t/dhisanaaicommunity/shared_invite/zt-37bzb09dc-VFgu_1PwM2CXORH1e6s8Xg" target="_blank" class="text-decoration-none">
           Join our Slack community
         </a>
       </div>
     </footer>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>

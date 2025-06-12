@@ -14,6 +14,11 @@ task run:command -- call_openai_llm "Hello!"
 
 The script prints the text from the `responses.create` call.
 
+When running the tool on a CSV file through the web interface, provide a
+prompt in addition to the uploaded file. The prompt is concatenated with each
+row from the CSV and the responses are written to a new `llm_output` column in
+the output file.
+
 ## MCP Tool Sample
 
 `mcp_tool_sample.py` sends a prompt to OpenAI using an MCP server. It requires `OPENAI_API_KEY` along with `MCP_SERVER_URL`, `MCP_API_KEY_HEADER_NAME` and `MCP_API_KEY_HEADER_VALUE`. Optionally set `MCP_SERVER_LABEL`. The OpenAI model can also be set with `OPENAI_MODEL_NAME`.
@@ -27,8 +32,8 @@ task run:command -- mcp_tool_sample "Ping"
 
 ## Search LinkedIn URLs
 
-`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and writes them to a CSV file. It requires the `SERPER_API_KEY` environment variable.
-All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format.
+`linkedin_search_to_csv.py` queries Google through Serper.dev to find LinkedIn profile URLs and extracts basic lead details from the search snippets. The results are written to a CSV file and require the `SERPER_API_KEY` environment variable.
+All LinkedIn URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` format and each row includes the parsed lead information.
 
 Example usage fetching 20 results:
 
@@ -40,7 +45,7 @@ The Taskfile mounts the `output/` directory from your host to `/workspace`
 inside the container. By writing to `/workspace/results.csv` you will find the
 file at `output/results.csv` locally. Inspect it with `cat output/results.csv`.
 After the command finishes, everything in `output/` is also copied to
-`/tmp/outputs` for convenience.
+`/data/outputs` for convenience.
 
 ## Find Company Info
 
@@ -57,7 +62,7 @@ The script prints a JSON object containing `company_website`, `company_domain` a
 
 ## Find User by Name and Keywords
 
-`find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object containing the full name, the LinkedIn profile URL and the search keywords used.
+`find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object with lead details parsed from the search results, including the LinkedIn profile URL.
 The profile URL is normalized to the `https://www.linkedin.com/in/<id>` format.
 
 Run it with a name and keywords:
@@ -89,8 +94,9 @@ The script prints the resulting JSON to stdout.
 
 `find_users_by_name_and_keywords.py` reads a CSV containing `full_name` and
 `search_keywords` columns. For each row it looks up the person's LinkedIn profile
-using Google search through Serper.dev and writes the results to a new CSV file.
-All profile URLs in the output are normalized to the `https://www.linkedin.com/in/<id>` form.
+using Google search through Serper.dev. The resulting CSV contains lead details
+extracted from the search results (name, title, location, followers, summary) and
+the normalized `user_linkedin_url`.
 
 Run it with an input and output file. When using the Docker based `task` command
 the paths should point inside the container (the local `output/` directory is
@@ -102,15 +108,18 @@ task run:command -- find_users_by_name_and_keywords \
 ```
 If you want to pass paths that are outside the project directory, mount the
 directory when invoking Docker and reference the files by that path inside the
-container:
+container. For example, map a local directory to `/data`:
 
 ```bash
-task run:command_local_mapping -- /tmp find_users_by_name_and_keywords \
-    /tmp/input.csv /tmp/output.csv
+docker run --env-file .env -v /tmp/dhisana_gtm_tools:/data gtm-ai-tools \
+    python -m utils.find_users_by_name_and_keywords \
+    /data/input.csv /data/output.csv
 ```
 
-The resulting CSV contains `full_name`, `user_linkedin_url` and
-`search_keywords` for each entry.
+The resulting CSV includes columns for the parsed lead details
+(`first_name`, `last_name`, `job_title`, `linkedin_follower_count`, `lead_location`,
+`summary_about_lead`) alongside the normalized `user_linkedin_url` and
+`search_keywords`.
 
 ## Find Email and Phone
 
@@ -257,12 +266,47 @@ task run:command -- send_email_smtp recipient@example.com --subject "Hi" --body 
 task run:command -- send_slack_message "Deployment finished"
 ```
 
+### Generate Email Copy
+
+`generate_email.py` produces a subject and body for a lead using OpenAI. Pass the lead data as JSON with `--lead` or provide a CSV via `--csv` and `--output_csv`. The `OPENAI_API_KEY` environment variable must be set.
+
+```bash
+task run:command -- generate_email --lead '{"full_name": "John Doe"}' \
+    --email_generation_instructions "Write a short intro email"
+```
+
 ## Generate Image with OpenAI
 
-`generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script edits that picture using the prompt instead of generating a new one. It requires the `OPENAI_API_KEY` environment variable.
+`generate_image.py` creates an image from a text prompt. If you supply an `--image-url` the script sends the image along with the prompt to the OpenAI responses API for editing instead of calling the legacy `images.edit` endpoint. It requires the `OPENAI_API_KEY` environment variable.
 
 ```bash
 task run:command -- generate_image "an astronaut riding a horse"
+```
+
+You can achieve the same using the OpenAI Python SDK directly:
+
+```python
+from openai import OpenAI
+import base64
+
+client = OpenAI()
+
+response = client.responses.create(
+    model="gpt-4.1-mini",
+    input="Generate an image of gray tabby cat hugging an otter with an orange scarf",
+    tools=[{"type": "image_generation"}],
+)
+
+image_data = [
+    output.result
+    for output in response.output
+    if output.type == "image_generation_call"
+]
+
+if image_data:
+    image_base64 = image_data[0]
+    with open("otter.png", "wb") as f:
+        f.write(base64.b64decode(image_base64))
 ```
 
 Or edit an existing image:
@@ -271,14 +315,64 @@ Or edit an existing image:
 task run:command -- generate_image "add a beach background" --image-url http://example.com/photo.png
 ```
 
+Example using the SDK with a source image:
+
+```python
+from openai import OpenAI
+import base64
+
+client = OpenAI()
+
+prompt = """Generate a photorealistic image of a gift basket on a white background \
+labeled 'Relax & Unwind' with a ribbon and handwriting-like font, \
+containing all the items in the reference pictures."""
+
+base64_image1 = encode_image("body-lotion.png")
+base64_image2 = encode_image("soap.png")
+file_id1 = create_file("body-lotion.png")
+file_id2 = create_file("incense-kit.png")
+
+response = client.responses.create(
+    model="gpt-4.1",
+    input=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt},
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_image1}"},
+                {"type": "input_image", "image_url": f"data:image/jpeg;base64,{base64_image2}"},
+                {"type": "input_image", "file_id": file_id1},
+                {"type": "input_image", "file_id": file_id2},
+            ],
+        }
+    ],
+    tools=[{"type": "image_generation"}],
+)
+
+image_generation_calls = [
+    output
+    for output in response.output
+    if output.type == "image_generation_call"
+]
+
+image_data = [output.result for output in image_generation_calls]
+
+if image_data:
+    image_base64 = image_data[0]
+    with open("gift-basket.png", "wb") as f:
+        f.write(base64.b64decode(image_base64))
+else:
+    print(response.output.content)
+```
+
 ## Extract Companies from Image
 
-`extract_companies_from_image.py` detects company logos in a picture and looks up
-each organization's website, primary domain and LinkedIn page. It requires the
-`OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
+`extract_companies_from_image.py` detects company logos in an image URL and looks
+up each organization's website, primary domain and LinkedIn page. It requires
+the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 
 ```bash
-task run:command -- extract_companies_from_image /workspace/logo.png
+task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
 
 

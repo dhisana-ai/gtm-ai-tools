@@ -10,8 +10,12 @@ ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
 
 # ─── 1️⃣  OS libs for Chromium ───────────────────────────────────────
 USER root
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN echo "Acquire::http::Pipeline-Depth 0;" > /etc/apt/apt.conf.d/99custom && \
+    echo "Acquire::http::No-Cache true;" >> /etc/apt/apt.conf.d/99custom && \
+    echo "Acquire::BrokenProxy    true;" >> /etc/apt/apt.conf.d/99custom
+
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         libnss3 libatk-bridge2.0-0 libatk1.0-0 \

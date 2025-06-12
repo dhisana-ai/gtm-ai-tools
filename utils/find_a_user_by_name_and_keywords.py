@@ -11,15 +11,47 @@ from typing import Optional
 from urllib.parse import urlparse, urlunparse
 
 from utils.common import search_google_serper, extract_user_linkedin_page
+from utils.extract_from_webpage import _get_structured_data_internal
+
+try:
+    from pydantic import BaseModel
+except ImportError:  # pragma: no cover - tests use stub
+    from pydantic_stub import BaseModel
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-async def find_user_linkedin_url(full_name: str, search_keywords: str = "") -> str:
-    """Return the LinkedIn profile URL for a person using Google search."""
+
+class LeadSearchResult(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    full_name: str = ""
+    job_title: str = ""
+    linkedin_follower_count: int = 0
+    lead_location: str = ""
+    summary_about_lead: str = ""
+    user_linkedin_url: str = ""
+
+
+async def get_structured_output(text: str) -> LeadSearchResult:
+    """Parse ``text`` into ``LeadSearchResult`` using OpenAI."""
+
+    prompt = (
+        "Extract lead details from the text below.\n"
+        "If follower counts are mentioned, convert values like '1.5k+ followers' to an integer (e.g. 1500).\n"
+        f"Return JSON matching this schema:\n{json.dumps(LeadSearchResult.model_json_schema(), indent=2)}\n\n"
+        f"Text:\n{text}"
+    )
+    result, status = await _get_structured_data_internal(prompt, LeadSearchResult)
+    if status != "SUCCESS" or result is None:
+        return LeadSearchResult()
+    return result
+
+async def find_user_linkedin_url(full_name: str, search_keywords: str = "") -> dict:
+    """Return lead info including the LinkedIn profile URL using Google search."""
 
     if not full_name:
-        return ""
+        return json.loads(LeadSearchResult().model_dump_json())
 
     query = f'site:linkedin.com/in "{full_name}"'
     if search_keywords:
@@ -28,14 +60,19 @@ async def find_user_linkedin_url(full_name: str, search_keywords: str = "") -> s
     logger.info("Querying Google: %s", query)
     results = await search_google_serper(query, 3)
     for item in results:
+        text = " ".join(
+            [item.get("title", ""), item.get("subtitle", ""), item.get("snippet", "")]
+        ).strip()
+        structured = await get_structured_output(text)
         link = item.get("link", "")
         if not link:
             continue
         parsed = urlparse(link)
         if "linkedin.com/in" in (parsed.netloc + parsed.path):
-            return extract_user_linkedin_page(link)
+            structured.user_linkedin_url = extract_user_linkedin_page(link)
+            return json.loads(structured.model_dump_json())
     logger.info("LinkedIn profile not found")
-    return ""
+    return json.loads(LeadSearchResult().model_dump_json())
 
 
 def main() -> None:
@@ -53,13 +90,11 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    url = asyncio.run(find_user_linkedin_url(args.full_name, args.search_keywords))
-    result = {
-        "full_name": args.full_name,
-        "user_linkedin_url": url,
-        "search_keywords": args.search_keywords,
-    }
-    print(json.dumps(result, indent=2))
+    info = asyncio.run(find_user_linkedin_url(args.full_name, args.search_keywords))
+    info["search_keywords"] = args.search_keywords
+    if not info.get("full_name"):
+        info["full_name"] = args.full_name
+    print(json.dumps(info, indent=2))
 
 
 if __name__ == "__main__":

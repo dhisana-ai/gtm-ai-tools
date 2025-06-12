@@ -16,6 +16,38 @@
     Vibe code and add your own GTM workflow in 5 min!
     <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">Vibe coding instructions</a>
   </p>
+  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
+    Create New GTM Utility
+  </button>
+  <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+      <div class="modal-content shadow-lg border-0" style="border-radius: 1rem;">
+        <form id="generate-utility-form" method="post" action="{{ url_for('generate_utility') }}">
+          <div class="modal-header bg-primary text-white" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
+            <h4 class="modal-title fw-bold" id="generateUtilityModalLabel">Create New GTM Utility</h4>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body bg-light">
+            <label for="utilityPrompt" class="form-label fw-semibold">Describe your GTM utility:</label>
+            <textarea class="form-control mb-3" id="utilityPrompt" name="prompt" rows="5" required style="font-size:1.1em; border-radius:0.5em;"></textarea>
+            <div id="generate-utility-status" class="mt-2"></div>
+            <div id="generated-code-container" style="display:none;">
+              <label for="generated-code" class="form-label mt-3 fw-semibold">Generated Code:</label>
+              <div class="position-relative">
+                <pre id="generated-code" class="bg-white border rounded p-3" style="font-size:1em; max-height:400px; overflow:auto;"></pre>
+                <button type="button" class="btn btn-outline-secondary btn-sm position-absolute top-0 end-0 m-2" id="copy-code-btn" title="Copy to clipboard">
+                  <i class="bi bi-clipboard"></i> Copy
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
+            <button type="submit" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
   <div class="row">
     <div class="col-md-4 mb-4" style="max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       {% for util in utils %}
@@ -28,54 +60,179 @@
       {% endfor %}
     </div>
     <div class="col-md-8">
+      {% if prev_csv %}
+      <div class="alert alert-secondary d-flex align-items-center mb-3">
+        <div class="flex-grow-1">Using previous output CSV as input: {{ prev_csv }}</div>
+        <form method="post" class="ms-2">
+          <input type="hidden" name="action" value="clear_csv">
+          <button class="btn btn-sm btn-outline-danger" type="submit">Clear</button>
+        </form>
+      </div>
+      {% endif %}
       <form method="post" enctype="multipart/form-data" class="mb-4" id="util-form">
         <input type="hidden" name="mode" value="util">
         <input type="hidden" name="util_name" id="util-name-input" value="{{ default_util }}">
         <div class="mb-3">
+          <h4 id="util-title"></h4>
+          <p id="util-desc" class="text-muted"></p>
+        </div>
+        <div class="mb-3" id="input-mode-group">
           <label class="form-label">Input Mode</label><br>
           <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" checked>
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-single" value="single" {% if default_mode == 'single' %}checked{% endif %}>
             <label class="form-check-label" for="mode-single">Single Input</label>
           </div>
           <div class="form-check form-check-inline">
-            <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-upload" value="file" {% if default_mode == 'file' %}checked{% endif %}>
             <label class="form-check-label" for="mode-upload">Upload input list</label>
           </div>
+          {% if prev_csv %}
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="input_mode" id="mode-prev" value="previous" {% if default_mode == 'previous' %}checked{% endif %}>
+            <label class="form-check-label" for="mode-prev">Use Previous Output</label>
+          </div>
+          {% endif %}
         </div>
         <div id="params-container"></div>
         <div class="mb-3" id="file-container" style="display:none;">
           <input class="form-control" type="file" name="csv_file">
         </div>
-        <button class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+        <input type="hidden" name="selected_rows" id="selected-rows">
+        <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
+        <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
+          <span class="visually-hidden">Loading...</span>
+        </div>
       </form>
 
-      {% if util_output %}
-        <h3>Output</h3>
-        <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
-      {% endif %}
-      {% if download_name %}
-        <a class="btn btn-primary" href="{{ url_for('download_file', filename=download_name) }}">Download CSV</a>
-      {% endif %}
-      {% if download_name or util_output %}
-        <form method="post" action="{{ url_for('push_to_dhisana') }}" class="mt-2">
-          <input type="hidden" name="csv_path" value="{{ download_name }}">
-          <input type="hidden" name="output_text" value="{{ util_output }}">
-          <button class="btn btn-warning" type="submit">Push to Dhisana AI Contacts</button>
-        </form>
-      {% endif %}
+      <div id="output-section">
+        {% if (download_name or util_output) and default_util != 'generate_image' %}
+          <div class="mt-2 d-flex gap-2">
+            <form method="post" action="{{ url_for('push_to_dhisana') }}" id="push-form">
+              <input type="hidden" name="csv_path" value="{{ download_name }}">
+              <input type="hidden" name="output_text" value="{{ util_output }}">
+              <input type="hidden" name="selected_rows" id="selected-output-rows">
+              <button class="btn btn-secondary" type="submit">Push Output to Dhisana AI Webhook</button>
+            </form>
+            {% if download_name %}
+              {% set is_image = download_name.endswith('.png') %}
+              {% if is_image %}
+                <a class="btn btn-secondary" href="{{ url_for('download_file', filename=download_name) }}">Download Image</a>
+              {% else %}
+                <form method="post" action="{{ url_for('download_selected') }}" id="download-form">
+                  <input type="hidden" name="csv_path" value="{{ download_name }}">
+                  <input type="hidden" name="selected_rows" id="download-selected">
+                  <button class="btn btn-secondary" type="submit">Download Output CSV</button>
+                </form>
+              {% endif %}
+            {% endif %}
+          </div>
+        {% elif download_name %}
+          {% set is_image = download_name.endswith('.png') %}
+          {% if is_image %}
+            <a class="btn btn-secondary mt-2" href="{{ url_for('download_file', filename=download_name) }}">Download Image</a>
+          {% else %}
+            <form method="post" action="{{ url_for('download_selected') }}" id="download-form">
+              <input type="hidden" name="csv_path" value="{{ download_name }}">
+              <input type="hidden" name="selected_rows" id="download-selected">
+              <button class="btn btn-secondary" type="submit">Download Output CSV</button>
+            </form>
+          {% endif %}
+        {% endif %}
+        {% if image_src %}
+          <div class="mt-3">
+            <img src="{{ image_src }}" class="img-fluid" alt="Generated Image">
+          </div>
+        {% endif %}
+        {% if input_rows %}
+          <h3 class="mt-4">Input Preview</h3>
+          <div id="input-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        {% if output_rows %}
+          <h3 class="mt-4">Output Preview</h3>
+          <div id="output-grid" class="ag-theme-alpine mb-3" style="height:400px;width:100%;"></div>
+        {% endif %}
+        <script>
+            const inputData = {{ input_rows|tojson }};
+            const outputData = {{ output_rows|tojson }};
+            const preferredOrder = [
+              'full_name',
+              'user_linkedin_url',
+              'job_title',
+              'email'
+            ];
+            let inputGridApi = null;
+            let outputGridApi = null;
+            function makeColumnDefs(data) {
+              const allKeys = data.length ? Object.keys(data[0]) : [];
+              const orderedKeys = [
+                ...preferredOrder.filter(k => allKeys.includes(k)),
+                ...allKeys.filter(k => !preferredOrder.includes(k))
+              ];
+              const cols = orderedKeys.map(k => {
+                if (k === 'user_linkedin_url') {
+                  return {
+                    field: k,
+                    cellRenderer: params => {
+                      if (!params.value) return '';
+                      const url = params.value.startsWith('http') ? params.value : `https://${params.value}`;
+                      return `<a href="${url}" target="_blank" rel="noopener noreferrer">${params.value}</a>`;
+                    }
+                  };
+                }
+                return { field: k };
+              });
+              if (cols.length) {
+                cols.unshift({ checkboxSelection: true, headerCheckboxSelection: true, width: 40 });
+              }
+              return cols;
+            }
+            function createGrid(id, data) {
+              const gridOptions = {
+                columnDefs: makeColumnDefs(data),
+                rowData: data,
+                pagination: true,
+                paginationPageSize: 20,
+                enableRangeSelection: true,
+                rowSelection: 'multiple',
+                rowMultiSelectWithClick: true,
+                suppressRowClickSelection: true
+              };
+              const gridDiv = document.getElementById(id);
+              return gridDiv ? agGrid.createGrid(gridDiv, gridOptions) : null;
+            }
+            document.addEventListener('DOMContentLoaded', () => {
+              if (inputData.length) inputGridApi = createGrid('input-grid', inputData);
+              if (outputData.length) outputGridApi = createGrid('output-grid', outputData);
+            });
+          </script>
+        {% if util_output %}
+          <h3>Output</h3>
+          <textarea class="form-control" rows="10" readonly>{{ util_output }}</textarea>
+        {% endif %}
+      </div>
     </div>
   </div>
 
-  <script>
-    const PARAM_MAP = {{ util_params|tojson }};
-    const utilInput = document.getElementById('util-name-input');
+{% block scripts %}
+<script>
+  const PARAM_MAP = {{ util_params|tojson|safe }};
+    const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
+  const utilInput = document.getElementById('util-name-input');
 
-    function selectUtil(name) {
-      utilInput.value = name;
-      document.querySelectorAll('.util-card').forEach(card => {
-        card.classList.toggle('border-primary', card.dataset.util === name);
-      });
-    }
+      function selectUtil(name) {
+        utilInput.value = name;
+        document.querySelectorAll('.util-card').forEach(card => {
+          card.classList.toggle('border-primary', card.dataset.util === name);
+        });
+        const card = document.querySelector(`.util-card[data-util="${name}"]`);
+        if (card) {
+          const title = card.querySelector('.card-title')?.textContent || '';
+          const desc = card.querySelector('.card-text')?.textContent || '';
+          document.getElementById('util-title').textContent = title;
+          document.getElementById('util-desc').textContent = desc;
+        }
+        updateMode();
+      }
 
     function renderParams() {
       const container = document.getElementById('params-container');
@@ -88,6 +245,12 @@
         const label = document.createElement('label');
         label.textContent = p.label;
         input.name = p.name;
+        if (util === 'linkedin_search_to_csv' && p.name === '--num') {
+          input.value = '10';
+        }
+        if (util === 'linkedin_search_to_csv' && p.name === 'query') {
+          input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
+        }
         if (p.type === 'boolean') {
           div.className = 'form-check mb-3';
           input.type = 'checkbox';
@@ -110,23 +273,91 @@
       });
     }
 
-    function updateMode() {
-      const mode = document.querySelector('input[name="input_mode"]:checked').value;
-      document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-      document.getElementById('params-container').style.display = mode === 'file' ? 'none' : '';
-    }
-    document.querySelectorAll('.util-card').forEach(card => {
-      card.addEventListener('click', () => {
-        selectUtil(card.dataset.util);
-        renderParams();
+      function updateMode() {
+        const util = utilInput.value;
+        const isUploadOnly = UPLOAD_ONLY_UTILS.includes(util);
+        const inputGroup = document.getElementById('input-mode-group');
+        if (isUploadOnly) {
+          inputGroup.style.display = 'none';
+          document.getElementById('mode-upload').checked = true;
+        } else {
+          inputGroup.style.display = '';
+        }
+        const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
+        document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
+        const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
+        document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
+      }
+  document.querySelectorAll('.util-card').forEach(card => {
+        card.addEventListener('click', () => {
+          selectUtil(card.dataset.util);
+          renderParams();
+        });
+      });
+  document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
+  const utilForm = document.getElementById('util-form');
+  const spinner = document.getElementById('run-spinner');
+  const runBtn = document.getElementById('run-button');
+  const outputSection = document.getElementById('output-section');
+  const selectedInput = document.getElementById('selected-rows');
+  if (utilForm) {
+    utilForm.addEventListener('submit', () => {
+      if (spinner) spinner.style.display = 'inline-block';
+      if (runBtn) runBtn.disabled = true;
+      if (outputSection) outputSection.innerHTML = '';
+      if (inputGridApi && selectedInput) {
+        const rows = inputGridApi.getSelectedRows();
+        selectedInput.value = rows.length ? JSON.stringify(rows) : '';
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', () => {
+    selectUtil(utilInput.value);
+    renderParams();
+    updateMode();
+  });
+  // Codex utility modal form handler
+  const genForm = document.getElementById('generate-utility-form');
+  if (genForm) {
+    genForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      const prompt = document.getElementById('utilityPrompt').value;
+      const statusDiv = document.getElementById('generate-utility-status');
+      statusDiv.textContent = 'Generating...';
+      fetch('/generate_utility', {
+        method: 'POST',
+        body: new URLSearchParams({prompt}),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          statusDiv.textContent = 'Utility created! Here is your code:';
+          document.getElementById('generated-code').textContent = data.code;
+          document.getElementById('generated-code-container').style.display = '';
+        } else {
+          statusDiv.textContent = 'Failed to generate utility.';
+          document.getElementById('generated-code-container').style.display = 'none';
+        }
+      })
+      .catch(() => {
+        statusDiv.textContent = 'Error contacting server.';
       });
     });
-    document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
-    document.addEventListener('DOMContentLoaded', () => {
-      selectUtil(utilInput.value);
-      renderParams();
-      updateMode();
+  }
+  // Copy to clipboard functionality
+  const copyBtn = document.getElementById('copy-code-btn');
+  if (copyBtn) {
+    copyBtn.addEventListener('click', function() {
+      const code = document.getElementById('generated-code').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        copyBtn.innerHTML = '<i class="bi bi-clipboard-check"></i> Copied!';
+        setTimeout(() => {
+          copyBtn.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+        }, 1500);
+      });
     });
-  </script>
-
+  }
+</script>
+{% endblock %}
 {% endblock %}
