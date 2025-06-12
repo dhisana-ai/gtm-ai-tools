@@ -838,6 +838,7 @@ def generate_utility():
             model="gpt-4o-mini",
             input=codex_prompt
         )
+        prev_response_id = getattr(response, 'id', None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if hasattr(response, "output") and isinstance(response.output, list) and len(response.output) > 0:
@@ -864,17 +865,18 @@ def generate_utility():
         except Exception as compile_err:
             logging.warning("Generated code failed to compile (attempt %d): %s",
                             attempt + 1, compile_err)
-            # Ask the model to correct the code based on the compile error
+            # Ask the model to correct the code based on the compile error, carrying conversation state
             correction_prompt = (
                 codex_prompt
-                + f"# The previous code failed with the following error on compile attempt {attempt+1}:\n"
-                + f"# {compile_err}\n"
-                + "# Please correct the code and provide the full revised utility code below:\n"
+                + f"# The previous code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + "# Please provide the full corrected utility code below:\n"
             )
             response = client.responses.create(
                 model="gpt-4o-mini",
-                input=correction_prompt
+                input=correction_prompt,
+                previous_response_id=prev_response_id,
             )
+            prev_response_id = getattr(response, 'id', prev_response_id)
             # Extract corrected code same as before
             new_code = None
             if hasattr(response, "output") and isinstance(response.output, list):
@@ -891,7 +893,7 @@ def generate_utility():
             code = new_code
     else:
         # Exhausted retries without valid code
-        err_msg = f"Code failed to compile after 10 attempts: {compile_err}"
+        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
         logging.error(err_msg)
         return jsonify({"success": False, "error": err_msg}), 500
 
