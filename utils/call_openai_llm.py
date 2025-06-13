@@ -13,6 +13,7 @@ import csv
 from pathlib import Path
 
 from openai import OpenAI
+import openai
 
 
 def _call_openai(prompt: str) -> str:
