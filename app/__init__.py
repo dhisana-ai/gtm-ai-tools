@@ -214,6 +214,9 @@ UTILITY_PARAMETERS = {
         {"name": "--leads", "label": "Fetch leads", "type": "boolean"},
         {"name": "--company", "label": "Fetch company", "type": "boolean"},
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
+        {"name": "--next_page_selector", "label": "Next page selector"},
+        {"name": "--max_next_pages", "label": "Max next pages"},
+        {"name": "--output_csv", "label": "Output CSV"},
     ],
     "generate_email": [
         {
@@ -329,6 +332,7 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
 
 
 if hasattr(app, "before_request"):
+
     @app.before_request
     def require_login():
         endpoint = request.endpoint or ""
@@ -339,6 +343,7 @@ if hasattr(app, "before_request"):
             return redirect(url_for("login"))
 
 else:  # pragma: no cover - for tests with DummyFlask
+
     def require_login():
         return
 
@@ -684,9 +689,9 @@ def history():
             files.append(
                 {
                     "name": p.name,
-                    "mtime": datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    ),
+                    "mtime": datetime.datetime.fromtimestamp(
+                        p.stat().st_mtime
+                    ).strftime("%Y-%m-%d %H:%M:%S"),
                 }
             )
     return render_template("history.html", csv_files=files)
@@ -781,43 +786,45 @@ def push_to_dhisana():
     flash(f"Pushed {pushed} leads to Dhisana.")
     return redirect(url_for("run_utility"))
 
+
 def embed_text(text):
     client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.embeddings.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
+    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
     return np.array(response.data[0].embedding)
+
 
 def build_utility_embeddings():
     global UTILITY_EMBEDDINGS
     UTILITY_EMBEDDINGS = []
     for fname in os.listdir(UTILS_DIR):
-        if fname.endswith('.py') and fname != 'common.py':
+        if fname.endswith(".py") and fname != "common.py":
             path = os.path.join(UTILS_DIR, fname)
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 code = f.read()
             emb = embed_text(code[:2000])
-            UTILITY_EMBEDDINGS.append({
-                'filename': fname,
-                'code': code,
-                'embedding': emb
-            })
+            UTILITY_EMBEDDINGS.append(
+                {"filename": fname, "code": code, "embedding": emb}
+            )
+
 
 def get_top_k_utilities(prompt, k=3):
     prompt_emb = embed_text(prompt)
     scored = []
     for util in UTILITY_EMBEDDINGS:
-        score = np.dot(prompt_emb, util['embedding']) / (np.linalg.norm(prompt_emb) * np.linalg.norm(util['embedding']))
+        score = np.dot(prompt_emb, util["embedding"]) / (
+            np.linalg.norm(prompt_emb) * np.linalg.norm(util["embedding"])
+        )
         scored.append((score, util))
     scored.sort(reverse=True, key=lambda x: x[0])
-    return [util['code'] for score, util in scored[:k]]
+    return [util["code"] for score, util in scored[:k]]
+
 
 build_utility_embeddings()
 
-@app.route('/generate_utility', methods=['POST'])
+
+@app.route("/generate_utility", methods=["POST"])
 def generate_utility():
-    user_prompt = request.form['prompt']
+    user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=3)
     prompt_lines = [
         "# The following are Python utilities for GTM automation, lead generation, enrichment, outreach, or sales/marketing workflows.",
@@ -834,17 +841,22 @@ def generate_utility():
 
     try:
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=codex_prompt
-        )
+        response = client.responses.create(model="gpt-4o-mini", input=codex_prompt)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
-        if hasattr(response, "output") and isinstance(response.output, list) and len(response.output) > 0:
+        if (
+            hasattr(response, "output")
+            and isinstance(response.output, list)
+            and len(response.output) > 0
+        ):
             for msg in response.output:
                 if hasattr(msg, "content") and isinstance(msg.content, list):
                     for c in msg.content:
-                        if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                        if (
+                            hasattr(c, "text")
+                            and isinstance(c.text, str)
+                            and c.text.strip()
+                        ):
                             code = c.text.strip()
                             break
                     if code:
@@ -855,7 +867,4 @@ def generate_utility():
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
-    return jsonify({
-        "success": True,
-        "code": code
-    })
+    return jsonify({"success": True, "code": code})
