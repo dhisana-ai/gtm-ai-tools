@@ -10,7 +10,9 @@ import logging
 import argparse
 import asyncio
 import json
-from typing import List, Optional, Tuple, Type
+import sys
+import typing
+from typing import List, Optional, Tuple, Type, TextIO
 from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
@@ -339,7 +341,7 @@ async def extract_lead_from_webpage(
     return leads[0] if leads else None
 
 
-def _write_companies_csv(companies: List[Company], path: str) -> None:
+def _write_companies_csv(companies: List[Company], dest: typing.Union[str, typing.TextIO]) -> None:
     import csv
 
     fieldnames = [
@@ -349,14 +351,21 @@ def _write_companies_csv(companies: List[Company], path: str) -> None:
         "link_to_more_information",
         "organization_linkedin_url",
     ]
-    with open(path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
-        writer.writeheader()
-        for c in companies:
-            writer.writerow(json.loads(c.model_dump_json()))
+    should_close = False
+    if isinstance(dest, str):
+        fh = open(dest, "w", newline="", encoding="utf-8")
+        should_close = True
+    else:
+        fh = dest
+    writer = csv.DictWriter(fh, fieldnames=fieldnames)
+    writer.writeheader()
+    for c in companies:
+        writer.writerow(json.loads(c.model_dump_json()))
+    if should_close:
+        fh.close()
 
 
-def _write_leads_csv(leads: List[Lead], path: str) -> None:
+def _write_leads_csv(leads: List[Lead], dest: typing.Union[str, typing.TextIO]) -> None:
     import csv
 
     fieldnames = [
@@ -372,11 +381,18 @@ def _write_leads_csv(leads: List[Lead], path: str) -> None:
         "phone",
         "linkedin_follower_count",
     ]
-    with open(path, "w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
-        writer.writeheader()
-        for l in leads:
-            writer.writerow(json.loads(l.model_dump_json()))
+    should_close = False
+    if isinstance(dest, str):
+        fh = open(dest, "w", newline="", encoding="utf-8")
+        should_close = True
+    else:
+        fh = dest
+    writer = csv.DictWriter(fh, fieldnames=fieldnames)
+    writer.writeheader()
+    for l in leads:
+        writer.writerow(json.loads(l.model_dump_json()))
+    if should_close:
+        fh.close()
 
 
 async def _run_cli(url: str, args: argparse.Namespace) -> None:
@@ -399,7 +415,8 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             max_pages=max_pages,
         )
         if result:
-            print(result.model_dump_json(indent=2))
+            dest = args.output_csv or sys.stdout
+            _write_leads_csv([result], dest)
         return
     if args.leads:
         result = await extract_multiple_leads_from_webpage(
@@ -412,12 +429,8 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             pagination_actions=pagination_actions,
             max_pages=max_pages,
         )
-        if args.output_csv:
-            _write_leads_csv(result, args.output_csv)
-        else:
-            print(
-                "[]" if not result else LeadList(leads=result).model_dump_json(indent=2)
-            )
+        dest = args.output_csv or sys.stdout
+        _write_leads_csv(result, dest)
         return
     if args.company:
         result = await extract_comapy_from_webpage(
@@ -431,7 +444,8 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             max_pages=max_pages,
         )
         if result:
-            print(result.model_dump_json(indent=2))
+            dest = args.output_csv or sys.stdout
+            _write_companies_csv([result], dest)
         return
     if args.companies:
         result = await extract_multiple_companies_from_webpage(
@@ -444,14 +458,8 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             pagination_actions=pagination_actions,
             max_pages=max_pages,
         )
-        if args.output_csv:
-            _write_companies_csv(result, args.output_csv)
-        else:
-            print(
-                "[]"
-                if not result
-                else CompanyList(companies=result).model_dump_json(indent=2)
-            )
+        dest = args.output_csv or sys.stdout
+        _write_companies_csv(result, dest)
 
 
 def main() -> None:
