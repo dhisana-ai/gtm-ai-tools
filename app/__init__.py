@@ -214,10 +214,10 @@ UTILITY_PARAMETERS = {
     ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
-        {"name": "--lead", "label": "Fetch lead", "type": "boolean"},
-        {"name": "--leads", "label": "Fetch leads", "type": "boolean"},
-        {"name": "--company", "label": "Fetch company", "type": "boolean"},
-        {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
+        {"name": "--lead", "label": "Extract One Lead", "type": "boolean"},
+        {"name": "--leads", "label": "Extract Multiple Leads", "type": "boolean"},
+        {"name": "--company", "label": "Extract One Company", "type": "boolean"},
+        {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
         {"name": "--next_page_selector", "label": "Next page selector"},
         {"name": "--max_next_pages", "label": "Max next pages"},
         {"name": "--initial_actions", "label": "Initial actions"},
@@ -225,7 +225,6 @@ UTILITY_PARAMETERS = {
         {"name": "--parse_instructions", "label": "Parse instructions"},
         {"name": "--pagination_actions", "label": "Pagination actions"},
         {"name": "--max_pages", "label": "Max pages"},
-        {"name": "--output_csv", "label": "Output CSV"},
     ],
     "generate_email": [
         {
@@ -468,6 +467,9 @@ def run_utility():
                         insert_at = i
                         break
                 cmd.insert(insert_at, out_path)
+            elif util_name == "extract_from_webpage":
+                out_path = common.make_temp_csv_filename(util_name)
+                cmd.extend(["--output_csv", out_path])
             return cmd
 
         def run_cmd(cmd: list[str]) -> tuple[str, str, str]:

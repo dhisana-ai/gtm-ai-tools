@@ -459,10 +459,10 @@ def main() -> None:
         description="Extract leads or companies from a web page"
     )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--lead", action="store_true", help="Fetch first lead")
-    group.add_argument("--leads", action="store_true", help="Fetch all leads")
-    group.add_argument("--company", action="store_true", help="Fetch first company")
-    group.add_argument("--companies", action="store_true", help="Fetch all companies")
+    group.add_argument("--lead", action="store_true", help="Extract one lead")
+    group.add_argument("--leads", action="store_true", help="Extract multiple leads")
+    group.add_argument("--company", action="store_true", help="Extract one company")
+    group.add_argument("--companies", action="store_true", help="Extract multiple companies")
     parser.add_argument("url", help="Website URL")
     parser.add_argument("--next_page_selector", help="CSS selector for next page link")
     parser.add_argument(
