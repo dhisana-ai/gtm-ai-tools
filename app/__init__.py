@@ -218,13 +218,11 @@ UTILITY_PARAMETERS = {
         {"name": "--leads", "label": "Extract Multiple Leads", "type": "boolean"},
         {"name": "--company", "label": "Extract One Company", "type": "boolean"},
         {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
-        {"name": "--next_page_selector", "label": "Next page selector"},
-        {"name": "--max_next_pages", "label": "Max next pages"},
-        {"name": "--initial_actions", "label": "Initial actions"},
-        {"name": "--page_actions", "label": "Page actions"},
-        {"name": "--parse_instructions", "label": "Parse instructions"},
-        {"name": "--pagination_actions", "label": "Pagination actions"},
-        {"name": "--max_pages", "label": "Max pages"},
+        {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
+        {"name": "--page_actions", "label": "Actions to do When each page loads."},
+        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
+        {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
+        {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
     ],
     "generate_email": [
         {
