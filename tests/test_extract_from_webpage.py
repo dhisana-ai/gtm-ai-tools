@@ -56,3 +56,22 @@ def test_extract_companies_with_pagination(monkeypatch):
     )
     names = [c.organization_name for c in companies]
     assert names == ["Acme", "Beta"]
+
+
+def test_parse_instructions_in_prompt(monkeypatch):
+    monkeypatch.setattr(mod, "_fetch_and_clean", fake_fetch_lead)
+
+    captured = {}
+
+    async def fake_get(prompt: str, model):
+        captured["prompt"] = prompt
+        return mod.LeadList(leads=[mod.Lead(first_name="Jane")]), "SUCCESS"
+
+    monkeypatch.setattr(mod, "_get_structured_data_internal", fake_get)
+    asyncio.run(
+        mod.extract_lead_from_webpage(
+            "http://x.com",
+            parse_instructions="Look carefully",
+        )
+    )
+    assert "Look carefully" in captured["prompt"]

@@ -379,8 +379,13 @@ task run:command -- extract_companies_from_image http://example.com/logo.png
 
 `extract_from_webpage.py` scrapes a page with Playwright and uses an LLM to
 parse leads or organizations from the text. Provide the starting URL and use
-`--lead` or `--leads` to control how many leads are returned. Pagination can be
-handled with `--next_page_selector` and `--max_next_pages`.
+`--lead` or `--leads` to control how many leads are returned. You can run custom
+JavaScript on the initial page load, on each page load and for pagination by
+supplying natural language instructions with `--initial_actions`,
+`--page_actions` and `--pagination_actions`. Parsing behaviour can be tweaked
+with `--parse_instructions`. Use `--max_pages` to limit how many pages are
+navigated. The previous `--next_page_selector` and `--max_next_pages` options
+still work as a fallback.
 
 ```bash
 task run:command -- extract_from_webpage --leads https://example.com/team \

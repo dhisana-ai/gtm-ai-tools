@@ -22,6 +22,7 @@ except ImportError:  # pragma: no cover - fall back for tests without pydantic
 from openai import AsyncOpenAI
 
 from utils import fetch_html_playwright, common, find_company_info
+from utils.call_openai_llm import _call_openai
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ def _extract_linkedin_links(html: str) -> tuple[str, str]:
     return user_url, company_url
 
 
-async def _fetch_pages(
+async def _fetch_pages_by_selector(
     url: str, next_page_selector: str | None, max_next_pages: int
 ) -> List[str]:
     """Return HTML from ``url`` and any following pages."""
@@ -134,18 +135,104 @@ async def _fetch_pages(
     return pages
 
 
+async def _generate_js(html: str, instructions: str) -> str:
+    """Return JavaScript for ``instructions`` using the page ``html``."""
+    if not instructions.strip():
+        return ""
+    prompt = (
+        "Here is the html of the page:\n"
+        f"{html}\n\n"
+        "Here is what user wants to do:\n"
+        f"{instructions}\n\n"
+        "Provide only the JavaScript code to execute with Playwright."
+    )
+    return await asyncio.to_thread(_call_openai, prompt)
+
+
+async def _apply_actions(page, instructions: str) -> None:
+    if not instructions.strip():
+        return
+    html = await page.content()
+    js = await _generate_js(html, instructions)
+    if js.strip():  # pragma: no cover - best effort
+        try:
+            await page.evaluate(js)
+            await asyncio.sleep(2)
+        except Exception:
+            logger.exception("Failed to run generated JavaScript")
+
+
+async def _fetch_pages_with_actions(
+    url: str,
+    initial_actions: str,
+    page_actions: str,
+    pagination_actions: str,
+    max_pages: int,
+) -> List[str]:
+    pages: List[str] = []
+    proxy = os.getenv("PROXY_URL")
+    async with fetch_html_playwright.browser_ctx(proxy) as ctx:
+        page = await ctx.new_page()
+        await fetch_html_playwright.apply_stealth(page)
+        await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
+        await _apply_actions(page, initial_actions)
+        for i in range(max_pages):
+            await _apply_actions(page, page_actions)
+            html = await page.content()
+            pages.append(html)
+            if i == max_pages - 1:
+                break
+            await _apply_actions(page, pagination_actions)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            except Exception:  # pragma: no cover - navigation may fail
+                break
+    return pages
+
+
+async def _fetch_pages(
+    url: str,
+    next_page_selector: str | None,
+    max_next_pages: int,
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
+) -> List[str]:
+    if any([initial_actions, page_actions, pagination_actions]) or max_pages > 1:
+        return await _fetch_pages_with_actions(
+            url, initial_actions, page_actions, pagination_actions, max_pages
+        )
+    return await _fetch_pages_by_selector(url, next_page_selector, max_next_pages)
+
+
 async def extract_multiple_companies_from_webpage(
     url: str,
     next_page_selector: str | None = None,
     max_next_pages: int = 0,
+    *,
+    parse_instructions: str = "",
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
 ) -> List[Company]:
-    pages = await _fetch_pages(url, next_page_selector, max_next_pages)
+    pages = await _fetch_pages(
+        url,
+        next_page_selector,
+        max_next_pages,
+        initial_actions,
+        page_actions,
+        pagination_actions,
+        max_pages,
+    )
     aggregated: list[Company] = []
     for html in pages:
         _user_link, org_link = _extract_linkedin_links(html)
         text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
             "Extract all companies mentioned in the text below.\n"
+            f"{parse_instructions}\n"
             f"Return JSON matching this schema:\n{json.dumps(CompanyList.model_json_schema(), indent=2)}\n\n"
             f"Text:\n{text}"
         )
@@ -164,9 +251,22 @@ async def extract_comapy_from_webpage(
     url: str,
     next_page_selector: str | None = None,
     max_next_pages: int = 0,
+    *,
+    parse_instructions: str = "",
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
 ) -> Optional[Company]:
     companies = await extract_multiple_companies_from_webpage(
-        url, next_page_selector, max_next_pages
+        url,
+        next_page_selector,
+        max_next_pages,
+        parse_instructions=parse_instructions,
+        initial_actions=initial_actions,
+        page_actions=page_actions,
+        pagination_actions=pagination_actions,
+        max_pages=max_pages,
     )
     return companies[0] if companies else None
 
@@ -175,14 +275,29 @@ async def extract_multiple_leads_from_webpage(
     url: str,
     next_page_selector: str | None = None,
     max_next_pages: int = 0,
+    *,
+    parse_instructions: str = "",
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
 ) -> List[Lead]:
-    pages = await _fetch_pages(url, next_page_selector, max_next_pages)
+    pages = await _fetch_pages(
+        url,
+        next_page_selector,
+        max_next_pages,
+        initial_actions,
+        page_actions,
+        pagination_actions,
+        max_pages,
+    )
     aggregated: list[Lead] = []
     for html in pages:
         user_link, org_link = _extract_linkedin_links(html)
         text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
             "Extract all leads mentioned in the text below.\n"
+            f"{parse_instructions}\n"
             f"Return JSON matching this schema:\n{json.dumps(LeadList.model_json_schema(), indent=2)}\n\n"
             f"Text:\n{text}"
         )
@@ -204,9 +319,22 @@ async def extract_lead_from_webpage(
     url: str,
     next_page_selector: str | None = None,
     max_next_pages: int = 0,
+    *,
+    parse_instructions: str = "",
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
 ) -> Optional[Lead]:
     leads = await extract_multiple_leads_from_webpage(
-        url, next_page_selector, max_next_pages
+        url,
+        next_page_selector,
+        max_next_pages,
+        parse_instructions=parse_instructions,
+        initial_actions=initial_actions,
+        page_actions=page_actions,
+        pagination_actions=pagination_actions,
+        max_pages=max_pages,
     )
     return leads[0] if leads else None
 
@@ -253,14 +381,37 @@ def _write_leads_csv(leads: List[Lead], path: str) -> None:
 
 async def _run_cli(url: str, args: argparse.Namespace) -> None:
     next_sel = args.next_page_selector
-    max_pages = args.max_next_pages
+    max_next = args.max_next_pages
+    parse_ins = args.parse_instructions or ""
+    initial_actions = args.initial_actions or ""
+    page_actions = args.page_actions or ""
+    pagination_actions = args.pagination_actions or ""
+    max_pages = args.max_pages
     if args.lead:
-        result = await extract_lead_from_webpage(url, next_sel, max_pages)
+        result = await extract_lead_from_webpage(
+            url,
+            next_sel,
+            max_next,
+            parse_instructions=parse_ins,
+            initial_actions=initial_actions,
+            page_actions=page_actions,
+            pagination_actions=pagination_actions,
+            max_pages=max_pages,
+        )
         if result:
             print(result.model_dump_json(indent=2))
         return
     if args.leads:
-        result = await extract_multiple_leads_from_webpage(url, next_sel, max_pages)
+        result = await extract_multiple_leads_from_webpage(
+            url,
+            next_sel,
+            max_next,
+            parse_instructions=parse_ins,
+            initial_actions=initial_actions,
+            page_actions=page_actions,
+            pagination_actions=pagination_actions,
+            max_pages=max_pages,
+        )
         if args.output_csv:
             _write_leads_csv(result, args.output_csv)
         else:
@@ -269,12 +420,30 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             )
         return
     if args.company:
-        result = await extract_comapy_from_webpage(url, next_sel, max_pages)
+        result = await extract_comapy_from_webpage(
+            url,
+            next_sel,
+            max_next,
+            parse_instructions=parse_ins,
+            initial_actions=initial_actions,
+            page_actions=page_actions,
+            pagination_actions=pagination_actions,
+            max_pages=max_pages,
+        )
         if result:
             print(result.model_dump_json(indent=2))
         return
     if args.companies:
-        result = await extract_multiple_companies_from_webpage(url, next_sel, max_pages)
+        result = await extract_multiple_companies_from_webpage(
+            url,
+            next_sel,
+            max_next,
+            parse_instructions=parse_ins,
+            initial_actions=initial_actions,
+            page_actions=page_actions,
+            pagination_actions=pagination_actions,
+            max_pages=max_pages,
+        )
         if args.output_csv:
             _write_companies_csv(result, args.output_csv)
         else:
@@ -301,6 +470,19 @@ def main() -> None:
         type=int,
         default=0,
         help="Number of next pages to parse",
+    )
+    parser.add_argument("--initial_actions", help="Actions on initial load")
+    parser.add_argument("--page_actions", help="Actions on each page load")
+    parser.add_argument(
+        "--parse_instructions",
+        help="Instructions for parsing leads",
+    )
+    parser.add_argument("--pagination_actions", help="Actions for pagination")
+    parser.add_argument(
+        "--max_pages",
+        type=int,
+        default=1,
+        help="Max pages to navigate",
     )
     parser.add_argument("--output_csv", help="Output CSV path")
     args = parser.parse_args()
