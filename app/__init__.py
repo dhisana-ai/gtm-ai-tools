@@ -469,6 +469,11 @@ def run_utility():
                 cmd.insert(insert_at, out_path)
             elif util_name == "extract_from_webpage":
                 out_path = common.make_temp_csv_filename(util_name)
+                if not any(
+                    f in cmd
+                    for f in ("--lead", "--leads", "--company", "--companies")
+                ):
+                    cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
             return cmd
 
