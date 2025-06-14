@@ -50,7 +50,10 @@ except Exception:  # pragma: no cover - fallback for test stubs
     session = {}
 from dotenv import dotenv_values, set_key
 import openai
-import numpy as np
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional
+    np = None
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -217,6 +220,11 @@ UTILITY_PARAMETERS = {
         {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
         {"name": "--next_page_selector", "label": "Next page selector"},
         {"name": "--max_next_pages", "label": "Max next pages"},
+        {"name": "--initial_actions", "label": "Initial actions"},
+        {"name": "--page_actions", "label": "Page actions"},
+        {"name": "--parse_instructions", "label": "Parse instructions"},
+        {"name": "--pagination_actions", "label": "Pagination actions"},
+        {"name": "--max_pages", "label": "Max pages"},
         {"name": "--output_csv", "label": "Output CSV"},
     ],
     "generate_email": [
