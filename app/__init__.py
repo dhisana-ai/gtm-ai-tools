@@ -79,6 +79,7 @@ UTILITY_TITLES = {
     "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
+    "extract_from_webpage": "Extract Leads From Website",
     "generate_image": "Generate Image",
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
