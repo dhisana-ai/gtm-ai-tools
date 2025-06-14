@@ -375,6 +375,24 @@ the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
 
+## Extract Leads From Website
+
+`extract_from_webpage.py` scrapes a page with Playwright and uses an LLM to
+parse leads or organizations from the text. Provide the starting URL and use
+`--lead` or `--leads` to control how many leads are returned. Pagination can be
+handled with `--next_page_selector` and `--max_next_pages`.
+
+```bash
+task run:command -- extract_from_webpage --leads https://example.com/team \
+    --output_csv /workspace/output.csv
+```
+
+The path supplied with `--output_csv` is created inside the container. Since the
+local `output/` directory maps to `/workspace`, the file will be available at
+`output/output.csv` on your host system. In the web interface you can switch to
+**Use Previous Output** and feed this CSV into another tool such as **Enrich
+Lead With Apollo.io**.
+
 
 ## OpenAI Codex CLI
 
