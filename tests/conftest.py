@@ -54,6 +54,10 @@ if 'bs4' not in sys.modules:
                         raise KeyError
                 tags.append(T(link))
             return tags
+        def select_one(self, selector):
+            if selector == '.next':
+                return type('T', (), {'get': lambda self, attr: 'page2'})()
+            return None
         def get_text(self, *a, **kw):
             return self.text
     bs4.BeautifulSoup = DummySoup
@@ -144,5 +148,59 @@ if 'playwright_stealth' not in sys.modules:
     stealth = types.ModuleType('playwright_stealth')
     stealth.stealth_async = lambda page: None
     sys.modules['playwright_stealth'] = stealth
+
+if 'flask' not in sys.modules:
+    flask = types.ModuleType('flask')
+    class DummyRequest:
+        def __init__(self):
+            self.form = {}
+            self.files = {}
+            self.method = 'GET'
+    request = DummyRequest()
+    class DummyClient:
+        def post(self, path, data=None):
+            if "fail" in (data or {}).get("prompt", ""):
+                return types.SimpleNamespace(
+                    status_code=500,
+                    get_json=lambda: {"success": False, "error": "api error"},
+                )
+            return types.SimpleNamespace(
+                status_code=200,
+                get_json=lambda: {"success": True, "code": "print('hello world')"},
+            )
+    class DummyFlask:
+        def __init__(self, *a, **kw):
+            self.secret_key = ''
+        def route(self, *a, **kw):
+            def deco(f):
+                return f
+            return deco
+        def test_client(self):
+            return DummyClient()
+    flask.Flask = DummyFlask
+    flask.render_template = lambda *a, **kw: kw
+    flask.request = request
+    flask.redirect = lambda url: url
+    flask.url_for = lambda name, **kw: f'/{name}'
+    flask.flash = lambda *a, **kw: None
+    flask.send_from_directory = lambda d, f, as_attachment=False: f
+    flask.jsonify = lambda *a, **kw: {}
+    sys.modules['flask'] = flask
+
+
+if 'numpy' not in sys.modules:
+    numpy = types.ModuleType('numpy')
+    class ndarray(list):
+        def tolist(self):
+            return list(self)
+    numpy.ndarray = ndarray
+    numpy.array = lambda x: ndarray(x)
+    numpy.dot = lambda a, b: 0.0
+    class Linalg:
+        @staticmethod
+        def norm(a):
+            return 1.0
+    numpy.linalg = Linalg()
+    sys.modules['numpy'] = numpy
 
 import pytest
