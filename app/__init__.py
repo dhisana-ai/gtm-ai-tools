@@ -998,4 +998,51 @@ def generate_utility():
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
+<<<<<<< HEAD
     return jsonify({"success": True, "code": code})
+=======
+    # Validate generated code by attempting to compile; if syntax errors occur,
+    # ask the LLM to correct up to 10 retries.
+    for attempt in range(10):
+        try:
+            compile(code, '<generated>', 'exec')
+            break
+        except Exception as compile_err:
+            logging.warning("Generated code failed to compile (attempt %d): %s",
+                            attempt + 1, compile_err)
+            # Ask the model to correct the code based on the compile error
+            correction_prompt = (
+                codex_prompt
+                + f"# The previous code failed with the following error on compile attempt {attempt+1}:\n"
+                + f"# {compile_err}\n"
+                + "# Please correct the code and provide the full revised utility code below:\n"
+            )
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                input=correction_prompt
+            )
+            # Extract corrected code same as before
+            new_code = None
+            if hasattr(response, "output") and isinstance(response.output, list):
+                for msg in response.output:
+                    if hasattr(msg, "content") and isinstance(msg.content, list):
+                        for c in msg.content:
+                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                                new_code = c.text.strip()
+                                break
+                        if new_code:
+                            break
+            if not new_code:
+                continue
+            code = new_code
+    else:
+        # Exhausted retries without valid code
+        err_msg = f"Code failed to compile after 10 attempts: {compile_err}"
+        logging.error(err_msg)
+        return jsonify({"success": False, "error": err_msg}), 500
+
+    return jsonify({
+        "success": True,
+        "code": code
+    })
+>>>>>>> cd4afd1 (Iteratively compile and auto-correct generated utility code up to 10 times)
