@@ -59,6 +59,10 @@ task run:command -- find_company_info --organization_name "Dhisana" --location "
 
 The script prints JSON with `organization_name`, `organization_website`, `primary_domain_of_organization` and `organization_linkedin_url`.
 
+You can also upload a CSV containing an `organization_name`, `organization_linkedin_url`
+or `organization_website` column to look up multiple companies at once. The processed
+results will be written to a CSV file for download in the web interface.
+
 ## Find User by Name and Keywords
 
 `find_a_user_by_name_and_keywords.py` searches Google via Serper.dev for a person's LinkedIn profile. Provide the person's full name and optional additional keywords. The script outputs a JSON object with lead details parsed from the search results, including the LinkedIn profile URL.
