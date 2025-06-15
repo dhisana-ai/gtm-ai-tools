@@ -16,6 +16,7 @@ from utils import (
     apollo_info,
     check_email_zero_bounce,
     find_users_by_name_and_keywords,
+    find_company_info,
     call_openai_llm,
     score_lead,
     generate_email,
@@ -660,6 +661,17 @@ def run_utility():
                     find_users_by_name_and_keywords.find_users(
                         Path(uploaded), Path(out_path)
                     )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "find_company_info":
+                out_path = common.make_temp_csv_filename(util_name)
+                try:
+                    find_company_info.find_company_info_from_csv(uploaded, out_path)
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
