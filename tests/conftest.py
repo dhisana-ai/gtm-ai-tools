@@ -214,6 +214,12 @@ if 'flask' not in sys.modules:
 if 'numpy' not in sys.modules:
     numpy = types.ModuleType('numpy')
     class ndarray(list):
+        @property
+        def shape(self):
+            # rows x cols if 2D-like, else length
+            if self and isinstance(self[0], list):
+                return (len(self), len(self[0]))
+            return (len(self),)
         def tolist(self):
             return list(self)
         def reshape(self, *shape, **kw):
