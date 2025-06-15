@@ -59,11 +59,20 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
 4. **Start the container and open the app**
+
+   Run with explicit mounts (use the one-line form to avoid hidden control characters):
+
    ```bash
    docker run --env-file .env -p 8080:8080 \
-       -v $(pwd)/data:/data \
-       -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility \
+       -v "$(pwd)/data:/data" \
+       -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" \
        gtm-ai-tools
+   ```
+
+   Or as a single line:
+
+   ```bash
+   docker run --env-file .env -p 8080:8080 -v "$(pwd)/data:/data" -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" gtm-ai-tools
    ```
    Then browse to <http://localhost:8080>.
    Log in using the username from `APP_USERNAME` (defaults to `user`) and the
