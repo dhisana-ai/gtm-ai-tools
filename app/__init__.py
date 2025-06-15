@@ -69,11 +69,8 @@ UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
 # FAISS index and codes for utility embeddings (cosine similarity)
 # Cache paths for utility embeddings index and codes
 # Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
-DATA_DIR = Path('/data')
-if DATA_DIR.is_dir():
-    USER_UTIL_DIR = DATA_DIR / 'gtm_utility'
-else:
-    USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+# Directory for user-generated utilities (create gtm_utility folder at repo root)
+USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
 USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cache paths for utility embeddings index and codes under user utilities folder

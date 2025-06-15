@@ -61,18 +61,21 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
 4. **Start the container and open the app**
    ```bash
    docker run --env-file .env -p 8080:8080 \
-       -v $(pwd)/data:/data gtm-ai-tools
+       -v $(pwd)/data:/data \
+       -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility \
+       gtm-ai-tools
    ```
    Then browse to <http://localhost:8080>.
    Log in using the username from `APP_USERNAME` (defaults to `user`) and the
    password set in `APP_PASSWORD`.
-   Mounting a host directory to `/data` lets you access uploaded and generated
-   files outside the container. Replace `$(pwd)/data` with any path on your
+   Mounting your host `data` directory to `/data` lets you access uploads and
+   outputs outside the container. Replace `$(pwd)/data` with any path on your
    system.
 
-To add custom utilities, place them in the `gtm_utility` subfolder under
-your host `data` directory (i.e. `data/gtm_utility`). These will be picked
-up by the web app automatically when you mount `$(pwd)/data:/data`.
+   To add custom utilities, mount your host `gtm_utility` folder into the
+   container's gtm_utility path:
+
+      -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
 
 ## Repository structure
 

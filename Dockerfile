@@ -43,8 +43,9 @@ COPY . /home/site/wwwroot
 WORKDIR /home/site/wwwroot
 
 # Create data directory for persistent files and custom utilities
-RUN mkdir -p /data/gtm_utility /data/outputs
-VOLUME ["/data"]
+# Create mount point for user utilities and allow volume mounting
+RUN mkdir -p /home/site/wwwroot/gtm_utility
+VOLUME ["/home/site/wwwroot/gtm_utility"]
 
 EXPOSE 8080
 
