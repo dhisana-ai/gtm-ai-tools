@@ -79,6 +79,12 @@ if 'openai' not in sys.modules:
     openai.OpenAI = DummyClient
     class DummyAsyncOpenAI:
         def __init__(self, api_key=None):
+            self.responses = types.SimpleNamespace(create=self._create)
+        async def _create(self, **kwargs):
+            return types.SimpleNamespace(output_text="{}")
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, exc_type, exc, tb):
             pass
         class chat:
             class completions:

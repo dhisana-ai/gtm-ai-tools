@@ -68,14 +68,13 @@ async def _get_structured_data_internal(
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
-    client = AsyncOpenAI(api_key=api_key)
     try:
-        response = await client.chat.completions.create(
-            model=common.get_openai_model(),
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        text = response.choices[0].message.content or ""
+        async with AsyncOpenAI(api_key=api_key) as client:
+            response = await client.responses.create(
+                model=common.get_openai_model(),
+                input=prompt,
+            )
+        text = getattr(response, "output_text", "") or ""
         if not text:
             return None, "ERROR"
         return model.model_validate_json(text), "SUCCESS"
