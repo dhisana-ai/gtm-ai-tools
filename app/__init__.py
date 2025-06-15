@@ -102,6 +102,45 @@ UTILITY_ORDER = {
     "send_email_smtp": 6,
 }
 
+# Tags applied to utilities for filtering in the web UI
+UTILITY_TAGS = {
+    # Find/Search leads
+    "linkedin_search_to_csv": ["find"],
+    "find_a_user_by_name_and_keywords": ["find"],
+    "find_user_by_job_title": ["find"],
+    "find_users_by_name_and_keywords": ["find"],
+    "fetch_html_playwright": ["find"],
+    "extract_companies_from_image": ["find"],
+    "extract_from_webpage": ["find"],
+
+    # Enrich leads
+    "apollo_info": ["enrich"],
+    "check_email_zero_bounce": ["enrich"],
+    "find_company_info": ["enrich"],
+    "find_contact_with_findymail": ["enrich"],
+    "call_openai_llm": ["enrich"],
+    "generate_email": ["route"],
+    "generate_image": ["enrich"],
+
+    # Score leads
+    "score_lead": ["score"],
+
+    # Route leads
+    "push_lead_to_dhisana_webhook": ["route"],
+    "push_company_to_dhisana_webhook": ["route"],
+    "push_to_clay_table": ["route"],
+    "send_email_smtp": ["route"],
+    "send_slack_message": ["route"],
+    "hubspot_add_note": ["route"],
+    "hubspot_create_contact": ["route"],
+    "hubspot_get_contact": ["route"],
+    "hubspot_update_contact": ["route"],
+    "salesforce_add_note": ["route"],
+    "salesforce_create_contact": ["route"],
+    "salesforce_get_contact": ["route"],
+    "salesforce_update_contact": ["route"],
+}
+
 # Utilities that only support CSV upload mode
 # Use a list instead of a set so the value can be JSON serialised when passed
 # to templates.
@@ -289,7 +328,7 @@ def _format_title(name: str) -> str:
 
 
 def _list_utils() -> list[dict[str, str]]:
-    """Return available utilities as ``{"name", "title", "desc"}`` dicts."""
+    """Return available utilities as ``{"name", "title", "desc", "tags"}`` dicts."""
     utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")
     items: list[dict[str, str]] = []
     for file_name in os.listdir(utils_dir):
@@ -305,7 +344,14 @@ def _list_utils() -> list[dict[str, str]]:
                 desc = module.__doc__.strip().splitlines()[0]
         except Exception:
             pass
-        items.append({"name": base, "title": _format_title(base), "desc": desc})
+        items.append(
+            {
+                "name": base,
+                "title": _format_title(base),
+                "desc": desc,
+                "tags": UTILITY_TAGS.get(base, []),
+            }
+        )
     return sorted(
         items,
         key=lambda x: (
@@ -389,6 +435,7 @@ def run_utility():
     input_csv_path: str | None = None
     output_csv_path: str | None = None
     utils_list = _list_utils()
+    tags_list = sorted({t for tags in UTILITY_TAGS.values() for t in tags})
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
     prev_csv = session.get("prev_csv_path")
     if prev_csv and os.path.exists(prev_csv):
@@ -659,6 +706,7 @@ def run_utility():
     return render_template(
         "run_utility.html",
         utils=utils_list,
+        tags=tags_list,
         util_output=util_output,
         download_name=download_name,
         input_rows=input_rows,
