@@ -68,8 +68,13 @@ ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
 # FAISS index and codes for utility embeddings (cosine similarity)
 # Cache paths for utility embeddings index and codes
-# Include any user-generated utilities saved on the Desktop
-USER_UTIL_DIR = Path.home() / 'Desktop' / 'gtm_utility'
+# Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
+DATA_DIR = Path('/data')
+if DATA_DIR.is_dir():
+    USER_UTIL_DIR = DATA_DIR / 'gtm_utility'
+else:
+    USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cache paths for utility embeddings index and codes under user utilities folder
 FAISS_CACHE_DIR = USER_UTIL_DIR / 'faiss'
@@ -1126,10 +1131,8 @@ def save_utility():
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f'utility_{timestamp}.py'
 
-        home = Path(os.path.expanduser('~'))
-        target_dir = home / 'Desktop' / 'gtm_utility'
+        target_dir = USER_UTIL_DIR
         logging.info("save_utility: target folder=%s", target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
 
         file_path = target_dir / filename
         with open(file_path, 'w', encoding='utf-8') as f:

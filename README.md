@@ -70,6 +70,10 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    files outside the container. Replace `$(pwd)/data` with any path on your
    system.
 
+To add custom utilities, place them in the `gtm_utility` subfolder under
+your host `data` directory (i.e. `data/gtm_utility`). These will be picked
+up by the web app automatically when you mount `$(pwd)/data:/data`.
+
 ## Repository structure
 
 - `utils/` – Stand‑alone Python utilities.

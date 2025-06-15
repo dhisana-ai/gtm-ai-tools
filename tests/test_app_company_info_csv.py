@@ -6,7 +6,7 @@ from pathlib import Path
 import faiss
 
 # Ensure a dummy FAISS cache exists so build_utility_embeddings loads without error
-cache_dir = Path.home() / 'Desktop' / 'gtm_utility' / 'faiss'
+cache_dir = Path(__file__).resolve().parents[1] / 'gtm_utility' / 'faiss'
 cache_dir.mkdir(parents=True, exist_ok=True)
 faiss.write_index(faiss.IndexFlatIP(1), str(cache_dir / 'utility_embeddings.index'))
 (cache_dir / 'utility_embeddings.json').write_text(json.dumps([]), encoding='utf-8')
