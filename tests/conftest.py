@@ -235,6 +235,8 @@ if 'numpy' not in sys.modules:
         def norm(a):
             return 1.0
     numpy.linalg = Linalg()
+    # Support stacking rows of arrays in dummy build_utility_embeddings
+    numpy.vstack = lambda arrays: numpy.ndarray([list(row) for row in arrays])
     sys.modules['numpy'] = numpy
 
 if 'faiss' not in sys.modules:
