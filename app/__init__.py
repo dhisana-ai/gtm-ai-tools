@@ -435,7 +435,10 @@ def run_utility():
     input_csv_path: str | None = None
     output_csv_path: str | None = None
     utils_list = _list_utils()
-    tags_list = sorted({t for tags in UTILITY_TAGS.values() for t in tags})
+    tags_set = {t for tags in UTILITY_TAGS.values() for t in tags}
+    tag_order = ["find", "enrich", "score", "route"]
+    tags_list = [t for t in tag_order if t in tags_set]
+    tags_list.extend(sorted(tags_set - set(tag_order)))
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
     prev_csv = session.get("prev_csv_path")
     if prev_csv and os.path.exists(prev_csv):
