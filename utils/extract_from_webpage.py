@@ -644,8 +644,16 @@ def main() -> None:
         default=1,
         help="Max pages to navigate",
     )
+    parser.add_argument(
+        "--show_ux",
+        action="store_true",
+        help="Show the website in a browser window while parsing",
+    )
     parser.add_argument("--output_csv", help="Output CSV path")
     args = parser.parse_args()
+
+    if args.show_ux:
+        os.environ["HEADLESS"] = "false"
 
     if bool(args.csv) == bool(args.url):
         parser.error("Provide either a URL or --csv")

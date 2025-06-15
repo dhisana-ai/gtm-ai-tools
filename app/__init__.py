@@ -272,6 +272,7 @@ UTILITY_PARAMETERS = {
         {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
         {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
+        {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
     ],
     "generate_email": [
         {
@@ -461,6 +462,7 @@ def run_utility():
         uploaded = None
         input_mode = request.form.get("input_mode", "single")
         selected_json = request.form.get("selected_rows", "")
+        show_ux_flag = request.form.get("--show_ux")
         if selected_json:
             try:
                 rows = json.loads(selected_json)
@@ -502,6 +504,8 @@ def run_utility():
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec["name"]
                 val = (values.get(name) or "").strip()
+                if util_name == "extract_from_webpage" and name == "--show_ux":
+                    continue
                 if (
                     util_name == "linkedin_search_to_csv"
                     and name == "--num"
@@ -535,10 +539,12 @@ def run_utility():
                 cmd.extend(["--output_csv", out_path])
             return cmd
 
-        def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
+        def run_cmd(cmd: list[str], show_ux: bool = False) -> tuple[str, str, str]:
             env = os.environ.copy()
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             env["PYTHONPATH"] = env.get("PYTHONPATH", "") + ":" + root_dir
+            if show_ux:
+                env["HEADLESS"] = "false"
             proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
             status = "SUCCESS" if proc.returncode == 0 else "FAIL"
             output = (
@@ -637,6 +643,11 @@ def run_utility():
                 elif request.form.get("--companies"):
                     mode = "companies"
                 try:
+                    old_headless = os.environ.get("HEADLESS")
+                    if show_ux_flag:
+                        os.environ["HEADLESS"] = "false"
+                    else:
+                        os.environ["HEADLESS"] = "true"
                     extract_from_webpage.extract_from_webpage_from_csv(
                         uploaded,
                         out_path,
@@ -649,10 +660,18 @@ def run_utility():
                         max_pages=int(request.form.get("--max_pages") or 1),
                         mode=mode,
                     )
+                    if old_headless is None:
+                        os.environ.pop("HEADLESS", None)
+                    else:
+                        os.environ["HEADLESS"] = old_headless
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
+                    if old_headless is None:
+                        os.environ.pop("HEADLESS", None)
+                    else:
+                        os.environ["HEADLESS"] = old_headless
                     util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
@@ -717,7 +736,7 @@ def run_utility():
                     writer.writeheader()
                     for row in rows:
                         cmd = build_cmd(row)
-                        status, cmd_str, out_text = run_cmd(cmd)
+                        status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
                         row.update(
                             {
                                 status_field: status,
@@ -735,7 +754,7 @@ def run_utility():
                 for spec in UTILITY_PARAMETERS.get(util_name, [])
             }
             cmd = build_cmd(values)
-            status, cmd_str, out_text = run_cmd(cmd)
+            status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
             if util_name == "generate_image" and status == "SUCCESS":
                 try:
                     img_bytes = base64.b64decode(out_text)
