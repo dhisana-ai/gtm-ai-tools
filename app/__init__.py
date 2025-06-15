@@ -19,6 +19,7 @@ from utils import (
     call_openai_llm,
     score_lead,
     generate_email,
+    extract_from_webpage,
     common,
 )
 from pathlib import Path
@@ -50,7 +51,10 @@ except Exception:  # pragma: no cover - fallback for test stubs
     session = {}
 from dotenv import dotenv_values, set_key
 import openai
-import numpy as np
+try:
+    import numpy as np
+except Exception:  # pragma: no cover - optional
+    np = None
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +83,7 @@ UTILITY_TITLES = {
     "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
+    "extract_from_webpage": "Extract Leads From Website",
     "generate_image": "Generate Image",
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
@@ -96,6 +101,45 @@ UTILITY_ORDER = {
     "push_lead_to_dhisana_webhook": 4,
     "generate_email": 5,
     "send_email_smtp": 6,
+}
+
+# Tags applied to utilities for filtering in the web UI
+UTILITY_TAGS = {
+    # Find/Search leads
+    "linkedin_search_to_csv": ["find"],
+    "find_a_user_by_name_and_keywords": ["find"],
+    "find_user_by_job_title": ["find"],
+    "find_users_by_name_and_keywords": ["find"],
+    "fetch_html_playwright": ["find"],
+    "extract_companies_from_image": ["find"],
+    "extract_from_webpage": ["find"],
+
+    # Enrich leads
+    "apollo_info": ["enrich"],
+    "check_email_zero_bounce": ["enrich"],
+    "find_company_info": ["enrich"],
+    "find_contact_with_findymail": ["enrich"],
+    "call_openai_llm": ["enrich"],
+    "generate_email": ["route"],
+    "generate_image": ["enrich"],
+
+    # Score leads
+    "score_lead": ["score"],
+
+    # Route leads
+    "push_lead_to_dhisana_webhook": ["route"],
+    "push_company_to_dhisana_webhook": ["route"],
+    "push_to_clay_table": ["route"],
+    "send_email_smtp": ["route"],
+    "send_slack_message": ["route"],
+    "hubspot_add_note": ["route"],
+    "hubspot_create_contact": ["route"],
+    "hubspot_get_contact": ["route"],
+    "hubspot_update_contact": ["route"],
+    "salesforce_add_note": ["route"],
+    "salesforce_create_contact": ["route"],
+    "salesforce_get_contact": ["route"],
+    "salesforce_update_contact": ["route"],
 }
 
 # Utilities that only support CSV upload mode
@@ -210,10 +254,15 @@ UTILITY_PARAMETERS = {
     ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
-        {"name": "--lead", "label": "Fetch lead", "type": "boolean"},
-        {"name": "--leads", "label": "Fetch leads", "type": "boolean"},
-        {"name": "--company", "label": "Fetch company", "type": "boolean"},
-        {"name": "--companies", "label": "Fetch companies", "type": "boolean"},
+        {"name": "--lead", "label": "Extract One Lead", "type": "boolean"},
+        {"name": "--leads", "label": "Extract Multiple Leads", "type": "boolean"},
+        {"name": "--company", "label": "Extract One Company", "type": "boolean"},
+        {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
+        {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
+        {"name": "--page_actions", "label": "Actions to do When each page loads."},
+        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
+        {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
+        {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
     ],
     "generate_email": [
         {
@@ -280,7 +329,7 @@ def _format_title(name: str) -> str:
 
 
 def _list_utils() -> list[dict[str, str]]:
-    """Return available utilities as ``{"name", "title", "desc"}`` dicts."""
+    """Return available utilities as ``{"name", "title", "desc", "tags"}`` dicts."""
     utils_dir = os.path.join(os.path.dirname(__file__), "..", "utils")
     items: list[dict[str, str]] = []
     for file_name in os.listdir(utils_dir):
@@ -296,7 +345,14 @@ def _list_utils() -> list[dict[str, str]]:
                 desc = module.__doc__.strip().splitlines()[0]
         except Exception:
             pass
-        items.append({"name": base, "title": _format_title(base), "desc": desc})
+        items.append(
+            {
+                "name": base,
+                "title": _format_title(base),
+                "desc": desc,
+                "tags": UTILITY_TAGS.get(base, []),
+            }
+        )
     return sorted(
         items,
         key=lambda x: (
@@ -329,6 +385,7 @@ def _load_csv_preview(path: str) -> list[dict[str, str]]:
 
 
 if hasattr(app, "before_request"):
+
     @app.before_request
     def require_login():
         endpoint = request.endpoint or ""
@@ -339,6 +396,7 @@ if hasattr(app, "before_request"):
             return redirect(url_for("login"))
 
 else:  # pragma: no cover - for tests with DummyFlask
+
     def require_login():
         return
 
@@ -378,6 +436,10 @@ def run_utility():
     input_csv_path: str | None = None
     output_csv_path: str | None = None
     utils_list = _list_utils()
+    tags_set = {t for tags in UTILITY_TAGS.values() for t in tags}
+    tag_order = ["find", "enrich", "score", "route"]
+    tags_list = [t for t in tag_order if t in tags_set]
+    tags_list.extend(sorted(tags_set - set(tag_order)))
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
     prev_csv = session.get("prev_csv_path")
     if prev_csv and os.path.exists(prev_csv):
@@ -454,6 +516,14 @@ def run_utility():
                         insert_at = i
                         break
                 cmd.insert(insert_at, out_path)
+            elif util_name == "extract_from_webpage":
+                out_path = common.make_temp_csv_filename(util_name)
+                if not any(
+                    f in cmd
+                    for f in ("--lead", "--leads", "--company", "--companies")
+                ):
+                    cmd.append("--leads")
+                cmd.extend(["--output_csv", out_path])
             return cmd
 
         def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
@@ -540,6 +610,35 @@ def run_utility():
                 try:
                     call_openai_llm.call_openai_llm_from_csv(
                         uploaded, out_path, prompt_text
+                    )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "extract_from_webpage":
+                out_path = common.make_temp_csv_filename(util_name)
+                mode = "leads"
+                if request.form.get("--lead"):
+                    mode = "lead"
+                elif request.form.get("--company"):
+                    mode = "company"
+                elif request.form.get("--companies"):
+                    mode = "companies"
+                try:
+                    extract_from_webpage.extract_from_webpage_from_csv(
+                        uploaded,
+                        out_path,
+                        next_page_selector=request.form.get("--next_page_selector"),
+                        max_next_pages=int(request.form.get("--max_next_pages") or 0),
+                        parse_instructions=request.form.get("--parse_instructions", ""),
+                        initial_actions=request.form.get("--initial_actions", ""),
+                        page_actions=request.form.get("--page_actions", ""),
+                        pagination_actions=request.form.get("--pagination_actions", ""),
+                        max_pages=int(request.form.get("--max_pages") or 1),
+                        mode=mode,
                     )
                     download_name = out_path
                     output_csv_path = out_path
@@ -640,6 +739,7 @@ def run_utility():
     return render_template(
         "run_utility.html",
         utils=utils_list,
+        tags=tags_list,
         util_output=util_output,
         download_name=download_name,
         input_rows=input_rows,
@@ -684,9 +784,9 @@ def history():
             files.append(
                 {
                     "name": p.name,
-                    "mtime": datetime.datetime.fromtimestamp(p.stat().st_mtime).strftime(
-                        "%Y-%m-%d %H:%M:%S"
-                    ),
+                    "mtime": datetime.datetime.fromtimestamp(
+                        p.stat().st_mtime
+                    ).strftime("%Y-%m-%d %H:%M:%S"),
                 }
             )
     return render_template("history.html", csv_files=files)
@@ -781,43 +881,45 @@ def push_to_dhisana():
     flash(f"Pushed {pushed} leads to Dhisana.")
     return redirect(url_for("run_utility"))
 
+
 def embed_text(text):
     client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.embeddings.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
+    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
     return np.array(response.data[0].embedding)
+
 
 def build_utility_embeddings():
     global UTILITY_EMBEDDINGS
     UTILITY_EMBEDDINGS = []
     for fname in os.listdir(UTILS_DIR):
-        if fname.endswith('.py') and fname != 'common.py':
+        if fname.endswith(".py") and fname != "common.py":
             path = os.path.join(UTILS_DIR, fname)
-            with open(path, 'r', encoding='utf-8') as f:
+            with open(path, "r", encoding="utf-8") as f:
                 code = f.read()
             emb = embed_text(code[:2000])
-            UTILITY_EMBEDDINGS.append({
-                'filename': fname,
-                'code': code,
-                'embedding': emb
-            })
+            UTILITY_EMBEDDINGS.append(
+                {"filename": fname, "code": code, "embedding": emb}
+            )
+
 
 def get_top_k_utilities(prompt, k=3):
     prompt_emb = embed_text(prompt)
     scored = []
     for util in UTILITY_EMBEDDINGS:
-        score = np.dot(prompt_emb, util['embedding']) / (np.linalg.norm(prompt_emb) * np.linalg.norm(util['embedding']))
+        score = np.dot(prompt_emb, util["embedding"]) / (
+            np.linalg.norm(prompt_emb) * np.linalg.norm(util["embedding"])
+        )
         scored.append((score, util))
     scored.sort(reverse=True, key=lambda x: x[0])
-    return [util['code'] for score, util in scored[:k]]
+    return [util["code"] for score, util in scored[:k]]
+
 
 build_utility_embeddings()
 
-@app.route('/generate_utility', methods=['POST'])
+
+@app.route("/generate_utility", methods=["POST"])
 def generate_utility():
-    user_prompt = request.form['prompt']
+    user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=3)
     prompt_lines = [
         "# The following are Python utilities for GTM automation, lead generation, enrichment, outreach, or sales/marketing workflows.",
@@ -834,17 +936,22 @@ def generate_utility():
 
     try:
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        response = client.responses.create(
-            model="gpt-4o-mini",
-            input=codex_prompt
-        )
+        response = client.responses.create(model="gpt-4o-mini", input=codex_prompt)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
-        if hasattr(response, "output") and isinstance(response.output, list) and len(response.output) > 0:
+        if (
+            hasattr(response, "output")
+            and isinstance(response.output, list)
+            and len(response.output) > 0
+        ):
             for msg in response.output:
                 if hasattr(msg, "content") and isinstance(msg.content, list):
                     for c in msg.content:
-                        if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                        if (
+                            hasattr(c, "text")
+                            and isinstance(c.text, str)
+                            and c.text.strip()
+                        ):
                             code = c.text.strip()
                             break
                     if code:
@@ -855,7 +962,4 @@ def generate_utility():
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
-    return jsonify({
-        "success": True,
-        "code": code
-    })
+    return jsonify({"success": True, "code": code})

@@ -375,6 +375,36 @@ the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
 
+## Extract Leads From Website
+
+`extract_from_webpage.py` scrapes a page with Playwright and uses an LLM to
+parse leads or organizations from the text. Provide the starting URL and use
+`--lead` or `--leads` to control how many leads are returned. You can run custom
+JavaScript on the initial page load, on each page load and for pagination by
+supplying natural language instructions with `--initial_actions`,
+`--page_actions` and `--pagination_actions`. Parsing behaviour can be tweaked
+with `--parse_instructions`. Use `--max_pages` to limit how many pages are
+navigated. The previous `--next_page_selector` and `--max_next_pages` options
+still work as a fallback.
+
+You can also pass a CSV file with a `website_url` column using the `--csv`
+option. Each website in the file is processed and the aggregated results are
+written to the path given with `--output_csv`.
+
+If `--output_csv` is not supplied, the utility now prints the CSV data to
+standard output instead of JSON.
+
+```bash
+task run:command -- extract_from_webpage --leads https://example.com/team \
+    --output_csv /workspace/output.csv
+```
+
+The path supplied with `--output_csv` is created inside the container. Since the
+local `output/` directory maps to `/workspace`, the file will be available at
+`output/output.csv` on your host system. In the web interface you can switch to
+**Use Previous Output** and feed this CSV into another tool such as **Enrich
+Lead With Apollo.io**.
+
 
 ## OpenAI Codex CLI
 

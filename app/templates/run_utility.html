@@ -19,6 +19,21 @@
   <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
     Create New GTM Utility
   </button>
+  <div class="mb-3">
+    <label for="tag-select" class="form-label">Filter by Category</label>
+    {% set tag_labels = {
+      'find': 'Find/Search Leads',
+      'enrich': 'Enrich Leads',
+      'score': 'Score Leads',
+      'route': 'Route Leads'
+    } %}
+    <select id="tag-select" class="form-select w-auto d-inline-block ms-2">
+      <option value="">All Tools</option>
+      {% for tag in tags %}
+        <option value="{{ tag }}">{{ tag_labels.get(tag, tag|capitalize) }}</option>
+      {% endfor %}
+    </select>
+  </div>
   <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
       <div class="modal-content shadow-lg border-0" style="border-radius: 1rem;">
@@ -51,7 +66,7 @@
   <div class="row">
     <div class="col-md-4 mb-4" style="max-height: 80vh; overflow-y: auto; overflow-x: hidden;">
       {% for util in utils %}
-        <div class="card util-card mb-3" data-util="{{ util.name }}" role="button" style="cursor:pointer;">
+        <div class="card util-card mb-3" data-util="{{ util.name }}" data-tags="{{ ','.join(util.tags) }}" role="button" style="cursor:pointer;">
           <div class="card-body">
             <h5 class="card-title mb-1">{{ util.title }}</h5>
             <p class="card-text small text-muted">{{ util.desc }}</p>
@@ -285,7 +300,10 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
+        const paramsVisible = !(
+          ['file', 'previous'].includes(mode) &&
+          !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
+        );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
   document.querySelectorAll('.util-card').forEach(card => {
@@ -294,6 +312,17 @@
           renderParams();
         });
       });
+  const tagSelect = document.getElementById('tag-select');
+  function filterUtils() {
+        const selected = tagSelect.value;
+        document.querySelectorAll('.util-card').forEach(card => {
+          const tags = card.dataset.tags ? card.dataset.tags.split(',') : [];
+          card.style.display = !selected || tags.includes(selected) ? '' : 'none';
+        });
+  }
+  if (tagSelect) {
+        tagSelect.addEventListener('change', filterUtils);
+  }
   document.querySelectorAll('input[name="input_mode"]').forEach(el => el.addEventListener('change', updateMode));
   const utilForm = document.getElementById('util-form');
   const spinner = document.getElementById('run-spinner');
@@ -315,6 +344,7 @@
     selectUtil(utilInput.value);
     renderParams();
     updateMode();
+    filterUtils();
   });
   // Codex utility modal form handler
   const genForm = document.getElementById('generate-utility-form');
