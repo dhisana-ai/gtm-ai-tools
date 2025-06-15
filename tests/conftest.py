@@ -223,6 +223,8 @@ if 'faiss' not in sys.modules:
             # Default: return zeros and sequential indices
             return _np.zeros((1, k)), _np.arange(k).reshape(1, k)
     faiss.IndexFlatIP = IndexFlatIP
+    faiss.read_index = lambda fname: IndexFlatIP(1)
+    faiss.write_index = lambda idx, fname: None
     sys.modules['faiss'] = faiss
 
 import pytest
