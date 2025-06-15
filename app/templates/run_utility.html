@@ -300,7 +300,10 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(['file', 'previous'].includes(mode) && !['call_openai_llm', 'score_lead'].includes(util));
+        const paramsVisible = !(
+          ['file', 'previous'].includes(mode) &&
+          !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
+        );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
       }
   document.querySelectorAll('.util-card').forEach(card => {
