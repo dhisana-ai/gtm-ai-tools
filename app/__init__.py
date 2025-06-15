@@ -1105,18 +1105,24 @@ def save_utility():
         code = data.get('code')
         if not code:
             return jsonify({'success': False, 'error': 'No code to save'}), 400
-        home = Path(os.path.expanduser('~'))
-        desktop = home / 'Desktop'
-        target_dir = desktop / 'gtm_utility'
-        logging.info("save_utility: target folder=%s", target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
+        prompt = data.get('prompt', '').strip()
 
-        filename = data.get('filename')
-        if not filename:
+        # Build filename from prompt or fallback to timestamped utility name
+        if prompt:
+            # Sanitize prompt to safe file prefix
+            safe = re.sub(r'\s+', '_', prompt)
+            safe = re.sub(r'[^A-Za-z0-9_-]', '', safe)
+            safe = safe[:30]
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{safe}_{timestamp}.py"
+        else:
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             filename = f'utility_{timestamp}.py'
-        if not filename.endswith('.py'):
-            filename += '.py'
+
+        home = Path(os.path.expanduser('~'))
+        target_dir = home / 'Desktop' / 'gtm_utility'
+        logging.info("save_utility: target folder=%s", target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
 
         file_path = target_dir / filename
         with open(file_path, 'w', encoding='utf-8') as f:

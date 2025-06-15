@@ -430,10 +430,11 @@
       const saveInfo = document.getElementById('save-info');
       saveBtn.disabled = true;
       if (saveInfo) { saveInfo.style.display = 'none'; }
-      fetch('/save_utility', {
+        const promptText = document.getElementById('utilityPrompt').value;
+        fetch('/save_utility', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code}),
+        body: JSON.stringify({code, prompt: promptText}),
       })
       .then(res => res.json())
       .then(resp => {
