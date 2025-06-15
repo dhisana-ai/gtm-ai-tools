@@ -16,18 +16,18 @@
     Vibe code and add your own GTM workflow in 5 min!
     <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">Vibe coding instructions</a>
   </p>
-  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
-    Create New GTM Utility
-  </button>
-  <div class="mb-3">
-    <label for="tag-select" class="form-label">Filter by Category</label>
+  <div class="d-flex align-items-end mb-3">
+    <button class="btn btn-primary me-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
+      Create New GTM Utility
+    </button>
+    <label for="tag-select" class="form-label me-2 mb-0">Filter by Category</label>
     {% set tag_labels = {
       'find': 'Find/Search Leads',
       'enrich': 'Enrich Leads',
       'score': 'Score Leads',
       'route': 'Route Leads'
     } %}
-    <select id="tag-select" class="form-select w-auto d-inline-block ms-2">
+    <select id="tag-select" class="form-select w-auto d-inline-block">
       <option value="">All Tools</option>
       {% for tag in tags %}
         <option value="{{ tag }}">{{ tag_labels.get(tag, tag|capitalize) }}</option>
