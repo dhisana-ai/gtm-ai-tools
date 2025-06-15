@@ -104,6 +104,7 @@ def _extract_linkedin_links(html: str) -> tuple[str, str]:
             company_url = find_company_info.extract_company_page(href)
         if user_url and company_url:
             break
+    logger.debug("Found LinkedIn user: %s, company: %s", user_url, company_url)
     return user_url, company_url
 
 
@@ -115,7 +116,8 @@ async def _fetch_pages_by_selector(
     pages: List[str] = []
     current = url
     visited: set[str] = set()
-    for _ in range(max_next_pages + 1):
+    for i in range(max_next_pages + 1):
+        logger.info("Fetching page %s", current)
         if current in visited:
             break
         visited.add(current)
@@ -128,10 +130,13 @@ async def _fetch_pages_by_selector(
         soup = BeautifulSoup(html, "html.parser")
         next_link = soup.select_one(next_page_selector)
         if not next_link:
+            logger.debug("No next link found with selector %s", next_page_selector)
             break
         href = next_link.get("href")
         if not href:
+            logger.debug("Next link missing href attribute")
             break
+        logger.info("Navigating to next page: %s", href)
         current = urljoin(current, href)
 
     return pages
@@ -140,6 +145,7 @@ async def _fetch_pages_by_selector(
 async def _generate_js(html: str, instructions: str) -> str:
     """Return JavaScript for ``instructions`` using the page ``html``."""
     if not instructions.strip():
+        logger.debug("No instructions provided, skipping JavaScript generation")
         return ""
     prompt = (
         "Here is the html of the page:\n"
@@ -148,20 +154,26 @@ async def _generate_js(html: str, instructions: str) -> str:
         f"{instructions}\n\n"
         "Provide only the JavaScript code to execute with Playwright."
     )
-    return await asyncio.to_thread(_call_openai, prompt)
+    js = await asyncio.to_thread(_call_openai, prompt)
+    logger.debug("Generated JavaScript:\n%s", js)
+    return js
 
 
 async def _apply_actions(page, instructions: str) -> None:
     if not instructions.strip():
+        logger.debug("No actions to apply")
         return
     html = await page.content()
     js = await _generate_js(html, instructions)
     if js.strip():  # pragma: no cover - best effort
         try:
+            logger.info("Executing JavaScript:\n%s", js)
             await page.evaluate(js)
             await asyncio.sleep(2)
         except Exception:
             logger.exception("Failed to run generated JavaScript")
+    else:
+        logger.debug("No JavaScript generated for actions")
 
 
 async def _fetch_pages_with_actions(
@@ -176,14 +188,18 @@ async def _fetch_pages_with_actions(
     async with fetch_html_playwright.browser_ctx(proxy) as ctx:
         page = await ctx.new_page()
         await fetch_html_playwright.apply_stealth(page)
+        logger.info("Navigating to %s", url)
         await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
+        logger.info("Applying initial actions")
         await _apply_actions(page, initial_actions)
         for i in range(max_pages):
+            logger.info("Processing page %s", i + 1)
             await _apply_actions(page, page_actions)
             html = await page.content()
             pages.append(html)
             if i == max_pages - 1:
                 break
+            logger.info("Applying pagination actions")
             await _apply_actions(page, pagination_actions)
             try:
                 await page.wait_for_load_state("domcontentloaded", timeout=30_000)
@@ -202,9 +218,11 @@ async def _fetch_pages(
     max_pages: int = 1,
 ) -> List[str]:
     if any([initial_actions, page_actions, pagination_actions]) or max_pages > 1:
+        logger.info("Using action-based navigation")
         return await _fetch_pages_with_actions(
             url, initial_actions, page_actions, pagination_actions, max_pages
         )
+    logger.info("Using selector-based pagination")
     return await _fetch_pages_by_selector(url, next_page_selector, max_next_pages)
 
 
@@ -230,6 +248,7 @@ async def extract_multiple_companies_from_webpage(
     )
     aggregated: list[Company] = []
     for html in pages:
+        logger.debug("Parsing page for companies")
         _user_link, org_link = _extract_linkedin_links(html)
         text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
@@ -240,6 +259,7 @@ async def extract_multiple_companies_from_webpage(
         )
         result, status = await _get_structured_data_internal(prompt, CompanyList)
         if status != "SUCCESS" or result is None:
+            logger.debug("Company extraction failed: %s", status)
             continue
         companies = result.companies
         if org_link:
@@ -295,6 +315,7 @@ async def extract_multiple_leads_from_webpage(
     )
     aggregated: list[Lead] = []
     for html in pages:
+        logger.debug("Parsing page for leads")
         user_link, org_link = _extract_linkedin_links(html)
         text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
@@ -305,6 +326,7 @@ async def extract_multiple_leads_from_webpage(
         )
         result, status = await _get_structured_data_internal(prompt, LeadList)
         if status != "SUCCESS" or result is None:
+            logger.debug("Lead extraction failed: %s", status)
             continue
         leads = result.leads
         if user_link or org_link:
@@ -341,7 +363,9 @@ async def extract_lead_from_webpage(
     return leads[0] if leads else None
 
 
-def _write_companies_csv(companies: List[Company], dest: typing.Union[str, typing.TextIO]) -> None:
+def _write_companies_csv(
+    companies: List[Company], dest: typing.Union[str, typing.TextIO]
+) -> None:
     import csv
 
     fieldnames = [
@@ -470,7 +494,9 @@ def main() -> None:
     group.add_argument("--lead", action="store_true", help="Extract one lead")
     group.add_argument("--leads", action="store_true", help="Extract multiple leads")
     group.add_argument("--company", action="store_true", help="Extract one company")
-    group.add_argument("--companies", action="store_true", help="Extract multiple companies")
+    group.add_argument(
+        "--companies", action="store_true", help="Extract multiple companies"
+    )
     parser.add_argument("url", help="Website URL")
     parser.add_argument("--next_page_selector", help="CSS selector for next page link")
     parser.add_argument(
