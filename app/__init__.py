@@ -58,6 +58,7 @@ try:
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+import faiss
 
 logging.basicConfig(level=logging.INFO)
 
@@ -65,7 +66,18 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
-UTILITY_EMBEDDINGS = []
+# FAISS index and codes for utility embeddings (cosine similarity)
+# Cache paths for utility embeddings index and codes
+# Include any user-generated utilities saved on the Desktop
+USER_UTIL_DIR = Path.home() / 'Desktop' / 'gtm_utility'
+
+# Cache paths for utility embeddings index and codes under user utilities folder
+FAISS_CACHE_DIR = USER_UTIL_DIR / 'faiss'
+EMBED_INDEX_PATH = FAISS_CACHE_DIR / 'utility_embeddings.index'
+EMBED_CODES_PATH = FAISS_CACHE_DIR / 'utility_embeddings.json'
+
+UTILITY_INDEX: faiss.IndexFlatIP | None = None
+UTILITY_CODES: list[str] = []
 
 # Preferred column order when displaying CSV data in the grid
 DISPLAY_ORDER = [
@@ -918,37 +930,71 @@ def push_to_dhisana():
     return redirect(url_for("run_utility"))
 
 
-def embed_text(text):
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
+def embed_text(text: str) -> np.ndarray:
+    """Return the LLM embedding for the given text."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    client = openai.OpenAI(api_key=api_key)
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002",
+    )
     return np.array(response.data[0].embedding)
 
+def build_utility_embeddings() -> None:
+    """Load or build utility embeddings and FAISS index cache."""
+    global UTILITY_INDEX, UTILITY_CODES
+    # Try loading from cache
+    if EMBED_INDEX_PATH.exists() and EMBED_CODES_PATH.exists():
+        try:
+            UTILITY_INDEX = faiss.read_index(str(EMBED_INDEX_PATH))
+            with open(EMBED_CODES_PATH, 'r', encoding='utf-8') as f:
+                UTILITY_CODES = json.load(f)
+            return
+        except Exception:
+            # fallback to rebuild
+            pass
 
-def build_utility_embeddings():
-    global UTILITY_EMBEDDINGS
-    UTILITY_EMBEDDINGS = []
+    codes: list[str] = []
+    embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if fname.endswith(".py") and fname != "common.py":
-            path = os.path.join(UTILS_DIR, fname)
-            with open(path, "r", encoding="utf-8") as f:
-                code = f.read()
-            emb = embed_text(code[:2000])
-            UTILITY_EMBEDDINGS.append(
-                {"filename": fname, "code": code, "embedding": emb}
-            )
+        if not fname.endswith('.py') or fname == 'common.py':
+            continue
+        path = os.path.join(UTILS_DIR, fname)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        embeds.append(embed_text(code[:2000]).astype(np.float32))
+        codes.append(code)
+    # Also scan user-generated utilities on Desktop
+    if USER_UTIL_DIR.is_dir():
+        for user_path in USER_UTIL_DIR.glob('*.py'):
+            try:
+                code = user_path.read_text(encoding='utf-8')
+            except Exception:
+                continue
+            embeds.append(embed_text(code[:2000]).astype(np.float32))
+            codes.append(code)
 
+    if embeds:
+        mat = np.vstack(embeds)
+        faiss.normalize_L2(mat)
+        index = faiss.IndexFlatIP(mat.shape[1])
+        index.add(mat)
+    else:
+        index = faiss.IndexFlatIP(1)
 
-def get_top_k_utilities(prompt, k=3):
-    prompt_emb = embed_text(prompt)
-    scored = []
-    for util in UTILITY_EMBEDDINGS:
-        score = np.dot(prompt_emb, util["embedding"]) / (
-            np.linalg.norm(prompt_emb) * np.linalg.norm(util["embedding"])
-        )
-        scored.append((score, util))
-    scored.sort(reverse=True, key=lambda x: x[0])
-    return [util["code"] for score, util in scored[:k]]
+    UTILITY_INDEX = index
+    UTILITY_CODES = codes
 
+    # Persist cache
+    try:
+        EMBED_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(UTILITY_INDEX, str(EMBED_INDEX_PATH))
+        with open(EMBED_CODES_PATH, 'w', encoding='utf-8') as f:
+            json.dump(UTILITY_CODES, f)
+    except Exception:
+        pass
 
 build_utility_embeddings()
 
