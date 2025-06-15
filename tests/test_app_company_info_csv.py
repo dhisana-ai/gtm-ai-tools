@@ -1,6 +1,15 @@
 import os
 import sys
 import types
+import json
+from pathlib import Path
+import faiss
+
+# Ensure a dummy FAISS cache exists so build_utility_embeddings loads without error
+cache_dir = Path(__file__).resolve().parents[1] / 'data' / 'faiss'
+cache_dir.mkdir(parents=True, exist_ok=True)
+faiss.write_index(faiss.IndexFlatIP(1), str(cache_dir / 'utility_embeddings.index'))
+(cache_dir / 'utility_embeddings.json').write_text(json.dumps([]), encoding='utf-8')
 
 # Record any existing flask module to restore later
 _original_flask = sys.modules.get('flask')

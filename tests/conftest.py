@@ -3,7 +3,25 @@ import pathlib
 import types
 
 # Make project root importable
+# Make project root importable
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+# Ensure OPENAI_API_KEY is set so embed_text() won't raise during tests
+import os
+os.environ["OPENAI_API_KEY"] = "test"
+# Stub OpenAI client to prevent real API calls during build_utility_embeddings
+fake_openai = types.ModuleType("openai")
+class DummyOpenAIClient:
+    def __init__(self, api_key=None):
+        self.embeddings = types.SimpleNamespace(
+            create=lambda input, model: types.SimpleNamespace(
+                data=[types.SimpleNamespace(embedding=[0.0])]
+            )
+        )
+fake_openai.OpenAI = DummyOpenAIClient
+# Provide AsyncOpenAI for modules that import it
+fake_openai.AsyncOpenAI = lambda *args, **kwargs: None
+sys.modules["openai"] = fake_openai
 
 # Provide simple stubs for external dependencies if they are missing
 if 'aiohttp' not in sys.modules:
@@ -193,20 +211,57 @@ if 'flask' not in sys.modules:
     flask.jsonify = lambda *a, **kw: {}
     sys.modules['flask'] = flask
 
-
 if 'numpy' not in sys.modules:
     numpy = types.ModuleType('numpy')
     class ndarray(list):
+        @property
+        def shape(self):
+            # rows x cols if 2D-like, else length
+            if self and isinstance(self[0], list):
+                return (len(self), len(self[0]))
+            return (len(self),)
         def tolist(self):
             return list(self)
+        def reshape(self, *shape, **kw):
+            # Support reshape to (1, n) or flat
+            if len(shape) == 2 and shape[0] == 1:
+                return [self]
+            return self
+        def astype(self, dtype):
+            return self
     numpy.ndarray = ndarray
-    numpy.array = lambda x: ndarray(x)
+    # Support dtype kwarg and float32 attribute for tests
+    numpy.float32 = float
+    numpy.array = lambda x, dtype=None: ndarray(x)
     numpy.dot = lambda a, b: 0.0
+    numpy.ones = lambda shape: ndarray([1] * (shape[1] if len(shape) > 1 else shape[0]))
+    numpy.arange = lambda n: ndarray(list(range(n)))
     class Linalg:
         @staticmethod
         def norm(a):
             return 1.0
     numpy.linalg = Linalg()
+    # Support stacking rows of arrays in dummy build_utility_embeddings
+    numpy.vstack = lambda arrays: numpy.ndarray([list(row) for row in arrays])
     sys.modules['numpy'] = numpy
+
+if 'faiss' not in sys.modules:
+    faiss = types.ModuleType('faiss')
+    def _normalize_L2(x):
+        return x
+    faiss.normalize_L2 = _normalize_L2
+    class IndexFlatIP:
+        def __init__(self, dim):
+            pass
+        def add(self, mat):
+            pass
+        def search(self, x, k):
+            import numpy as _np
+            # Default: return zeros and sequential indices
+            return _np.zeros((1, k)), _np.arange(k).reshape(1, k)
+    faiss.IndexFlatIP = IndexFlatIP
+    faiss.read_index = lambda fname: IndexFlatIP(1)
+    faiss.write_index = lambda idx, fname: None
+    sys.modules['faiss'] = faiss
 
 import pytest

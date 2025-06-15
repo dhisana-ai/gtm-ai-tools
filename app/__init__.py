@@ -58,6 +58,7 @@ try:
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+import faiss
 
 logging.basicConfig(level=logging.INFO)
 
@@ -65,7 +66,25 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
-UTILITY_EMBEDDINGS = []
+# FAISS index and codes for utility embeddings (cosine similarity)
+# Cache paths for utility embeddings index and codes
+# Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
+# Directory for user-generated utilities (create gtm_utility at repo root)
+USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
+
+# Data directory for persistent files and FAISS cache; prefer mounted /data in container
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = Path('/data') if Path('/data').is_dir() else ROOT / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Cache paths for utility embeddings index and codes under the data folder
+FAISS_CACHE_DIR = DATA_DIR / 'faiss'
+EMBED_INDEX_PATH = FAISS_CACHE_DIR / 'utility_embeddings.index'
+EMBED_CODES_PATH = FAISS_CACHE_DIR / 'utility_embeddings.json'
+
+UTILITY_INDEX: faiss.IndexFlatIP | None = None
+UTILITY_CODES: list[str] = []
 
 # Preferred column order when displaying CSV data in the grid
 DISPLAY_ORDER = [
@@ -937,39 +956,80 @@ def push_to_dhisana():
     return redirect(url_for("run_utility"))
 
 
-def embed_text(text):
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
+def embed_text(text: str) -> np.ndarray:
+    """Return the LLM embedding for the given text."""
+    api_key = os.environ.get("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    client = openai.OpenAI(api_key=api_key)
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002",
+    )
     return np.array(response.data[0].embedding)
 
+def build_utility_embeddings() -> None:
+    """Load or build utility embeddings and FAISS index cache."""
+    global UTILITY_INDEX, UTILITY_CODES
+    # Try loading from cache
+    if EMBED_INDEX_PATH.exists() and EMBED_CODES_PATH.exists():
+        try:
+            UTILITY_INDEX = faiss.read_index(str(EMBED_INDEX_PATH))
+            with open(EMBED_CODES_PATH, 'r', encoding='utf-8') as f:
+                UTILITY_CODES = json.load(f)
+            return
+        except Exception:
+            # fallback to rebuild
+            pass
 
-def build_utility_embeddings():
-    global UTILITY_EMBEDDINGS
-    UTILITY_EMBEDDINGS = []
+    codes: list[str] = []
+    embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if fname.endswith(".py") and fname != "common.py":
-            path = os.path.join(UTILS_DIR, fname)
-            with open(path, "r", encoding="utf-8") as f:
-                code = f.read()
-            emb = embed_text(code[:2000])
-            UTILITY_EMBEDDINGS.append(
-                {"filename": fname, "code": code, "embedding": emb}
-            )
+        if not fname.endswith('.py') or fname == 'common.py':
+            continue
+        path = os.path.join(UTILS_DIR, fname)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        embeds.append(embed_text(code[:2000]).astype(np.float32))
+        codes.append(code)
+    # Also scan user-generated utilities on Desktop
+    if USER_UTIL_DIR.is_dir():
+        for user_path in USER_UTIL_DIR.glob('*.py'):
+            try:
+                code = user_path.read_text(encoding='utf-8')
+            except Exception:
+                continue
+            embeds.append(embed_text(code[:2000]).astype(np.float32))
+            codes.append(code)
 
+    if embeds:
+        mat = np.vstack(embeds)
+        faiss.normalize_L2(mat)
+        index = faiss.IndexFlatIP(mat.shape[1])
+        index.add(mat)
+    else:
+        index = faiss.IndexFlatIP(1)
 
-def get_top_k_utilities(prompt, k=3):
-    prompt_emb = embed_text(prompt)
-    scored = []
-    for util in UTILITY_EMBEDDINGS:
-        score = np.dot(prompt_emb, util["embedding"]) / (
-            np.linalg.norm(prompt_emb) * np.linalg.norm(util["embedding"])
-        )
-        scored.append((score, util))
-    scored.sort(reverse=True, key=lambda x: x[0])
-    return [util["code"] for score, util in scored[:k]]
+    UTILITY_INDEX = index
+    UTILITY_CODES = codes
 
+    # Persist cache
+    try:
+        EMBED_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(UTILITY_INDEX, str(EMBED_INDEX_PATH))
+        with open(EMBED_CODES_PATH, 'w', encoding='utf-8') as f:
+            json.dump(UTILITY_CODES, f)
+    except Exception:
+        pass
 
 build_utility_embeddings()
+
+def get_top_k_utilities(prompt: str, k: int) -> list[str]:
+    """Return the top-k utility code snippets for the given prompt."""
+    query_vec = embed_text(prompt).astype(np.float32)
+    faiss.normalize_L2(query_vec.reshape(1, -1))
+    distances, indices = UTILITY_INDEX.search(query_vec.reshape(1, -1), k)
+    return [UTILITY_CODES[i] for i in indices[0]]
 
 
 @app.route("/generate_utility", methods=["POST"])
@@ -985,13 +1045,19 @@ def generate_utility():
             prompt_lines.append(f"# {line}")
     prompt_lines.append("# User wants a new GTM utility:")
     prompt_lines.append(f"# {user_prompt}")
-    prompt_lines.append("# Please provide the Python code for this utility below:")
+    prompt_lines.append(
+        "# Please output only the Python code for this utility below, without any markdown fences or additional text"
+    )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 
     try:
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-        response = client.responses.create(model="gpt-4o-mini", input=codex_prompt)
+        response = client.responses.create(
+            model="gpt-4o-mini",
+            input=codex_prompt
+        )
+        prev_response_id = getattr(response, 'id', None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
@@ -1017,4 +1083,83 @@ def generate_utility():
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
-    return jsonify({"success": True, "code": code})
+    # Validate generated code by attempting to compile; if syntax errors occur,
+    # ask the LLM to correct up to 10 retries.
+    for attempt in range(10):
+        try:
+            compile(code, '<generated>', 'exec')
+            break
+        except Exception as compile_err:
+            logging.warning("Generated code failed to compile (attempt %d): %s",
+                            attempt + 1, compile_err)
+            commented_code = "\n".join(f"# {line}" for line in code.splitlines())
+            correction_prompt = (
+                codex_prompt
+                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"{commented_code}\n"
+                + "# Please provide the full corrected utility code below:\n"
+            )
+            response = client.responses.create(
+                model="gpt-4o-mini",
+                input=correction_prompt,
+                previous_response_id=prev_response_id,
+            )
+            prev_response_id = getattr(response, 'id', prev_response_id)
+            # Extract corrected code same as before
+            new_code = None
+            if hasattr(response, "output") and isinstance(response.output, list):
+                for msg in response.output:
+                    if hasattr(msg, "content") and isinstance(msg.content, list):
+                        for c in msg.content:
+                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                                new_code = c.text.strip()
+                                break
+                        if new_code:
+                            break
+            if not new_code:
+                continue
+            code = new_code
+    else:
+        # Exhausted retries without valid code
+        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
+        logging.error(err_msg)
+        return jsonify({"success": False, "error": err_msg}), 500
+
+    return jsonify({
+        "success": True,
+        "code": code
+    })
+
+
+@app.route('/save_utility', methods=['POST'])
+def save_utility():
+    try:
+        data = request.get_json(force=True)
+        code = data.get('code')
+        if not code:
+            return jsonify({'success': False, 'error': 'No code to save'}), 400
+        prompt = data.get('prompt', '').strip()
+
+        # Build filename from prompt or fallback to timestamped utility name
+        if prompt:
+            # Sanitize prompt to safe file prefix
+            safe = re.sub(r'\s+', '_', prompt)
+            safe = re.sub(r'[^A-Za-z0-9_-]', '', safe)
+            safe = safe[:30]
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f"{safe}_{timestamp}.py"
+        else:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'utility_{timestamp}.py'
+
+        target_dir = USER_UTIL_DIR
+        logging.info("save_utility: target folder=%s", target_dir)
+
+        file_path = target_dir / filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+        logging.info("save_utility: wrote file %s", file_path)
+        return jsonify({'success': True, 'file_path': str(file_path)})
+    except Exception as e:
+        logging.error('Error saving utility to file: %s', e)
+        return jsonify({'success': False, 'error': str(e)}), 500

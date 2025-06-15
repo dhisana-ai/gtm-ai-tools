@@ -42,6 +42,11 @@ RUN python -m playwright install chromium && \
 COPY . /home/site/wwwroot
 WORKDIR /home/site/wwwroot
 
+# Create data directory for persistent files and custom utilities
+# Create mount point for user utilities and allow volume mounting
+# Create folder for custom utilities (mount manually via -v)
+RUN mkdir -p /home/site/wwwroot/gtm_utility
+
 EXPOSE 8080
 
 # ─── 5️⃣  ⚠️ Keep running as **root** in local dev so port-80 bind works

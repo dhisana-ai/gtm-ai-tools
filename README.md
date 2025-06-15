@@ -58,17 +58,31 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
-4. **Start the container and open the app**
-   ```bash
-   docker run --env-file .env -p 8080:8080 \
-       -v $(pwd)/data:/data gtm-ai-tools
-   ```
-   Then browse to <http://localhost:8080>.
-   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
-   password set in `APP_PASSWORD`.
-   Mounting a host directory to `/data` lets you access uploaded and generated
-   files outside the container. Replace `$(pwd)/data` with any path on your
-   system.
+   4. **Start the container and open the app**
+
+      ```bash
+       # In Git Bash, get the Windows-style path of your current directory:
+       H="$(pwd -W)"
+   
+       # Run the container, bind-mounting your host folders correctly:
+      docker run \
+        --env-file .env \
+        -p 8080:8080 \
+        -v "${H}/data:/data" \
+        -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
+        gtm-ai-tools
+      ```
+
+      Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+      password set in `APP_PASSWORD`.
+      Mounting your host `data` directory to `/data` lets you access uploads and
+      outputs outside the container. Replace `$(pwd)/data` with any path on your
+      system.
+
+      To add custom utilities, mount your host `gtm_utility` folder into the
+      container's gtm_utility path:
+
+         -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
 
 ## Repository structure
 
