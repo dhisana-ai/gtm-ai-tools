@@ -387,6 +387,10 @@ with `--parse_instructions`. Use `--max_pages` to limit how many pages are
 navigated. The previous `--next_page_selector` and `--max_next_pages` options
 still work as a fallback.
 
+You can also pass a CSV file with a `website_url` column using the `--csv`
+option. Each website in the file is processed and the aggregated results are
+written to the path given with `--output_csv`.
+
 If `--output_csv` is not supplied, the utility now prints the CSV data to
 standard output instead of JSON.
 

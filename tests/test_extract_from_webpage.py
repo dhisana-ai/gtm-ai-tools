@@ -1,4 +1,6 @@
 import asyncio
+import csv
+import pytest
 from utils import extract_from_webpage as mod
 
 
@@ -75,3 +77,27 @@ def test_parse_instructions_in_prompt(monkeypatch):
         )
     )
     assert "Look carefully" in captured["prompt"]
+
+
+def test_extract_from_webpage_from_csv(tmp_path, monkeypatch):
+    async def fake_many(url, *a, **k):
+        return [mod.Lead(first_name=url)]
+
+    monkeypatch.setattr(
+        mod,
+        "extract_multiple_leads_from_webpage",
+        fake_many,
+    )
+    in_file = tmp_path / "in.csv"
+    in_file.write_text("website_url\nhttp://a.com\nhttp://b.com\n")
+    out_file = tmp_path / "out.csv"
+    mod.extract_from_webpage_from_csv(in_file, out_file)
+    rows = list(csv.DictReader(out_file.open()))
+    assert [r["first_name"] for r in rows] == ["http://a.com", "http://b.com"]
+
+
+def test_extract_from_webpage_from_csv_missing_col(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text("foo\n1\n")
+    with pytest.raises(ValueError):
+        mod.extract_from_webpage_from_csv(bad, tmp_path / "o.csv")
