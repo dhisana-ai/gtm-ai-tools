@@ -13,11 +13,12 @@ class DummyClient:
         self.kwargs = kwargs
         return SimpleNamespace(output_text='["Acme"]')
 
-async def fake_details(name, location=None):
+async def fake_details(name, location=None, organization_linkedin_url="", organization_website=""):
     return {
-        "company_website": "https://acme.com",
-        "company_domain": "acme.com",
-        "linkedin_url": "https://www.linkedin.com/company/acme",
+        "organization_name": name,
+        "organization_website": "https://acme.com",
+        "primary_domain_of_organization": "acme.com",
+        "organization_linkedin_url": "https://www.linkedin.com/company/acme",
     }
 
 
@@ -31,6 +32,7 @@ def test_main(monkeypatch, tmp_path, capsys):
     mod.main()
     captured = capsys.readouterr()
     data = json.loads(captured.out)
-    assert data[0]["company_name"] == "Acme"
-    assert data[0]["company_domain"] == "acme.com"
+    assert data[0]["organization_name"] == "Acme"
+    assert data[0]["primary_domain_of_organization"] == "acme.com"
     assert dummy.kwargs["input"][0]["content"][1]["image_url"] == "http://e.com/logo.png"
+

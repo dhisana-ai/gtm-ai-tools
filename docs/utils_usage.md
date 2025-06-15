@@ -49,16 +49,15 @@ After the command finishes, everything in `output/` is also copied to
 
 ## Find Company Info
 
-`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERPER_API_KEY` environment variable for Google queries.
-The LinkedIn URL returned is normalized to the `https://www.linkedin.com/company/<id>` form.
+`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERPER_API_KEY` environment variable for Google queries. The LinkedIn URL returned is normalized to the `https://www.linkedin.com/company/<id>` form.
 
-Run it with the company name and optional location:
+Provide an organization name, LinkedIn URL or website:
 
 ```bash
-task run:command -- find_company_info "Dhisana" -l "San Francisco"
+task run:command -- find_company_info --organization_name "Dhisana" --location "San Francisco"
 ```
 
-The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.
+The script prints JSON with `organization_name`, `organization_website`, `primary_domain_of_organization` and `organization_linkedin_url`.
 
 ## Find User by Name and Keywords
 
