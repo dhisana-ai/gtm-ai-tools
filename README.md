@@ -69,11 +69,27 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
        gtm-ai-tools
    ```
 
-   Or as a single line:
+   Or as a single line (no backslashes):
 
    ```bash
-   docker run --env-file .env -p 8080:8080 -v "$(pwd)/data:/data" -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" gtm-ai-tools
+   docker run --env-file .env -p 8080:8080 \
+     -v "$(pwd)/data:/data" \
+     -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" \
+     gtm-ai-tools
    ```
+
+   Alternatively, use the explicit `--mount` syntax to avoid hidden carriage-returns (common when copy/pasting on Windows):
+
+   ```bash
+   docker run --env-file .env -p 8080:8080 \
+     --mount type=bind,source="$(pwd)/data",target=/data \
+     --mount type=bind,source="$(pwd)/gtm_utility",target=/home/site/wwwroot/gtm_utility \
+     gtm-ai-tools
+   ```
+
+   ❗️ If you ever see a stray folder named `gtm_utility;c` (with an extra `;c`), it
+   means a carriage-return (`\r`) snuck into the mount path when copy/pasting.
+   Delete it and re-run the command (or type it manually) to avoid this issue.
    Then browse to <http://localhost:8080>.
    Log in using the username from `APP_USERNAME` (defaults to `user`) and the
    password set in `APP_PASSWORD`.
