@@ -397,6 +397,7 @@ supplying natural language instructions with `--initial_actions`,
 with `--parse_instructions`. Use `--max_pages` to limit how many pages are
 navigated. The previous `--next_page_selector` and `--max_next_pages` options
 still work as a fallback.
+Pass `--show_ux` to launch a visible browser window and wait 30 seconds on each page.
 
 You can also pass a CSV file with a `website_url` column using the `--csv`
 option. Each website in the file is processed and the aggregated results are
