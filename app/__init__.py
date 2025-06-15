@@ -996,10 +996,7 @@ def build_utility_embeddings() -> None:
     except Exception:
         pass
 
-try:
-    build_utility_embeddings()
-except RuntimeError as e:
-    logging.warning("Skipping build_utility_embeddings at import: %s", e)
+build_utility_embeddings()
 
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
