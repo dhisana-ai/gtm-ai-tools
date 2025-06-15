@@ -58,49 +58,31 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
-4. **Start the container and open the app**
+   4. **Start the container and open the app**
 
-   Run with explicit mounts (use the one-line form to avoid hidden control characters):
+      ```bash
+       # In Git Bash, get the Windows-style path of your current directory:
+       H="$(pwd -W)"
+   
+       # Run the container, bind-mounting your host folders correctly:
+      docker run \
+        --env-file .env \
+        -p 8080:8080 \
+        -v "${H}/data:/data" \
+        -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
+        gtm-ai-tools
+      ```
 
-   ```bash
-   docker run --env-file .env -p 8080:8080 \
-       -v "$(pwd)/data:/data" \
-       -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" \
-       gtm-ai-tools
-   ```
+      Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+      password set in `APP_PASSWORD`.
+      Mounting your host `data` directory to `/data` lets you access uploads and
+      outputs outside the container. Replace `$(pwd)/data` with any path on your
+      system.
 
-   Or as a single line (no backslashes):
+      To add custom utilities, mount your host `gtm_utility` folder into the
+      container's gtm_utility path:
 
-   ```bash
-   docker run --env-file .env -p 8080:8080 \
-     -v "$(pwd)/data:/data" \
-     -v "$(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility" \
-     gtm-ai-tools
-   ```
-
-   Alternatively, use the explicit `--mount` syntax to avoid hidden carriage-returns (common when copy/pasting on Windows):
-
-   ```bash
-   docker run --env-file .env -p 8080:8080 \
-     --mount type=bind,source="$(pwd)/data",target=/data \
-     --mount type=bind,source="$(pwd)/gtm_utility",target=/home/site/wwwroot/gtm_utility \
-     gtm-ai-tools
-   ```
-
-   ❗️ If you ever see a stray folder named `gtm_utility;c` (with an extra `;c`), it
-   means a carriage-return (`\r`) snuck into the mount path when copy/pasting.
-   Delete it and re-run the command (or type it manually) to avoid this issue.
-   Then browse to <http://localhost:8080>.
-   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
-   password set in `APP_PASSWORD`.
-   Mounting your host `data` directory to `/data` lets you access uploads and
-   outputs outside the container. Replace `$(pwd)/data` with any path on your
-   system.
-
-   To add custom utilities, mount your host `gtm_utility` folder into the
-   container's gtm_utility path:
-
-      -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
+         -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
 
 ## Repository structure
 
