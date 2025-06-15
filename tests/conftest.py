@@ -198,9 +198,20 @@ if 'numpy' not in sys.modules:
     class ndarray(list):
         def tolist(self):
             return list(self)
+        def reshape(self, *shape, **kw):
+            # Support reshape to (1, n) or flat
+            if len(shape) == 2 and shape[0] == 1:
+                return [self]
+            return self
+        def astype(self, dtype):
+            return self
     numpy.ndarray = ndarray
-    numpy.array = lambda x: ndarray(x)
+    # Support dtype kwarg and float32 attribute for tests
+    numpy.float32 = float
+    numpy.array = lambda x, dtype=None: ndarray(x)
     numpy.dot = lambda a, b: 0.0
+    numpy.ones = lambda shape: ndarray([1] * (shape[1] if len(shape) > 1 else shape[0]))
+    numpy.arange = lambda n: ndarray(list(range(n)))
     class Linalg:
         @staticmethod
         def norm(a):

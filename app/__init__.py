@@ -998,6 +998,13 @@ def build_utility_embeddings() -> None:
 
 build_utility_embeddings()
 
+def get_top_k_utilities(prompt: str, k: int) -> list[str]:
+    """Return the top-k utility code snippets for the given prompt."""
+    query_vec = embed_text(prompt).astype(np.float32)
+    faiss.normalize_L2(query_vec.reshape(1, -1))
+    distances, indices = UTILITY_INDEX.search(query_vec.reshape(1, -1), k)
+    return [UTILITY_CODES[i] for i in indices[0]]
+
 
 @app.route("/generate_utility", methods=["POST"])
 def generate_utility():
