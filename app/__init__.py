@@ -966,7 +966,9 @@ def generate_utility():
             prompt_lines.append(f"# {line}")
     prompt_lines.append("# User wants a new GTM utility:")
     prompt_lines.append(f"# {user_prompt}")
-    prompt_lines.append("# Please provide the Python code for this utility below:")
+    prompt_lines.append(
+        "# Please output only the Python code for this utility below, without any markdown fences or additional text"
+    )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 

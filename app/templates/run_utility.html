@@ -231,6 +231,7 @@
 
 {% block scripts %}
 <script>
+(function() {
   const PARAM_MAP = {{ util_params|tojson|safe }};
   const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
   const CSV_HELP = {
@@ -405,6 +406,7 @@
       });
     });
   }
+})();
 </script>
 {% endblock %}
 {% endblock %}
