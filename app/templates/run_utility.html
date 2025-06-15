@@ -37,7 +37,7 @@
   <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
       <div class="modal-content shadow-lg border-0" style="border-radius: 1rem;">
-        <form id="generate-utility-form" method="post" action="{{ url_for('generate_utility') }}">
+        <form id="generate-utility-form">
           <div class="modal-header bg-primary text-white" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
             <h4 class="modal-title fw-bold" id="generateUtilityModalLabel">Create New GTM Utility</h4>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -53,11 +53,15 @@
                 <button type="button" class="btn btn-outline-secondary btn-sm position-absolute top-0 end-0 m-2" id="copy-code-btn" title="Copy to clipboard">
                   <i class="bi bi-clipboard"></i> Copy
                 </button>
+                <button type="button" class="btn btn-outline-primary btn-sm position-absolute top-0 end-0 me-5 m-2" id="save-code-btn" title="Save to Desktop" style="display:none;">
+                  <i class="bi bi-save"></i> Save
+                </button>
               </div>
+              <div id="save-info" class="mt-2 text-success" style="display:none;"></div>
             </div>
           </div>
           <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
-            <button type="submit" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
+            <button type="button" id="generate-utility-btn" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
           </div>
         </form>
       </div>
@@ -228,6 +232,7 @@
       </div>
     </div>
   </div>
+{% endblock %}
 
 {% block scripts %}
 <script>
@@ -365,16 +370,23 @@
     filterUtils();
   });
   // Codex utility modal form handler
-  const genForm = document.getElementById('generate-utility-form');
-  if (genForm) {
-    genForm.addEventListener('submit', function(e) {
+  // Generate utility via AJAX (single entrypoint)
+  const genBtn = document.getElementById('generate-utility-btn');
+  if (genBtn) {
+    genBtn.addEventListener('click', function(e) {
       e.preventDefault();
-      const prompt = document.getElementById('utilityPrompt').value;
+      e.stopPropagation();
+      const promptText = document.getElementById('utilityPrompt').value;
       const statusDiv = document.getElementById('generate-utility-status');
+      const saveBtn = document.getElementById('save-code-btn');
+      const saveInfo = document.getElementById('save-info');
       statusDiv.textContent = 'Generating...';
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (saveInfo) saveInfo.style.display = 'none';
+      console.trace('About to call /generate_utility');
       fetch('/generate_utility', {
         method: 'POST',
-        body: new URLSearchParams({prompt}),
+        body: new URLSearchParams({prompt: promptText}),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'}
       })
       .then(res => res.json())
@@ -383,9 +395,11 @@
           statusDiv.textContent = 'Utility created! Here is your code:';
           document.getElementById('generated-code').textContent = data.code;
           document.getElementById('generated-code-container').style.display = '';
+          if (saveBtn) saveBtn.style.display = '';
         } else {
           statusDiv.textContent = 'Failed to generate utility.';
           document.getElementById('generated-code-container').style.display = 'none';
+          if (saveBtn) saveBtn.style.display = 'none';
         }
       })
       .catch(() => {
@@ -406,7 +420,46 @@
       });
     });
   }
+  // Save to desktop functionality
+  const saveBtn = document.getElementById('save-code-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const code = document.getElementById('generated-code').textContent;
+      const saveInfo = document.getElementById('save-info');
+      saveBtn.disabled = true;
+      if (saveInfo) { saveInfo.style.display = 'none'; }
+      fetch('/save_utility', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code}),
+      })
+      .then(res => res.json())
+      .then(resp => {
+        if (resp.success) {
+          saveInfo.classList.remove('text-danger');
+          saveInfo.classList.add('text-success');
+          saveInfo.textContent = 'Saved to ' + resp.file_path;
+        } else {
+          saveInfo.classList.remove('text-success');
+          saveInfo.classList.add('text-danger');
+          saveInfo.textContent = 'Save failed: ' + (resp.error || 'error');
+        }
+        if (saveInfo) saveInfo.style.display = '';
+        saveBtn.disabled = false;
+      })
+      .catch(() => {
+        if (saveInfo) {
+          saveInfo.classList.remove('text-success');
+          saveInfo.classList.add('text-danger');
+          saveInfo.textContent = 'Error saving file';
+          saveInfo.style.display = '';
+        }
+        saveBtn.disabled = false;
+      });
+    });
+  }
 })();
 </script>
-{% endblock %}
 {% endblock %}

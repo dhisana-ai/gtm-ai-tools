@@ -1050,3 +1050,33 @@ def generate_utility():
         "success": True,
         "code": code
     })
+
+
+@app.route('/save_utility', methods=['POST'])
+def save_utility():
+    try:
+        data = request.get_json(force=True)
+        code = data.get('code')
+        if not code:
+            return jsonify({'success': False, 'error': 'No code to save'}), 400
+        home = Path(os.path.expanduser('~'))
+        desktop = home / 'Desktop'
+        target_dir = desktop / 'gtm_utility'
+        logging.info("save_utility: target folder=%s", target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = data.get('filename')
+        if not filename:
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            filename = f'utility_{timestamp}.py'
+        if not filename.endswith('.py'):
+            filename += '.py'
+
+        file_path = target_dir / filename
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(code)
+        logging.info("save_utility: wrote file %s", file_path)
+        return jsonify({'success': True, 'file_path': str(file_path)})
+    except Exception as e:
+        logging.error('Error saving utility to file: %s', e)
+        return jsonify({'success': False, 'error': str(e)}), 500
