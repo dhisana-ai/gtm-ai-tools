@@ -193,7 +193,6 @@ if 'flask' not in sys.modules:
     flask.jsonify = lambda *a, **kw: {}
     sys.modules['flask'] = flask
 
-
 if 'numpy' not in sys.modules:
     numpy = types.ModuleType('numpy')
     class ndarray(list):
@@ -208,5 +207,22 @@ if 'numpy' not in sys.modules:
             return 1.0
     numpy.linalg = Linalg()
     sys.modules['numpy'] = numpy
+
+if 'faiss' not in sys.modules:
+    faiss = types.ModuleType('faiss')
+    def _normalize_L2(x):
+        return x
+    faiss.normalize_L2 = _normalize_L2
+    class IndexFlatIP:
+        def __init__(self, dim):
+            pass
+        def add(self, mat):
+            pass
+        def search(self, x, k):
+            import numpy as _np
+            # Default: return zeros and sequential indices
+            return _np.zeros((1, k)), _np.arange(k).reshape(1, k)
+    faiss.IndexFlatIP = IndexFlatIP
+    sys.modules['faiss'] = faiss
 
 import pytest

@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from app import embed_text, UTILITY_EMBEDDINGS, get_top_k_utilities
+from app import embed_text, UTILITY_INDEX, UTILITY_CODES, get_top_k_utilities
 
 
 def test_embed_text(monkeypatch):
@@ -27,19 +27,21 @@ def test_embed_text(monkeypatch):
 
 
 def test_get_top_k_utilities(monkeypatch):
-    # Prepare two dummy utilities with known embeddings
-    UTILITY_EMBEDDINGS.clear()
-    UTILITY_EMBEDDINGS.extend([
-        {"filename": "a.py", "code": "code A", "embedding": np.array([1.0, 0.0])},
-        {"filename": "b.py", "code": "code B", "embedding": np.array([0.0, 1.0])},
-    ])
-
-    # Stub embed_text to return a vector closer to the first utility
-    monkeypatch.setattr("app.embed_text", lambda prompt: np.array([1.0, 0.0]))
+    # Prepare a fake FAISS index and codes list for two dummy utilities
+    UTILITY_CODES.clear()
+    UTILITY_CODES.extend(["code A", "code B"])
+    class DummyIndex:
+        def search(self, query, k):
+            # Return top k indices [0..k-1] with dummy scores
+            import numpy as _np
+            return _np.ones((1, k)), _np.arange(k).reshape(1, k)
+    # Override the index and embed_text to control results
+    monkeypatch.setattr("app.UTILITY_INDEX", DummyIndex())
+    monkeypatch.setattr("app.embed_text", lambda prompt: np.array([1.0, 0.0], dtype=np.float32))
 
     top = get_top_k_utilities("prompt", k=2)
     assert top == ["code A", "code B"]
 
-    # If k=1, only the closest utility is returned
+    # If k=1, only the first code is returned
     top1 = get_top_k_utilities("prompt", k=1)
     assert top1 == ["code A"]
