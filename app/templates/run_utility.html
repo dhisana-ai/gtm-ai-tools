@@ -108,10 +108,11 @@
           </div>
           {% endif %}
         </div>
-        <div id="params-container"></div>
         <div class="mb-3" id="file-container" style="display:none;">
+          <label class="form-label">Upload CSV (must include <code>website_url</code> column)</label>
           <input class="form-control" type="file" name="csv_file">
         </div>
+        <div id="params-container"></div>
         <input type="hidden" name="selected_rows" id="selected-rows">
         <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
         <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
@@ -254,7 +255,11 @@
       container.innerHTML = '';
       const util = utilInput.value;
       const params = PARAM_MAP[util] || [];
+      const mode = document.querySelector('input[name="input_mode"]:checked')?.value || 'single';
       params.forEach(p => {
+        if (util === 'extract_from_webpage' && mode === 'file' && p.name === 'url') {
+          return;
+        }
         const div = document.createElement('div');
         const input = document.createElement('input');
         const label = document.createElement('label');
@@ -305,6 +310,7 @@
           !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
         );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
+        renderParams();
       }
   document.querySelectorAll('.util-card').forEach(card => {
         card.addEventListener('click', () => {

@@ -434,9 +434,35 @@ def extract_from_webpage_from_csv(
             agg_companies.extend(results)
 
     if mode in {"lead", "leads"}:
-        _write_leads_csv(agg_leads, str(out_path))
+        # Deduplicate leads by company and by user identifier
+        deduped: list[Lead] = []
+        seen_companies: set[str] = set()
+        seen_users: set[str] = set()
+        for lead in agg_leads:
+            comp_key = (lead.organization_name or "").strip().lower()
+            user_key = (lead.user_linkedin_url or lead.email or "").strip().lower()
+            if comp_key and comp_key in seen_companies:
+                continue
+            if user_key and user_key in seen_users:
+                continue
+            if comp_key:
+                seen_companies.add(comp_key)
+            if user_key:
+                seen_users.add(user_key)
+            deduped.append(lead)
+        _write_leads_csv(deduped, str(out_path))
     else:
-        _write_companies_csv(agg_companies, str(out_path))
+        # Deduplicate companies by organization name
+        deduped: list[Company] = []
+        seen: set[str] = set()
+        for comp in agg_companies:
+            key = (comp.organization_name or "").strip().lower()
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            deduped.append(comp)
+        _write_companies_csv(deduped, str(out_path))
 
 
 async def extract_lead_from_webpage(
