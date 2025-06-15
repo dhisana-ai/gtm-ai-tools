@@ -3,7 +3,25 @@ import pathlib
 import types
 
 # Make project root importable
+# Make project root importable
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+
+# Ensure OPENAI_API_KEY is set so embed_text() won't raise during tests
+import os
+os.environ["OPENAI_API_KEY"] = "test"
+# Stub OpenAI client to prevent real API calls during build_utility_embeddings
+fake_openai = types.ModuleType("openai")
+class DummyOpenAIClient:
+    def __init__(self, api_key=None):
+        self.embeddings = types.SimpleNamespace(
+            create=lambda input, model: types.SimpleNamespace(
+                data=[types.SimpleNamespace(embedding=[0.0])]
+            )
+        )
+fake_openai.OpenAI = DummyOpenAIClient
+# Provide AsyncOpenAI for modules that import it
+fake_openai.AsyncOpenAI = lambda *args, **kwargs: None
+sys.modules["openai"] = fake_openai
 
 # Provide simple stubs for external dependencies if they are missing
 if 'aiohttp' not in sys.modules:
