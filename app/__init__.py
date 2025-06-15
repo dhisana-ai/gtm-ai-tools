@@ -171,8 +171,10 @@ UTILITY_PARAMETERS = {
         {"name": "search_keywords", "label": "Search keywords"},
     ],
     "find_company_info": [
-        {"name": "company_name", "label": "Company name"},
-        {"name": "--location", "label": "Company location"},
+        {"name": "--organization_name", "label": "Organization name"},
+        {"name": "--organization_linkedin_url", "label": "Organization LinkedIn URL"},
+        {"name": "--organization_website", "label": "Organization website"},
+        {"name": "--location", "label": "Organization location"},
     ],
     "find_contact_with_findymail": [
         {"name": "full_name", "label": "Full name"},
