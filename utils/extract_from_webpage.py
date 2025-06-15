@@ -14,6 +14,7 @@ import sys
 import typing
 from typing import List, Optional, Tuple, Type, TextIO
 from urllib.parse import urljoin
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 
@@ -339,6 +340,105 @@ async def extract_multiple_leads_from_webpage(
     return aggregated
 
 
+def extract_from_webpage_from_csv(
+    input_file: str | Path,
+    output_file: str | Path,
+    *,
+    next_page_selector: str | None = None,
+    max_next_pages: int = 0,
+    parse_instructions: str = "",
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
+    mode: str = "leads",
+) -> None:
+    """Process ``input_file`` and aggregate results to ``output_file``."""
+
+    import csv
+
+    in_path = Path(input_file)
+    out_path = Path(output_file)
+
+    with in_path.open(newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        if "website_url" not in fieldnames:
+            raise ValueError("upload csv with website_url column")
+        rows = list(reader)
+
+    agg_leads: list[Lead] = []
+    agg_companies: list[Company] = []
+
+    for row in rows:
+        url = (row.get("website_url") or "").strip()
+        if not url:
+            continue
+        if mode == "lead":
+            result = asyncio.run(
+                extract_lead_from_webpage(
+                    url,
+                    next_page_selector,
+                    max_next_pages,
+                    parse_instructions=parse_instructions,
+                    initial_actions=initial_actions,
+                    page_actions=page_actions,
+                    pagination_actions=pagination_actions,
+                    max_pages=max_pages,
+                )
+            )
+            if result:
+                agg_leads.append(result)
+        elif mode == "leads":
+            results = asyncio.run(
+                extract_multiple_leads_from_webpage(
+                    url,
+                    next_page_selector,
+                    max_next_pages,
+                    parse_instructions=parse_instructions,
+                    initial_actions=initial_actions,
+                    page_actions=page_actions,
+                    pagination_actions=pagination_actions,
+                    max_pages=max_pages,
+                )
+            )
+            agg_leads.extend(results)
+        elif mode == "company":
+            result = asyncio.run(
+                extract_comapy_from_webpage(
+                    url,
+                    next_page_selector,
+                    max_next_pages,
+                    parse_instructions=parse_instructions,
+                    initial_actions=initial_actions,
+                    page_actions=page_actions,
+                    pagination_actions=pagination_actions,
+                    max_pages=max_pages,
+                )
+            )
+            if result:
+                agg_companies.append(result)
+        else:  # companies
+            results = asyncio.run(
+                extract_multiple_companies_from_webpage(
+                    url,
+                    next_page_selector,
+                    max_next_pages,
+                    parse_instructions=parse_instructions,
+                    initial_actions=initial_actions,
+                    page_actions=page_actions,
+                    pagination_actions=pagination_actions,
+                    max_pages=max_pages,
+                )
+            )
+            agg_companies.extend(results)
+
+    if mode in {"lead", "leads"}:
+        _write_leads_csv(agg_leads, str(out_path))
+    else:
+        _write_companies_csv(agg_companies, str(out_path))
+
+
 async def extract_lead_from_webpage(
     url: str,
     next_page_selector: str | None = None,
@@ -497,7 +597,8 @@ def main() -> None:
     group.add_argument(
         "--companies", action="store_true", help="Extract multiple companies"
     )
-    parser.add_argument("url", help="Website URL")
+    parser.add_argument("url", nargs="?", help="Website URL")
+    parser.add_argument("--csv", help="Input CSV file with website_url column")
     parser.add_argument("--next_page_selector", help="CSS selector for next page link")
     parser.add_argument(
         "--max_next_pages",
@@ -520,7 +621,34 @@ def main() -> None:
     )
     parser.add_argument("--output_csv", help="Output CSV path")
     args = parser.parse_args()
-    asyncio.run(_run_cli(args.url, args))
+
+    if bool(args.csv) == bool(args.url):
+        parser.error("Provide either a URL or --csv")
+
+    if args.csv:
+        if not args.output_csv:
+            raise ValueError("--output_csv is required when using --csv")
+        mode = "leads"
+        if args.lead:
+            mode = "lead"
+        elif args.company:
+            mode = "company"
+        elif args.companies:
+            mode = "companies"
+        extract_from_webpage_from_csv(
+            args.csv,
+            args.output_csv,
+            next_page_selector=args.next_page_selector,
+            max_next_pages=args.max_next_pages,
+            parse_instructions=args.parse_instructions or "",
+            initial_actions=args.initial_actions or "",
+            page_actions=args.page_actions or "",
+            pagination_actions=args.pagination_actions or "",
+            max_pages=args.max_pages,
+            mode=mode,
+        )
+    else:
+        asyncio.run(_run_cli(args.url, args))
 
 
 if __name__ == "__main__":

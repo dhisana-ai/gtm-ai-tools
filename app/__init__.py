@@ -19,6 +19,7 @@ from utils import (
     call_openai_llm,
     score_lead,
     generate_email,
+    extract_from_webpage,
     common,
 )
 from pathlib import Path
@@ -609,6 +610,35 @@ def run_utility():
                 try:
                     call_openai_llm.call_openai_llm_from_csv(
                         uploaded, out_path, prompt_text
+                    )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "extract_from_webpage":
+                out_path = common.make_temp_csv_filename(util_name)
+                mode = "leads"
+                if request.form.get("--lead"):
+                    mode = "lead"
+                elif request.form.get("--company"):
+                    mode = "company"
+                elif request.form.get("--companies"):
+                    mode = "companies"
+                try:
+                    extract_from_webpage.extract_from_webpage_from_csv(
+                        uploaded,
+                        out_path,
+                        next_page_selector=request.form.get("--next_page_selector"),
+                        max_next_pages=int(request.form.get("--max_next_pages") or 0),
+                        parse_instructions=request.form.get("--parse_instructions", ""),
+                        initial_actions=request.form.get("--initial_actions", ""),
+                        page_actions=request.form.get("--page_actions", ""),
+                        pagination_actions=request.form.get("--pagination_actions", ""),
+                        max_pages=int(request.form.get("--max_pages") or 1),
+                        mode=mode,
                     )
                     download_name = out_path
                     output_csv_path = out_path
