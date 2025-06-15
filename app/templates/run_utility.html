@@ -109,7 +109,7 @@
           {% endif %}
         </div>
         <div class="mb-3" id="file-container" style="display:none;">
-          <label class="form-label" id="csv-help">Upload CSV (must include <code>website_url</code> column)</label>
+          <label class="form-label" id="csv-help">CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column</label>
           <input class="form-control" type="file" name="csv_file">
         </div>
         <div id="params-container"></div>
@@ -234,9 +234,11 @@
   const PARAM_MAP = {{ util_params|tojson|safe }};
   const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
   const CSV_HELP = {
-    default: 'Upload CSV (must include <code>website_url</code> column)',
+    default: 'CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column',
     find_company_info:
-      'Upload CSV (must include <code>organization_name</code>, <code>organization_linkedin_url</code> or <code>organization_website</code> column)'
+      'Upload CSV (must include <code>organization_name</code>, <code>organization_linkedin_url</code> or <code>organization_website</code> column)',
+    find_user_by_job_title:
+      'CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column'
   };
   const utilInput = document.getElementById('util-name-input');
 
@@ -316,7 +318,7 @@
         }
         const paramsVisible = !(
           ['file', 'previous'].includes(mode) &&
-          !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
+          !['call_openai_llm', 'score_lead', 'extract_from_webpage', 'find_user_by_job_title'].includes(util)
         );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
         renderParams();
