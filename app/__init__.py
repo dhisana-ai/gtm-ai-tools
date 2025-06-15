@@ -85,6 +85,7 @@ UTILITY_TITLES = {
     "extract_companies_from_image": "Extract Companies from Image",
     "extract_from_webpage": "Extract Leads From Website",
     "generate_image": "Generate Image",
+    "get_website_information": "Get website information",
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
     "generate_email": "Generate Email",
@@ -251,6 +252,10 @@ UTILITY_PARAMETERS = {
     "generate_image": [
         {"name": "prompt", "label": "Prompt"},
         {"name": "--image-url", "label": "Image URL"},
+    ],
+    "get_website_information": [
+        {"name": "url", "label": "Website URL"},
+        {"name": "questions", "label": "Questions (comma-separated) about the website"},
     ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
