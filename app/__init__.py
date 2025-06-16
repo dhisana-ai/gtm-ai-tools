@@ -98,6 +98,7 @@ DISPLAY_ORDER = [
 UTILITY_TITLES = {
     "call_openai_llm": "OpenAI Tools",
     "linkedin_search_to_csv": "Find Leads with Google Search",
+    "apollo_people_search": "Find Leads with Apollo.io",
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
@@ -117,6 +118,7 @@ UTILITY_TITLES = {
 # Display order for the utilities list
 UTILITY_ORDER = {
     "linkedin_search_to_csv": 0,
+    "apollo_people_search": 0,
     "apollo_info": 1,
     "score_lead": 2,
     "check_email_zero_bounce": 3,
@@ -129,6 +131,7 @@ UTILITY_ORDER = {
 UTILITY_TAGS = {
     # Find/Search leads
     "linkedin_search_to_csv": ["find"],
+    "apollo_people_search": ["find"],
     "find_a_user_by_name_and_keywords": ["find"],
     "find_user_by_job_title": ["find"],
     "find_users_by_name_and_keywords": ["find"],
@@ -251,6 +254,47 @@ UTILITY_PARAMETERS = {
             "label": 'Google query (e.g. site:linkedin.com/in "VP Sales")',
         },
         {"name": "--num", "label": "Number of results"},
+    ],
+    "apollo_people_search": [
+        {"name": "--person_titles", "label": "Job titles"},
+        {"name": "--person_locations", "label": "Person locations"},
+        {
+            "name": "--person_seniorities",
+            "label": "Seniority",
+            "choices": [
+                "owner",
+                "founder",
+                "c_suite",
+                "partner",
+                "vp",
+                "head",
+                "director",
+                "manager",
+                "senior",
+                "entry",
+                "intern",
+            ],
+            "multiple": True,
+        },
+        {"name": "--organization_locations", "label": "Organization locations"},
+        {"name": "--organization_domains", "label": "Organization domains"},
+        {
+            "name": "--include_similar_titles",
+            "label": "Include similar titles",
+            "type": "boolean",
+        },
+        {
+            "name": "--contact_email_status",
+            "label": "Email status",
+            "choices": ["verified", "unverified", "likely to engage", "unavailable"],
+        },
+        {"name": "--organization_ids", "label": "Organization IDs"},
+        {
+            "name": "--organization_num_employees_ranges",
+            "label": "Employee ranges",
+        },
+        {"name": "--q_keywords", "label": "Keyword filter"},
+        {"name": "--num_leads", "label": "Number of leads"},
     ],
     "mcp_tool_sample": [{"name": "prompt", "label": "Prompt"}],
     "push_company_to_dhisana_webhook": [
@@ -768,10 +812,14 @@ def run_utility():
                 output_csv_path = out_path
                 util_output = None
         else:
-            values = {
-                spec["name"]: request.form.get(spec["name"], "")
-                for spec in UTILITY_PARAMETERS.get(util_name, [])
-            }
+            values = {}
+            for spec in UTILITY_PARAMETERS.get(util_name, []):
+                name = spec["name"]
+                if spec.get("multiple"):
+                    val = ",".join(request.form.getlist(name))
+                else:
+                    val = request.form.get(name, "")
+                values[name] = val
             cmd = build_cmd(values)
             status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
             if util_name == "generate_image" and status == "SUCCESS":
