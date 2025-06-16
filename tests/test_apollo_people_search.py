@@ -127,6 +127,7 @@ def test_clean_payload_removes_empty():
     payload = {
         "person_titles": [],
         "q_keywords": "CEO",
+        "q_organization_keyword_tags": ["semiconductor manufacturing"],
         "include_similar_titles": False,
         "page": 1,
     }
@@ -134,6 +135,7 @@ def test_clean_payload_removes_empty():
     assert "person_titles" not in cleaned
     assert "include_similar_titles" not in cleaned
     assert cleaned["q_keywords"] == "CEO"
+    assert cleaned["q_organization_keyword_tags"] == ["semiconductor manufacturing"]
 
 
 def test_apollo_people_results(monkeypatch):
