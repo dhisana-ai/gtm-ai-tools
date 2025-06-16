@@ -127,13 +127,18 @@ The resulting CSV includes columns for the parsed lead details
 ## Find Email and Phone
 
 `find_contact_with_findymail.py` queries the Findymail API for a person's
-e-mail address and phone number using their full name and company domain.
-Set the `FINDYMAIL_API_KEY` environment variable before running the script.
+e-mail address and phone number. Provide a LinkedIn profile URL when
+available, otherwise supply the person's full name and
+`primary_domain_of_organization`. Set the `FINDYMAIL_API_KEY` environment
+variable before running the script.
 
-Run it with the name and domain:
+Run it with a name and domain or with a LinkedIn URL:
 
 ```bash
+# using name and company domain
 task run:command -- find_contact_with_findymail "Jane Doe" example.com
+# or using a LinkedIn profile
+task run:command -- find_contact_with_findymail "Jane Doe" --linkedin_url https://linkedin.com/in/janedoe
 ```
 
 The script prints a JSON object containing `email`, `phone` and the raw

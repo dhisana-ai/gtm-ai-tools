@@ -18,6 +18,7 @@ from utils import (
     find_users_by_name_and_keywords,
     find_user_by_job_title,
     find_company_info,
+    find_contact_with_findymail,
     call_openai_llm,
     score_lead,
     generate_email,
@@ -202,7 +203,8 @@ UTILITY_PARAMETERS = {
     ],
     "find_contact_with_findymail": [
         {"name": "full_name", "label": "Full name"},
-        {"name": "company_domain", "label": "Company domain"},
+        {"name": "primary_domain_of_organization", "label": "Company domain"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
     ],
     "find_user_by_job_title": [
         {"name": "job_title", "label": "Job title"},
@@ -785,6 +787,20 @@ def run_utility():
                 out_path = common.make_temp_csv_filename(util_name)
                 try:
                     find_company_info.find_company_info_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "find_contact_with_findymail":
+                out_path = common.make_temp_csv_filename(util_name)
+                try:
+                    find_contact_with_findymail.find_contact_with_findymail_from_csv(
+                        uploaded,
+                        out_path,
+                    )
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
