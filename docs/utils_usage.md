@@ -377,13 +377,13 @@ the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 ```bash
 task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
-## Extract Primary and Secondary Color from a website
+## Crawls a website and extract the content from a website to answer some basic questions
 
-`get_website_information.py` detects primary and secondary colors used in a company website. It requires
+`get_website_information.py` scrapes company website and uses an LLM to answer the questions about the website. It requires
 the `OPENAI_API_KEY` in the environment variables.
 
 ```bash
-task run:command -- get_website_information http://example.com/
+task run:command -- get_website_information http://example.com/ "what is the main color of the website?"
 ```
 
 ## Extract Leads From Website

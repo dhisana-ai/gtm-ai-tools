@@ -122,7 +122,11 @@ async def crawl_and_capture_screenshots(start_url, out_dir, max_pages=5):
                 visited.add(url)
                 try:
                     page = await context.new_page()
-                    await page.goto(url, wait_until="load", timeout=30000)
+                    await page.goto(url, wait_until="networkidle", timeout=30000)
+                    # Scrolling to the bottom and right most corner to make sure all the images are loaded 
+                    page.evaluate("""
+                        window.scrollTo(document.body.scrollWidth, document.body.scrollHeight);
+                    """)
                     img_path = f"/workspace/{uuid.uuid4().hex[:10]}_screenshot.png"
                     await page.screenshot(path=img_path, full_page=True)
                     screenshots.append(img_path)
