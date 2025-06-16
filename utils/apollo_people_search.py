@@ -10,6 +10,23 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
+
+def _clean_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove empty list/str/None values from payload."""
+    clean: Dict[str, Any] = {}
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if isinstance(value, list) and not value:
+            continue
+        if isinstance(value, str) and value == "":
+            continue
+        if value is False:
+            # skip false booleans (assume API default)
+            continue
+        clean[key] = value
+    return clean
+
 import aiohttp
 
 from utils.apollo_info import fill_in_properties_with_preference
@@ -63,10 +80,15 @@ async def apollo_people_search(number_of_leads: int = 10, **params: Any) -> List
     while len(results) < number_of_leads:
         payload = dict(params)
         payload.update({"page": page, "per_page": per_page})
+        payload = _clean_payload(payload)
         data = await _search_page(payload)
         contacts = data.get("contacts") or []
-        print(f"Page {page}: found {len(contacts)} contacts")
-        for contact in contacts:
+        people = data.get("people") or []
+        combined = contacts + people
+        print(
+            f"Page {page}: found {len(contacts)} contacts and {len(people)} people"
+        )
+        for contact in combined:
             mapped = fill_in_properties_with_preference({}, contact)
             mapped = _add_extra_fields(mapped, contact)
             results.append(mapped)
@@ -74,7 +96,7 @@ async def apollo_people_search(number_of_leads: int = 10, **params: Any) -> List
                 break
         pagination = data.get("pagination") or {}
         total_pages = pagination.get("total_pages", page)
-        if page >= total_pages or not contacts:
+        if page >= total_pages or not combined:
             break
         page += 1
         if len(results) < number_of_leads:
@@ -103,9 +125,12 @@ def apollo_people_search_to_csv(output_file: str | Path, **params: Any) -> None:
 
 
 def _parse_list(value: str) -> List[str]:
+    """Return list of items split on commas or semicolons."""
     value = value.strip()
     if not value:
         return []
+    if ";" in value:
+        return [v.strip() for v in value.split(";") if v.strip()]
     return [v.strip() for v in value.split(",") if v.strip()]
 
 
