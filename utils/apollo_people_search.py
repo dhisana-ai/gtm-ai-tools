@@ -25,9 +25,12 @@ async def _search_page(params: Dict[str, Any]) -> Dict[str, Any]:
 
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
     url = f"{API_BASE}/mixed_people/search"
+    print(f"Querying {url} with payload: {json.dumps(params)}")
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=params) as resp:
-            return await resp.json()
+            data = await resp.json()
+    print(f"Received response with keys: {list(data.keys())}")
+    return data
 
 
 def _add_extra_fields(base: Dict[str, Any], contact: Dict[str, Any]) -> Dict[str, Any]:
@@ -48,11 +51,14 @@ async def apollo_people_search(number_of_leads: int = 10, **params: Any) -> List
     page = 1
     results: List[Dict[str, Any]] = []
 
+    print(f"Starting search with params: {params}, number_of_leads={number_of_leads}")
+
     while len(results) < number_of_leads:
         payload = dict(params)
         payload.update({"page": page, "per_page": per_page})
         data = await _search_page(payload)
         contacts = data.get("contacts") or []
+        print(f"Page {page}: found {len(contacts)} contacts")
         for contact in contacts:
             mapped = fill_in_properties_with_preference({}, contact)
             mapped = _add_extra_fields(mapped, contact)
@@ -66,12 +72,14 @@ async def apollo_people_search(number_of_leads: int = 10, **params: Any) -> List
         page += 1
         if len(results) < number_of_leads:
             await asyncio.sleep(10)
+    print(f"Total results collected: {len(results[:number_of_leads])}")
     return results[:number_of_leads]
 
 
 def apollo_people_search_to_csv(output_file: str | Path, **params: Any) -> None:
     """Run ``apollo_people_search`` and write the results to ``output_file``."""
     out_path = Path(output_file)
+    print(f"Writing results to {out_path}")
     results = asyncio.run(apollo_people_search(**params))
     fieldnames: List[str] = []
     for row in results:
@@ -84,6 +92,7 @@ def apollo_people_search_to_csv(output_file: str | Path, **params: Any) -> None:
         writer.writeheader()
         for row in results:
             writer.writerow(row)
+    print(f"Wrote {len(results)} rows to {out_path}")
 
 
 def _parse_list(value: str) -> List[str]:
