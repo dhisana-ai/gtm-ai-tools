@@ -28,8 +28,15 @@ async def _search_page(params: Dict[str, Any]) -> Dict[str, Any]:
     print(f"Querying {url} with payload: {json.dumps(params)}")
     async with aiohttp.ClientSession() as session:
         async with session.post(url, headers=headers, json=params) as resp:
+            status = getattr(resp, "status", "unknown")
             data = await resp.json()
-    print(f"Received response with keys: {list(data.keys())}")
+
+    # Show more detail if the response contains an error
+    if "error" in data:
+        print(f"Apollo API returned status {status}: {data['error']}")
+    else:
+        print(f"Received response with keys: {list(data.keys())}")
+
     return data
 
 
