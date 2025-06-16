@@ -269,6 +269,7 @@
       const util = utilInput.value;
       const params = PARAM_MAP[util] || [];
       const mode = document.querySelector('input[name="input_mode"]:checked')?.value || 'single';
+      let apolloTitleDiv = null;
       params.forEach(p => {
         if (util === 'extract_from_webpage' && mode === 'file' && p.name === 'url') {
           return;
@@ -309,12 +310,28 @@
         if (util === 'linkedin_search_to_csv' && p.name === '--num') {
           input.value = '10';
         }
+        if (util === 'apollo_people_search' && p.name === '--num_leads') {
+          input.value = '10';
+        }
         if (util === 'linkedin_search_to_csv' && p.name === 'query') {
           input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
         }
-        div.appendChild(label);
-        div.appendChild(input);
-        container.appendChild(div);
+        if (util === 'apollo_people_search' && p.name === '--include_similar_titles' && apolloTitleDiv) {
+          const checkDiv = document.createElement('div');
+          checkDiv.className = 'form-check form-check-inline ms-2';
+          input.className = 'form-check-input';
+          label.className = 'form-check-label ms-1';
+          checkDiv.appendChild(input);
+          checkDiv.appendChild(label);
+          apolloTitleDiv.appendChild(checkDiv);
+        } else {
+          div.appendChild(label);
+          div.appendChild(input);
+          container.appendChild(div);
+          if (util === 'apollo_people_search' && p.name === '--person_titles') {
+            apolloTitleDiv = div;
+          }
+        }
       });
     }
 
