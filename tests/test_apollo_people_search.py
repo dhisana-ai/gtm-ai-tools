@@ -69,6 +69,11 @@ def sample_payload():
     }
 
 
+def sample_people_payload():
+    base = sample_payload()
+    return {"people": base["contacts"], "pagination": base["pagination"]}
+
+
 def test_apollo_people_search(monkeypatch):
     data = sample_payload()
     session = DummySession(data)
@@ -111,4 +116,47 @@ def test_apollo_people_search_pagination(monkeypatch):
     results = asyncio.run(mod.apollo_people_search(number_of_leads=2))
     assert len(session.posts) == 2
     assert sleeps == [10]
+    assert len(results) == 2
+
+
+def test_parse_list_semicolon():
+    assert mod._parse_list("1,10; 50,100") == ["1,10", "50,100"]
+
+
+def test_clean_payload_removes_empty():
+    payload = {
+        "person_titles": [],
+        "q_keywords": "CEO",
+        "include_similar_titles": False,
+        "page": 1,
+    }
+    cleaned = mod._clean_payload(payload)
+    assert "person_titles" not in cleaned
+    assert "include_similar_titles" not in cleaned
+    assert cleaned["q_keywords"] == "CEO"
+
+
+def test_apollo_people_results(monkeypatch):
+    data = sample_people_payload()
+    session = DummySession(data)
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", lambda: session)
+    monkeypatch.setattr(mod.asyncio, "sleep", lambda x: None)
+    monkeypatch.setenv("APOLLO_API_KEY", "p")
+    results = asyncio.run(mod.apollo_people_search(number_of_leads=1))
+    assert results[0]["user_linkedin_url"] == "https://linkedin.com/in/janedoe"
+
+
+def test_apollo_combined_results(monkeypatch):
+    data = sample_payload()
+    people = sample_people_payload()["people"]
+    combined = {
+        "contacts": data["contacts"],
+        "people": people,
+        "pagination": data["pagination"],
+    }
+    session = DummySession(combined)
+    monkeypatch.setattr(mod.aiohttp, "ClientSession", lambda: session)
+    monkeypatch.setattr(mod.asyncio, "sleep", lambda x: None)
+    monkeypatch.setenv("APOLLO_API_KEY", "c")
+    results = asyncio.run(mod.apollo_people_search(number_of_leads=2))
     assert len(results) == 2
