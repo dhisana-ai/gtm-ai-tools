@@ -146,6 +146,7 @@ def main() -> None:
     parser.add_argument("--contact_email_status", default="", help="Comma separated email statuses")
     parser.add_argument("--organization_ids", default="", help="Comma separated organization IDs")
     parser.add_argument("--organization_num_employees_ranges", default="", help="Comma separated employee ranges like 1,10")
+    parser.add_argument("--q_organization_keyword_tags", default="", help="Comma separated organization keyword tags")
     parser.add_argument("--q_keywords", default="", help="Keyword filter")
     parser.add_argument("--num_leads", type=int, default=10, help="Number of leads to fetch")
     args = parser.parse_args()
@@ -160,6 +161,7 @@ def main() -> None:
         "contact_email_status": _parse_list(args.contact_email_status),
         "organization_ids": _parse_list(args.organization_ids),
         "organization_num_employees_ranges": _parse_list(args.organization_num_employees_ranges),
+        "q_organization_keyword_tags": _parse_list(args.q_organization_keyword_tags),
         "q_keywords": args.q_keywords,
         "number_of_leads": args.num_leads,
     }

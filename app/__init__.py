@@ -306,6 +306,7 @@ UTILITY_PARAMETERS = {
             ],
             "multiple": True,
         },
+        {"name": "--q_organization_keyword_tags", "label": "Organization keyword tags"},
         {"name": "--q_keywords", "label": "Keyword filter"},
         {"name": "--num_leads", "label": "Number of leads"},
     ],
