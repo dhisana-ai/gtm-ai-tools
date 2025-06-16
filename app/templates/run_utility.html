@@ -274,9 +274,37 @@
           return;
         }
         const div = document.createElement('div');
-        const input = document.createElement('input');
         const label = document.createElement('label');
         label.textContent = p.label;
+        let input;
+        if (p.type === 'boolean') {
+          div.className = 'form-check mb-3';
+          input = document.createElement('input');
+          input.type = 'checkbox';
+          input.className = 'form-check-input';
+          input.value = '1';
+          input.id = p.name;
+          label.className = 'form-check-label';
+          label.setAttribute('for', p.name);
+        } else if (p.choices) {
+          div.className = 'mb-3';
+          label.className = 'form-label';
+          input = document.createElement('select');
+          input.className = 'form-select';
+          if (p.multiple) input.multiple = true;
+          p.choices.forEach(optVal => {
+            const opt = document.createElement('option');
+            opt.value = optVal;
+            opt.textContent = optVal;
+            input.appendChild(opt);
+          });
+        } else {
+          div.className = 'mb-3';
+          label.className = 'form-label';
+          input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'form-control';
+        }
         input.name = p.name;
         if (util === 'linkedin_search_to_csv' && p.name === '--num') {
           input.value = '10';
@@ -284,24 +312,8 @@
         if (util === 'linkedin_search_to_csv' && p.name === 'query') {
           input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
         }
-        if (p.type === 'boolean') {
-          div.className = 'form-check mb-3';
-          input.type = 'checkbox';
-          input.className = 'form-check-input';
-          input.value = '1';
-          input.id = p.name;
-          label.className = 'form-check-label';
-          label.setAttribute('for', p.name);
-          div.appendChild(input);
-          div.appendChild(label);
-        } else {
-          div.className = 'mb-3';
-          input.type = 'text';
-          input.className = 'form-control';
-          label.className = 'form-label';
-          div.appendChild(label);
-          div.appendChild(input);
-        }
+        div.appendChild(label);
+        div.appendChild(input);
         container.appendChild(div);
       });
     }
