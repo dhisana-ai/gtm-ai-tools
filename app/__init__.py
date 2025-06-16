@@ -292,6 +292,17 @@ UTILITY_PARAMETERS = {
         {
             "name": "--organization_num_employees_ranges",
             "label": "Employee ranges",
+            "choices": [
+                "1-10",
+                "11-50",
+                "51-200",
+                "201-500",
+                "501-1000",
+                "1001-5000",
+                "5001-10000",
+                "10001+",
+            ],
+            "multiple": True,
         },
         {"name": "--q_keywords", "label": "Keyword filter"},
         {"name": "--num_leads", "label": "Number of leads"},
@@ -600,6 +611,9 @@ def run_utility():
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
+            elif util_name == "apollo_people_search":
+                out_path = common.make_temp_csv_filename(util_name)
+                cmd.insert(3, out_path)
             return cmd
 
         def run_cmd(cmd: list[str], show_ux: bool = False) -> tuple[str, str, str]:

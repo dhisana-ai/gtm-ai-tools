@@ -1,3 +1,5 @@
+"""Search and export leads using Apollo.io people search."""
+
 from __future__ import annotations
 
 import argparse
