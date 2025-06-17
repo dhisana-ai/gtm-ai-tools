@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import csv
 import re
+from typing import List
 import asyncio
 import json
 import base64
@@ -16,6 +17,9 @@ from utils import (
     apollo_info,
     check_email_zero_bounce,
     find_users_by_name_and_keywords,
+    find_user_by_job_title,
+    find_company_info,
+    find_contact_with_findymail,
     call_openai_llm,
     score_lead,
     generate_email,
@@ -59,6 +63,7 @@ try:
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+import faiss
 
 logging.basicConfig(level=logging.INFO)
 
@@ -66,7 +71,25 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET", "dev")
 ENV_FILE = os.path.join(os.path.dirname(__file__), "..", ".env")
 UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
-UTILITY_EMBEDDINGS = []
+# FAISS index and codes for utility embeddings (cosine similarity)
+# Cache paths for utility embeddings index and codes
+# Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
+# Directory for user-generated utilities (create gtm_utility at repo root)
+USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
+
+# Data directory for persistent files and FAISS cache; prefer mounted /data in container
+ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = Path('/data') if Path('/data').is_dir() else ROOT / 'data'
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Cache paths for utility embeddings index and codes under the data folder
+FAISS_CACHE_DIR = DATA_DIR / 'faiss'
+EMBED_INDEX_PATH = FAISS_CACHE_DIR / 'utility_embeddings.index'
+EMBED_CODES_PATH = FAISS_CACHE_DIR / 'utility_embeddings.json'
+
+UTILITY_INDEX: faiss.IndexFlatIP | None = None
+UTILITY_CODES: list[str] = []
 
 # Preferred column order when displaying CSV data in the grid
 DISPLAY_ORDER = [
@@ -80,6 +103,7 @@ DISPLAY_ORDER = [
 UTILITY_TITLES = {
     "call_openai_llm": "OpenAI Tools",
     "linkedin_search_to_csv": "Find Leads with Google Search",
+    "apollo_people_search": "Find Leads with Apollo.io",
     "find_a_user_by_name_and_keywords": "Find LinkedIn Profile by Name",
     "find_user_by_job_title": "Find LinkedIn Profile by Job Title",
     "find_users_by_name_and_keywords": "Bulk Find LinkedIn Profiles",
@@ -88,6 +112,7 @@ UTILITY_TITLES = {
     "extract_companies_from_image": "Extract Companies from Image",
     "extract_from_webpage": "Extract Leads From Website",
     "generate_image": "Generate Image",
+    "get_website_information": "Get website information",
     "score_lead": "Score Leads",
     "check_email_zero_bounce": "Validate Email",
     "generate_email": "Generate Email",
@@ -99,6 +124,7 @@ UTILITY_TITLES = {
 # Display order for the utilities list
 UTILITY_ORDER = {
     "linkedin_search_to_csv": 0,
+    "apollo_people_search": 0,
     "apollo_info": 1,
     "score_lead": 2,
     "check_email_zero_bounce": 3,
@@ -112,6 +138,7 @@ UTILITY_ORDER = {
 UTILITY_TAGS = {
     # Find/Search leads
     "linkedin_search_to_csv": ["find"],
+    "apollo_people_search": ["find"],
     "find_a_user_by_name_and_keywords": ["find"],
     "find_user_by_job_title": ["find"],
     "find_users_by_name_and_keywords": ["find"],
@@ -176,12 +203,15 @@ UTILITY_PARAMETERS = {
         {"name": "search_keywords", "label": "Search keywords"},
     ],
     "find_company_info": [
-        {"name": "company_name", "label": "Company name"},
-        {"name": "--location", "label": "Company location"},
+        {"name": "--organization_name", "label": "Organization name"},
+        {"name": "--organization_linkedin_url", "label": "Organization LinkedIn URL"},
+        {"name": "--organization_website", "label": "Organization website"},
+        {"name": "--location", "label": "Organization location"},
     ],
     "find_contact_with_findymail": [
         {"name": "full_name", "label": "Full name"},
-        {"name": "company_domain", "label": "Company domain"},
+        {"name": "primary_domain_of_organization", "label": "Company domain"},
+        {"name": "--linkedin_url", "label": "LinkedIn URL"},
     ],
     "find_user_by_job_title": [
         {"name": "job_title", "label": "Job title"},
@@ -234,6 +264,59 @@ UTILITY_PARAMETERS = {
         },
         {"name": "--num", "label": "Number of results"},
     ],
+    "apollo_people_search": [
+        {"name": "--person_titles", "label": "Job titles"},
+        {"name": "--person_locations", "label": "Person locations"},
+        {
+            "name": "--person_seniorities",
+            "label": "Seniority",
+            "choices": [
+                "owner",
+                "founder",
+                "c_suite",
+                "partner",
+                "vp",
+                "head",
+                "director",
+                "manager",
+                "senior",
+                "entry",
+                "intern",
+            ],
+            "multiple": True,
+        },
+        {"name": "--organization_locations", "label": "Organization locations"},
+        {"name": "--organization_domains", "label": "Organization domains"},
+        {
+            "name": "--include_similar_titles",
+            "label": "Include similar titles",
+            "type": "boolean",
+        },
+        {
+            "name": "--contact_email_status",
+            "label": "Email status",
+            "choices": ["verified", "unverified", "likely to engage", "unavailable"],
+        },
+        {"name": "--organization_ids", "label": "Organization IDs"},
+        {
+            "name": "--organization_num_employees_ranges",
+            "label": "Employee ranges",
+            "choices": [
+                "1-10",
+                "11-50",
+                "51-200",
+                "201-500",
+                "501-1000",
+                "1001-5000",
+                "5001-10000",
+                "10001+",
+            ],
+            "multiple": True,
+        },
+        {"name": "--q_organization_keyword_tags", "label": "Organization keyword tags"},
+        {"name": "--q_keywords", "label": "Keyword filter"},
+        {"name": "--num_leads", "label": "Number of leads"},
+    ],
     "mcp_tool_sample": [{"name": "prompt", "label": "Prompt"}],
     "push_company_to_dhisana_webhook": [
         {"name": "company_name", "label": "Organization name"},
@@ -258,6 +341,10 @@ UTILITY_PARAMETERS = {
         {"name": "prompt", "label": "Prompt"},
         {"name": "--image-url", "label": "Image URL"},
     ],
+    "get_website_information": [
+        {"name": "url", "label": "Website URL"},
+        {"name": "questions", "label": "Questions (comma-separated) about the website"},
+    ],
     "extract_from_webpage": [
         {"name": "url", "label": "Website URL"},
         {"name": "--lead", "label": "Extract One Lead", "type": "boolean"},
@@ -269,6 +356,7 @@ UTILITY_PARAMETERS = {
         {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
         {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
+        {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
     ],
     "generate_email": [
         {
@@ -304,6 +392,52 @@ UTILITY_PARAMETERS = {
         {"name": "--instructions", "label": "Additional instructions"},
     ],
 }
+
+
+def load_custom_parameters() -> None:
+    """Load parameter specs from meta files for user utilities."""
+    if not USER_UTIL_DIR.is_dir():
+        return
+
+    def _parse_args(code: str) -> list[dict[str, str]]:
+        pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
+        help_re = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
+        skip = {
+            "output_file",
+            "--output_file",
+            "input_file",
+            "--input_file",
+            "csv_file",
+            "--csv_file",
+        }
+        params: list[dict[str, str]] = []
+        for m in pattern.finditer(code):
+            name = m.group(1)
+            if name in skip:
+                continue
+            rest = m.group(2)
+            h = help_re.search(rest)
+            label = h.group(1) if h else name.lstrip("-").replace("_", " ").capitalize()
+            params.append({"name": name, "label": label})
+        return params
+
+    for py_path in USER_UTIL_DIR.glob("*.py"):
+        base = py_path.stem
+        json_path = py_path.with_suffix(".json")
+        params: List[dict[str, str]] | None = None
+        if json_path.exists():
+            try:
+                meta_data = json.loads(json_path.read_text(encoding="utf-8"))
+                params = meta_data.get("params") or None
+            except Exception:
+                params = None
+        if params is None:
+            try:
+                params = _parse_args(py_path.read_text(encoding="utf-8"))
+            except Exception:
+                params = None
+        if params:
+            UTILITY_PARAMETERS[base] = params
 
 
 def load_env():
@@ -366,6 +500,33 @@ def _list_utils() -> list[dict[str, str]]:
                 "tags": UTILITY_TAGS.get(base, []),
             }
         )
+
+    # Include user generated utilities from gtm_utility folder
+    if USER_UTIL_DIR.is_dir():
+        for path in USER_UTIL_DIR.glob("*.py"):
+            base = path.stem
+            meta = path.with_suffix(".json")
+            title = _format_title(base)
+            desc = base
+            if meta.exists():
+                try:
+                    meta_data = json.loads(meta.read_text(encoding="utf-8"))
+                    title = meta_data.get("name", title)
+                    desc = meta_data.get("description", desc)
+                    params = meta_data.get("params")
+                    if params:
+                        UTILITY_PARAMETERS[base] = params
+                except Exception:
+                    pass
+            items.append(
+                {
+                    "name": base,
+                    "title": title,
+                    "desc": desc,
+                    "tags": ["custom"],
+                    "custom": True,
+                }
+            )
     return sorted(
         items,
         key=lambda x: (
@@ -450,12 +611,15 @@ def run_utility():
     output_csv_path: str | None = None
     utils_list = _list_utils()
     tags_set = {t for tags in UTILITY_TAGS.values() for t in tags}
-    tag_order = ["find", "enrich", "score", "route"]
+    for util in utils_list:
+        tags_set.update(util.get("tags", []))
+    tag_order = ["find", "enrich", "score", "route", "custom"]
     tags_list = [t for t in tag_order if t in tags_set]
     tags_list.extend(sorted(tags_set - set(tag_order)))
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
+    is_custom = any(u.get("custom") and u["name"] == util_name for u in utils_list)
     prev_csv = session.get("prev_csv_path")
-    if prev_csv and os.path.exists(prev_csv):
+    if prev_csv and os.path.exists(prev_csv) and not is_custom:
         input_csv_path = prev_csv
     if request.method == "POST" and request.form.get("action") == "clear_csv":
         session.pop("prev_csv_path", None)
@@ -465,6 +629,7 @@ def run_utility():
         uploaded = None
         input_mode = request.form.get("input_mode", "single")
         selected_json = request.form.get("selected_rows", "")
+        show_ux_flag = request.form.get("--show_ux")
         if selected_json:
             try:
                 rows = json.loads(selected_json)
@@ -488,6 +653,7 @@ def run_utility():
             and input_mode == "previous"
             and prev_csv
             and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
         if (
@@ -495,6 +661,7 @@ def run_utility():
             and util_name in UPLOAD_ONLY_UTILS
             and prev_csv
             and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
 
@@ -502,10 +669,19 @@ def run_utility():
             input_csv_path = uploaded
 
         def build_cmd(values: dict[str, str]) -> list[str]:
-            cmd = ["python", "-m", f"utils.{util_name}"]
+            module_prefix = (
+                "gtm_utility" if (USER_UTIL_DIR / f"{util_name}.py").exists() else "utils"
+            )
+            cmd = ["python", "-m", f"{module_prefix}.{util_name}"]
+            if is_custom and not uploaded:
+                nonlocal input_csv_path
+                input_csv_path = common.make_temp_csv_filename("automation")
+                cmd.append(input_csv_path)
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec["name"]
                 val = (values.get(name) or "").strip()
+                if util_name == "extract_from_webpage" and name == "--show_ux":
+                    continue
                 if (
                     util_name == "linkedin_search_to_csv"
                     and name == "--num"
@@ -537,12 +713,17 @@ def run_utility():
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
+            elif util_name == "apollo_people_search":
+                out_path = common.make_temp_csv_filename(util_name)
+                cmd.insert(3, out_path)
             return cmd
 
-        def run_cmd(cmd: list[str]) -> tuple[str, str, str]:
+        def run_cmd(cmd: list[str], show_ux: bool = False) -> tuple[str, str, str]:
             env = os.environ.copy()
             root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
             env["PYTHONPATH"] = env.get("PYTHONPATH", "") + ":" + root_dir
+            if show_ux:
+                env["HEADLESS"] = "false"
             proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
             status = "SUCCESS" if proc.returncode == 0 else "FAIL"
             output = (
@@ -641,6 +822,11 @@ def run_utility():
                 elif request.form.get("--companies"):
                     mode = "companies"
                 try:
+                    old_headless = os.environ.get("HEADLESS")
+                    if show_ux_flag:
+                        os.environ["HEADLESS"] = "false"
+                    else:
+                        os.environ["HEADLESS"] = "true"
                     extract_from_webpage.extract_from_webpage_from_csv(
                         uploaded,
                         out_path,
@@ -653,10 +839,18 @@ def run_utility():
                         max_pages=int(request.form.get("--max_pages") or 1),
                         mode=mode,
                     )
+                    if old_headless is None:
+                        os.environ.pop("HEADLESS", None)
+                    else:
+                        os.environ["HEADLESS"] = old_headless
                     download_name = out_path
                     output_csv_path = out_path
                     util_output = None
                 except Exception as exc:
+                    if old_headless is None:
+                        os.environ.pop("HEADLESS", None)
+                    else:
+                        os.environ["HEADLESS"] = old_headless
                     util_output = f"Error: {exc}"
                     download_name = None
                     output_csv_path = None
@@ -665,6 +859,47 @@ def run_utility():
                 try:
                     find_users_by_name_and_keywords.find_users(
                         Path(uploaded), Path(out_path)
+                    )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "find_user_by_job_title":
+                out_path = common.make_temp_csv_filename(util_name)
+                try:
+                    find_user_by_job_title.find_user_by_job_title_from_csv(
+                        uploaded,
+                        out_path,
+                        job_title=request.form.get("job_title", ""),
+                        search_keywords=request.form.get("search_keywords", ""),
+                    )
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "find_company_info":
+                out_path = common.make_temp_csv_filename(util_name)
+                try:
+                    find_company_info.find_company_info_from_csv(uploaded, out_path)
+                    download_name = out_path
+                    output_csv_path = out_path
+                    util_output = None
+                except Exception as exc:
+                    util_output = f"Error: {exc}"
+                    download_name = None
+                    output_csv_path = None
+            elif util_name == "find_contact_with_findymail":
+                out_path = common.make_temp_csv_filename(util_name)
+                try:
+                    find_contact_with_findymail.find_contact_with_findymail_from_csv(
+                        uploaded,
+                        out_path,
                     )
                     download_name = out_path
                     output_csv_path = out_path
@@ -694,7 +929,7 @@ def run_utility():
                     writer.writeheader()
                     for row in rows:
                         cmd = build_cmd(row)
-                        status, cmd_str, out_text = run_cmd(cmd)
+                        status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
                         row.update(
                             {
                                 status_field: status,
@@ -707,12 +942,16 @@ def run_utility():
                 output_csv_path = out_path
                 util_output = None
         else:
-            values = {
-                spec["name"]: request.form.get(spec["name"], "")
-                for spec in UTILITY_PARAMETERS.get(util_name, [])
-            }
+            values = {}
+            for spec in UTILITY_PARAMETERS.get(util_name, []):
+                name = spec["name"]
+                if spec.get("multiple"):
+                    val = ",".join(request.form.getlist(name))
+                else:
+                    val = request.form.get(name, "")
+                values[name] = val
             cmd = build_cmd(values)
-            status, cmd_str, out_text = run_cmd(cmd)
+            status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
             if util_name == "generate_image" and status == "SUCCESS":
                 try:
                     img_bytes = base64.b64decode(out_text)
@@ -746,7 +985,7 @@ def run_utility():
         output_rows = _load_csv_preview(output_csv_path)
     if input_csv_path and os.path.exists(input_csv_path):
         input_rows = _load_csv_preview(input_csv_path)
-    if output_csv_path and os.path.exists(output_csv_path):
+    if output_csv_path and os.path.exists(output_csv_path) and not is_custom:
         session["prev_csv_path"] = output_csv_path
         prev_csv = output_csv_path
     return render_template(
@@ -894,62 +1133,170 @@ def push_to_dhisana():
     flash(f"Pushed {pushed} leads to Dhisana.")
     return redirect(url_for("run_utility"))
 
-
-def embed_text(text):
+def embed_text(text: str) -> np.ndarray:
+    """Return the LLM embedding for the given text."""
     client = openai_client_sync()
-    # client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-    response = client.embeddings.create(input=text, model="text-embedding-ada-002")
+    response = client.embeddings.create(
+        input=text,
+        model="text-embedding-ada-002",
+    )
     return np.array(response.data[0].embedding)
 
+def build_utility_embeddings() -> None:
+    """Load or build utility embeddings and FAISS index cache."""
+    global UTILITY_INDEX, UTILITY_CODES
+    # Try loading from cache
+    if EMBED_INDEX_PATH.exists() and EMBED_CODES_PATH.exists():
+        try:
+            UTILITY_INDEX = faiss.read_index(str(EMBED_INDEX_PATH))
+            with open(EMBED_CODES_PATH, 'r', encoding='utf-8') as f:
+                UTILITY_CODES = json.load(f)
+            return
+        except Exception:
+            # fallback to rebuild
+            pass
 
-def build_utility_embeddings():
-    global UTILITY_EMBEDDINGS
-    UTILITY_EMBEDDINGS = []
+    codes: list[str] = []
+    embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if fname.endswith(".py") and fname != "common.py":
-            path = os.path.join(UTILS_DIR, fname)
-            with open(path, "r", encoding="utf-8") as f:
-                code = f.read()
-            emb = embed_text(code[:2000])
-            UTILITY_EMBEDDINGS.append(
-                {"filename": fname, "code": code, "embedding": emb}
-            )
+        if not fname.endswith('.py') or fname == 'common.py':
+            continue
+        path = os.path.join(UTILS_DIR, fname)
+        with open(path, 'r', encoding='utf-8') as f:
+            code = f.read()
+        embeds.append(embed_text(code[:2000]).astype(np.float32))
+        codes.append(code)
+    # Also scan user-generated utilities on Desktop
+    if USER_UTIL_DIR.is_dir():
+        for user_path in USER_UTIL_DIR.glob('*.py'):
+            try:
+                code = user_path.read_text(encoding='utf-8')
+            except Exception:
+                continue
+            embeds.append(embed_text(code[:2000]).astype(np.float32))
+            codes.append(code)
 
+    if embeds:
+        mat = np.vstack(embeds)
+        faiss.normalize_L2(mat)
+        index = faiss.IndexFlatIP(mat.shape[1])
+        index.add(mat)
+    else:
+        index = faiss.IndexFlatIP(1)
 
-def get_top_k_utilities(prompt, k=3):
-    prompt_emb = embed_text(prompt)
-    scored = []
-    for util in UTILITY_EMBEDDINGS:
-        score = np.dot(prompt_emb, util["embedding"]) / (
-            np.linalg.norm(prompt_emb) * np.linalg.norm(util["embedding"])
-        )
-        scored.append((score, util))
-    scored.sort(reverse=True, key=lambda x: x[0])
-    return [util["code"] for score, util in scored[:k]]
+    UTILITY_INDEX = index
+    UTILITY_CODES = codes
+
+    # Persist cache
+    try:
+        EMBED_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+        faiss.write_index(UTILITY_INDEX, str(EMBED_INDEX_PATH))
+        with open(EMBED_CODES_PATH, 'w', encoding='utf-8') as f:
+            json.dump(UTILITY_CODES, f)
+    except Exception:
+        pass
+
+build_utility_embeddings()
+load_custom_parameters()
+
+def get_top_k_utilities(prompt: str, k: int) -> list[str]:
+    """Return the top-k utility code snippets for the given prompt."""
+    query_vec = embed_text(prompt).astype(np.float32)
+    faiss.normalize_L2(query_vec.reshape(1, -1))
+    distances, indices = UTILITY_INDEX.search(query_vec.reshape(1, -1), k)
+    return [UTILITY_CODES[i] for i in indices[0]]
 
 
 @app.route("/generate_utility", methods=["POST"])
 def generate_utility():
     build_utility_embeddings()
     user_prompt = request.form["prompt"]
-    top_examples = get_top_k_utilities(user_prompt, k=3)
-    prompt_lines = [
-        "# The following are Python utilities for GTM automation, lead generation, enrichment, outreach, or sales/marketing workflows.",
-    ]
+    top_examples = get_top_k_utilities(user_prompt, k=5)
+    prompt_lines = []
+    prompt_lines.append("# User wants to build a new GTM utility with the following details:")
+    prompt_lines.append(f"# {user_prompt}")
+    prompt_lines.append(
+        "# The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file."
+    )
+    prompt_lines.append(
+        "# The input CSV columns should match the argument names without leading dashes."
+    )
+    prompt_lines.append(
+        "# Do NOT create a 'mode' argument or any sub-commands. main() should simply parse \"output_file\" as the first positional argument followed by optional parameters."
+    )
+    prompt_lines.append(
+        "# Provide a <utility_name>_from_csv(input_file, output_file, **kwargs) helper that reads the same parameters from a CSV file."
+    )
+    prompt_lines.append(
+        "# The input CSV headers must match the argument names (without leading dashes) except for output_file."
+    )
+    prompt_lines.append(
+        "# The output CSV must keep all original columns and append any new columns produced by the utility."
+    )
+    prompt_lines.append(
+        "# Please output only the Python code for this utility below, without any markdown fences or additional text"
+    )
+    prompt_lines.append(
+        "# Get fully functional, compiling standalone python script with all the required imports."
+    )
+    prompt_lines.append(
+        "# Generate e2e functional script will all required functions, dont take any dependency on content in utils directory or custom modules. Use the code in the prompt just as examples not as dependency. You can use only the standard python libraries  and following as dependencies when generating code.\n"
+        "httpx\n"
+        "openai\n"
+        "pydantic>=2.0\n"
+        "playwright==1.42.0\n"
+        "playwright-stealth\n"
+        "aiohttp\n"
+        "beautifulsoup4\n"
+        "aiosmtplib\n"
+        "requests\n"
+        "simple_salesforce\n"
+        "numpy\n"
+        "greenlet>=2.0.2,\n"
+        "pandas"
+    )
+    prompt_lines.append(
+        "# arguments to mail will be like in example below, output_file is always a parameter. input arguments like --person_title etc are custom parameters that can be passed as input the to script\n"
+        "def main() -> None:\n"
+        "    parser = argparse.ArgumentParser(description=\"Search people in Apollo.io\")\n"
+        "    parser.add_argument(\"output_file\", help=\"CSV file to create\")\n"
+        "    parser.add_argument(\"--person_titles\", default=\"\", help=\"Comma separated job titles\")\n"
+        "    parser.add_argument(\"--person_locations\", default=\"\", help=\"Comma separated locations\")"
+    )
+    prompt_lines.append(
+        "# Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization"
+    )
+    prompt_lines.append(
+        "# Use user_linkedin_url property to represent ursers linked in url"
+    )
+    prompt_lines.append(
+        "# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open(\"w\", newline=\"\", encoding=\"utf-8\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n"
+    )
+    prompt_lines.append(
+        "# The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value."
+    )
+    prompt_lines.append(
+        "# Use following as examples which can help you generate the code required for above GTM utility.",
+    )
     for idx, example in enumerate(top_examples, start=1):
         prompt_lines.append(f"# Example {idx}:")
         for line in example.splitlines():
             prompt_lines.append(f"# {line}")
-    prompt_lines.append("# User wants a new GTM utility:")
-    prompt_lines.append(f"# {user_prompt}")
-    prompt_lines.append("# Please provide the Python code for this utility below:")
+    prompt_lines.append(
+        "# Helo generate a fully functional python utility code that user wants.",
+    )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 
     try:
-        # client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+
         client = openai_client_sync()
-        response = client.responses.create(model="gpt-4o-mini", input=codex_prompt)
+        model_name = os.getenv("MODEL_TO_GENERATE_UTILITY", "o3")
+        response = client.responses.create(
+            model=model_name,
+            input=codex_prompt
+        )
+        prev_response_id = getattr(response, 'id', None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
@@ -975,4 +1322,109 @@ def generate_utility():
         logging.error("OpenAI API error: %s", str(e))
         return jsonify({"success": False, "error": str(e)}), 500
 
-    return jsonify({"success": True, "code": code})
+    # Validate generated code by attempting to compile; if syntax errors occur,
+    # ask the LLM to correct up to 10 retries.
+    for attempt in range(10):
+        try:
+            compile(code, '<generated>', 'exec')
+            break
+        except Exception as compile_err:
+            logging.warning("Generated code failed to compile (attempt %d): %s",
+                            attempt + 1, compile_err)
+            commented_code = "\n".join(f"# {line}" for line in code.splitlines())
+            correction_prompt = (
+                codex_prompt
+                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"{commented_code}\n"
+                + "# Please provide the full corrected utility code below:\n"
+            )
+            response = client.responses.create(
+                model=model_name,
+                input=correction_prompt,
+                previous_response_id=prev_response_id,
+            )
+            prev_response_id = getattr(response, 'id', prev_response_id)
+            # Extract corrected code same as before
+            new_code = None
+            if hasattr(response, "output") and isinstance(response.output, list):
+                for msg in response.output:
+                    if hasattr(msg, "content") and isinstance(msg.content, list):
+                        for c in msg.content:
+                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                                new_code = c.text.strip()
+                                break
+                        if new_code:
+                            break
+            if not new_code:
+                continue
+            code = new_code
+    else:
+        # Exhausted retries without valid code
+        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
+        logging.error(err_msg)
+        return jsonify({"success": False, "error": err_msg}), 500
+
+    return jsonify({
+        "success": True,
+        "code": code
+    })
+
+
+@app.route('/save_utility', methods=['POST'])
+def save_utility():
+    try:
+        data = request.get_json(force=True)
+        code = data.get("code")
+        if not code:
+            return jsonify({"success": False, "error": "No code to save"}), 400
+        name = data.get("name", "").strip()
+        desc = data.get("description", "").strip()
+        prompt = data.get("prompt", "").strip()
+
+        if not name:
+            return jsonify({"success": False, "error": "Name required"}), 400
+
+        # Sanitize name and build unique base
+        safe = re.sub(r"\s+", "_", name)
+        safe = re.sub(r"[^A-Za-z0-9_-]", "", safe)
+        safe = safe[:30]
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"{safe}_{timestamp}"
+
+        target_dir = USER_UTIL_DIR
+        logging.info("save_utility: target folder=%s", target_dir)
+
+        file_path = target_dir / f"{base}.py"
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(code)
+
+        param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
+        help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
+        params: list[dict[str, str]] = []
+        skip_args = {"output_file", "--output_file", "input_file", "--input_file", "csv_file", "--csv_file"}
+        for match in param_pattern.finditer(code):
+            arg_name = match.group(1)
+            if arg_name in skip_args:
+                continue
+            rest = match.group(2)
+            help_match = help_pattern.search(rest)
+            label = (
+                help_match.group(1)
+                if help_match
+                else arg_name.lstrip("-").replace("_", " ").capitalize()
+            )
+            params.append({"name": arg_name, "label": label})
+
+        meta = {"name": name, "description": desc, "prompt": prompt, "params": params}
+        with open(target_dir / f"{base}.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
+        if params:
+            UTILITY_PARAMETERS[base] = params
+            load_custom_parameters()
+
+        logging.info("save_utility: wrote file %s", file_path)
+        return jsonify({"success": True, "file_path": str(file_path)})
+    except Exception as e:
+        logging.error('Error saving utility to file: %s', e)
+        return jsonify({'success': False, 'error': str(e)}), 500

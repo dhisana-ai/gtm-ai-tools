@@ -1,26 +1,15 @@
 # Vibe coding new workflows
 
-This project uses the OpenAI Codex CLI to scaffold new utilities.
-The CLI runs locally, outside the Docker container.
+You can generate utilities right inside the web app—no Codex CLI needed.
 
-1. Install **Node.js 22+** and the CLI. Run the helper task or follow the
-   [install_node.md](install_node.md) guide:
-   ```bash
-   task setup:codex
-   ```
-2. Generate a script from the project root. The `task add_utility` command runs
-   the Codex CLI in quiet mode with automatic approval:
-   ```bash
-   task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
-   ```
-3. Work on a branch, then commit and push the changes:
-   ```bash
-   git checkout -b my-feature
-   git commit -am "Add my tool"
-   git push origin my-feature
-   ```
+1. Launch the Docker container.
+2. Open <http://127.0.0.1:8080/utility> in your browser.
+3. Click **Create New GTM Utility**.
+4. Describe what you want to build and hit **Generate**.
+5. Save the tool and use it from the app.
+6. Copy the source code if you want to run it elsewhere for automation.
 
-4. Rebuild the Docker image and start the web app to access your new utility.
+In a few minutes you can describe any GTM workflow and add it to your toolbox without complex or costly setups.
 
 ## Example workflow ideas
 

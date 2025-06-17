@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import csv
 import json
 import logging
 import re
 import urllib.parse
+from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
 
@@ -154,34 +156,128 @@ def extract_domain(url: str) -> str:
     return parsed.netloc.lower()
 
 
-async def find_company_details(company_name: str, company_location: Optional[str] = None) -> dict:
-    """Return website, primary domain and LinkedIn URL for a company."""
-    logger.info("Finding details for company '%s'", company_name)
-    linkedin_url = await find_organization_linkedin_url(company_name, company_location)
-    website = await get_company_website_from_linkedin_url(linkedin_url)
-    if not website:
-        website = await find_company_website(company_name, company_location)
+async def find_company_details(
+    organization_name: str = "",
+    organization_location: Optional[str] = None,
+    organization_linkedin_url: str = "",
+    organization_website: str = "",
+) -> dict:
+    """Return website, domain and LinkedIn URL for a company."""
+
+    logger.info("Finding details for company '%s'", organization_name)
+
+    linkedin_url = extract_company_page(organization_linkedin_url)
+    website = organization_website.strip()
+
+    if not linkedin_url and organization_name:
+        linkedin_url = await find_organization_linkedin_url(
+            organization_name, organization_location
+        )
+
+    if not website and linkedin_url:
+        website = await get_company_website_from_linkedin_url(linkedin_url)
+
+    if not website and organization_name:
+        website = await find_company_website(organization_name, organization_location)
+
     domain = extract_domain(website)
+
     result = {
-        "company_website": website,
-        "company_domain": domain,
-        "linkedin_url": linkedin_url,
+        "organization_name": organization_name,
+        "organization_website": website,
+        "primary_domain_of_organization": domain,
+        "organization_linkedin_url": linkedin_url,
     }
     logger.info("Lookup result: %s", result)
     return result
+
+
+def find_company_info_from_csv(input_file: str | Path, output_file: str | Path) -> None:
+    """Look up company details for each row of ``input_file`` and write results."""
+
+    in_path = Path(input_file)
+    out_path = Path(output_file)
+
+    with in_path.open(newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        rows = list(reader)
+
+    if not any(
+        f in fieldnames
+        for f in ["organization_name", "organization_linkedin_url", "organization_website"]
+    ):
+        raise ValueError(
+            "upload csv with organization_name, organization_linkedin_url or organization_website column"
+        )
+
+    extra_fields = [
+        "organization_name",
+        "organization_website",
+        "primary_domain_of_organization",
+        "organization_linkedin_url",
+    ]
+
+    out_fields = list(fieldnames)
+    for f in extra_fields:
+        if f not in out_fields:
+            out_fields.append(f)
+
+    processed: list[dict] = []
+    for row in rows:
+        info = asyncio.run(
+            find_company_details(
+                row.get("organization_name", ""),
+                None,
+                row.get("organization_linkedin_url", ""),
+                row.get("organization_website", ""),
+            )
+        )
+        for key, value in info.items():
+            if value and not row.get(key):
+                row[key] = value
+        processed.append(row)
+
+    with out_path.open("w", newline="", encoding="utf-8") as out_fh:
+        writer = csv.DictWriter(out_fh, fieldnames=out_fields)
+        writer.writeheader()
+        for row in processed:
+            writer.writerow(row)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find company website, domain and LinkedIn URL using Google search",
     )
-    parser.add_argument("company_name", help="Name of the company to search for")
-    parser.add_argument("-l", "--location", help="Optional company location")
+    parser.add_argument("--organization_name", default="", help="Organization name")
+    parser.add_argument("--location", default="", help="Organization location")
+    parser.add_argument(
+        "--organization_linkedin_url", default="", help="Organization LinkedIn URL"
+    )
+    parser.add_argument(
+        "--organization_website",
+        default="",
+        help="Organization website URL",
+    )
     args = parser.parse_args()
 
-    logger.info("Starting company lookup: %s", args.company_name)
+    if not (
+        args.organization_name or args.organization_linkedin_url or args.organization_website
+    ):
+        parser.error(
+            "provide organization_name, organization_linkedin_url or organization_website"
+        )
 
-    result = asyncio.run(find_company_details(args.company_name, args.location))
+    logger.info("Starting company lookup")
+
+    result = asyncio.run(
+        find_company_details(
+            args.organization_name,
+            args.location,
+            args.organization_linkedin_url,
+            args.organization_website,
+        )
+    )
     print(json.dumps(result, indent=2))
 
 

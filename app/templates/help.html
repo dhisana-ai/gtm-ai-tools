@@ -28,11 +28,12 @@
   <p>A <em>Push Output to Dhisana AI Webhook</em> button will appear after a run. Click it and Dhisana will score and route the leads automatically.</p>
 
   <h4 id="vibe-coding">Vibe Coding New Workflows</h4>
-  <p>You can create additional utilities with the OpenAI Codex CLI.</p>
+  <p>You can generate new utilities right in the app.</p>
   <ol>
-    <li>Install Node.js 22+ and <code>@openai/codex</code> (see <code>docs/install_node.md</code> or run <code>task setup:codex</code>).</li>
-    <li>Run <code>task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"</code>.</li>
-    <li>Commit your script and push it to GitHub.</li>
+    <li>Launch the Docker container and open <code>http://127.0.0.1:8080/utility</code>.</li>
+    <li>Click <strong>Create New GTM Utility</strong>.</li>
+    <li>Describe what you want to build and hit <em>Generate</em>.</li>
+    <li>Save the tool and run it from the app. Copy the source if you need automation elsewhere.</li>
   </ol>
   <p>Example ideas:</p>
   <ul>
