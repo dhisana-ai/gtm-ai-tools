@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow-lg border-0" style="border-radius: 1rem;">
+                <div class="card-header bg-primary text-white" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
+                    <h4 class="mb-0">AI-Powered Web Parser</h4>
+                </div>
+                <div class="card-body">
+                    <form id="web-parse-form" class="mb-4">
+                        <div class="mb-3">
+                            <label for="url" class="form-label">Target URL</label>
+                            <input type="url" class="form-control" id="url" name="url" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="fields" class="form-label">Fields to Extract (comma-separated)</label>
+                            <input type="text" class="form-control" id="fields" name="fields" placeholder="e.g. title, price, description">
+                        </div>
+                        <div class="mb-3">
+                            <label for="max_depth" class="form-label">Max Depth</label>
+                            <input type="number" class="form-control" id="max_depth" name="max_depth" value="3" min="1" max="10">
+                        </div>
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" class="form-check-input" id="pagination" name="pagination">
+                            <label class="form-check-label" for="pagination">Enable Pagination</label>
+                        </div>
+                        <div class="mb-3">
+                            <label for="instructions" class="form-label">Additional Instructions</label>
+                            <textarea class="form-control" id="instructions" name="instructions" rows="3" placeholder="Any specific requirements or instructions for data extraction"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="parse-btn">Start Parsing</button>
+                    </form>
+
+                    <div id="status" class="alert alert-info d-none"></div>
+                    <div id="error" class="alert alert-danger d-none"></div>
+
+                    <div id="logs-container" class="d-none">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">Processing Logs</h5>
+                            </div>
+                            <div class="card-body">
+                                <pre id="logs" class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"></pre>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="result-container" class="d-none">
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <h5 class="mb-0">Generated Code</h5>
+                            </div>
+                            <div class="card-body">
+                                <pre id="generated-code" class="bg-light p-3 rounded"></pre>
+                                <div class="mt-3">
+                                    <button class="btn btn-outline-primary" id="copy-code-btn">
+                                        <i class="bi bi-clipboard"></i> Copy Code
+                                    </button>
+                                    <button class="btn btn-outline-success" id="download-code-btn">
+                                        <i class="bi bi-download"></i> Download Code
+                                    </button>
+                                    <button class="btn btn-outline-info" id="save-utility-btn">
+                                        <i class="bi bi-save"></i> Save as New Utility
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Extracted Data</h5>
+                            </div>
+                            <div class="card-body">
+                                <pre id="extracted-data" class="bg-light p-3 rounded"></pre>
+                                <div class="mt-3">
+                                    <button class="btn btn-outline-primary" id="copy-data-btn">
+                                        <i class="bi bi-clipboard"></i> Copy Data
+                                    </button>
+                                    <button class="btn btn-outline-success" id="download-data-btn">
+                                        <i class="bi bi-download"></i> Download Data
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Save Utility Modal -->
+<div class="modal fade" id="saveUtilityModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Save as New Utility</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="save-utility-form">
+                    <div class="mb-3">
+                        <label for="utility-name" class="form-label">Utility Name</label>
+                        <input type="text" class="form-control" id="utility-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="utility-description" class="form-label">Description</label>
+                        <textarea class="form-control" id="utility-description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="utility-prompt" class="form-label">Prompt</label>
+                        <textarea class="form-control" id="utility-prompt" rows="3"></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="save-utility-submit">Save</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('web-parse-form');
+    const status = document.getElementById('status');
+    const error = document.getElementById('error');
+    const logsContainer = document.getElementById('logs-container');
+    const logs = document.getElementById('logs');
+    const resultContainer = document.getElementById('result-container');
+    const generatedCode = document.getElementById('generated-code');
+    const extractedData = document.getElementById('extracted-data');
+    let currentCode = '';
+    let currentData = null;
+
+    // Handle form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Reset UI
+        status.classList.remove('d-none');
+        error.classList.add('d-none');
+        resultContainer.classList.add('d-none');
+        logsContainer.classList.remove('d-none');
+        logs.textContent = '';
+        status.textContent = 'Starting web parsing...';
+        
+        // Get form data
+        const formData = {
+            url: document.getElementById('url').value,
+            fields: document.getElementById('fields').value.split(',').map(f => f.trim()).filter(f => f),
+            max_depth: parseInt(document.getElementById('max_depth').value),
+            pagination: document.getElementById('pagination').checked,
+            instructions: document.getElementById('instructions').value
+        };
+
+        try {
+            // Create EventSource for streaming
+            const eventSource = new EventSource(`/web_parse_utility?${new URLSearchParams({
+                url: formData.url,
+                fields: formData.fields.join(','),
+                max_depth: formData.max_depth,
+                pagination: formData.pagination,
+                instructions: formData.instructions
+            })}`);
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    switch(data.type) {
+                        case 'status':
+                            status.textContent = data.message;
+                            break;
+                        case 'log':
+                            logs.textContent += data.message + '\n';
+                            logs.scrollTop = logs.scrollHeight;
+                            break;
+                        case 'complete':
+                            currentCode = data.code;
+                            currentData = data.result;
+                            generatedCode.textContent = data.code;
+                            extractedData.textContent = JSON.stringify(data.result, null, 2);
+                            resultContainer.classList.remove('d-none');
+                            status.classList.add('d-none');
+                            eventSource.close();
+                            break;
+                        case 'error':
+                            error.textContent = data.error;
+                            error.classList.remove('d-none');
+                            status.classList.add('d-none');
+                            eventSource.close();
+                            break;
+                    }
+                } catch (err) {
+                    console.error('Error parsing event data:', err);
+                    error.textContent = 'Error processing server response';
+                    error.classList.remove('d-none');
+                    status.classList.add('d-none');
+                    eventSource.close();
+                }
+            };
+
+            eventSource.onerror = function(err) {
+                console.error('EventSource error:', err);
+                error.textContent = 'Connection error occurred';
+                error.classList.remove('d-none');
+                status.classList.add('d-none');
+                eventSource.close();
+            };
+
+        } catch (err) {
+            console.error('Error:', err);
+            error.textContent = err.message;
+            error.classList.remove('d-none');
+            status.classList.add('d-none');
+        }
+    });
+
+    // Copy code button
+    document.getElementById('copy-code-btn').addEventListener('click', function() {
+        navigator.clipboard.writeText(currentCode).then(() => {
+            this.textContent = 'Copied!';
+            setTimeout(() => this.textContent = 'Copy Code', 2000);
+        });
+    });
+
+    // Download code button
+    document.getElementById('download-code-btn').addEventListener('click', function() {
+        const blob = new Blob([currentCode], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'web_parser.py';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+
+    // Copy data button
+    document.getElementById('copy-data-btn').addEventListener('click', function() {
+        navigator.clipboard.writeText(JSON.stringify(currentData, null, 2)).then(() => {
+            this.textContent = 'Copied!';
+            setTimeout(() => this.textContent = 'Copy Data', 2000);
+        });
+    });
+
+    // Download data button
+    document.getElementById('download-data-btn').addEventListener('click', function() {
+        const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'extracted_data.json';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+
+    // Save utility button
+    document.getElementById('save-utility-btn').addEventListener('click', function() {
+        const modal = new bootstrap.Modal(document.getElementById('saveUtilityModal'));
+        modal.show();
+    });
+
+    // Save utility submit
+    document.getElementById('save-utility-submit').addEventListener('click', async function() {
+        const name = document.getElementById('utility-name').value;
+        const description = document.getElementById('utility-description').value;
+        const prompt = document.getElementById('utility-prompt').value;
+
+        try {
+            const response = await fetch('/save_web_parse_utility', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    code: currentCode,
+                    name: name,
+                    description: description,
+                    prompt: prompt
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Utility saved successfully!');
+                bootstrap.Modal.getInstance(document.getElementById('saveUtilityModal')).hide();
+            } else {
+                alert('Error saving utility: ' + result.error);
+            }
+        } catch (err) {
+            alert('Error saving utility: ' + err.message);
+        }
+    });
+});
+</script>
+{% endblock %} 

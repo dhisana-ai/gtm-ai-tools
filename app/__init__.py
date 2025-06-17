@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import csv
 import re
+import traceback
 from typing import List
 import asyncio
 import json
@@ -42,6 +43,8 @@ try:
         send_from_directory,
         session,
         jsonify,
+        Response,
+        stream_with_context,
     )
 except Exception:  # pragma: no cover - fallback for test stubs
     from flask import (
@@ -53,18 +56,22 @@ except Exception:  # pragma: no cover - fallback for test stubs
         flash,
         send_from_directory,
         jsonify,
+        Response,
     )
 
     session = {}
 from dotenv import dotenv_values, set_key
-import openai
+
 try:
     import numpy as np
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
-import faiss
 
+# try:
+#     import faiss
+# except ImportError:
+#     import faiss_cpu as faiss
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
@@ -353,7 +360,8 @@ UTILITY_PARAMETERS = {
         {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
         {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
         {"name": "--page_actions", "label": "Actions to do When each page loads."},
-        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
+        {"name": "--parse_instructions",
+         "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
         {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
         {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
@@ -454,11 +462,11 @@ def get_credentials() -> tuple[str, str]:
     """Return (username, password) for the login page."""
     env = load_env()
     username = (
-        env.get("APP_USERNAME")
-        or os.environ.get("APP_USERNAME")
-        or env.get("APP_USER")
-        or os.environ.get("APP_USER")
-        or "user"
+            env.get("APP_USERNAME")
+            or os.environ.get("APP_USERNAME")
+            or env.get("APP_USER")
+            or os.environ.get("APP_USER")
+            or "user"
     )
     password = env.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not password:
@@ -580,8 +588,8 @@ def login():
     username, password = get_credentials()
     if request.method == "POST":
         if (
-            request.form.get("password") == password
-            and request.form.get("username") == username
+                request.form.get("password") == password
+                and request.form.get("username") == username
         ):
             session["logged_in"] = True
             return redirect(url_for("run_utility"))
@@ -649,19 +657,19 @@ def run_utility():
             file.save(filename)
             uploaded = filename
         if (
-            not uploaded
-            and input_mode == "previous"
-            and prev_csv
-            and os.path.exists(prev_csv)
-            and not is_custom
+                not uploaded
+                and input_mode == "previous"
+                and prev_csv
+                and os.path.exists(prev_csv)
+                and not is_custom
         ):
             uploaded = prev_csv
         if (
-            not uploaded
-            and util_name in UPLOAD_ONLY_UTILS
-            and prev_csv
-            and os.path.exists(prev_csv)
-            and not is_custom
+                not uploaded
+                and util_name in UPLOAD_ONLY_UTILS
+                and prev_csv
+                and os.path.exists(prev_csv)
+                and not is_custom
         ):
             uploaded = prev_csv
 
@@ -683,9 +691,9 @@ def run_utility():
                 if util_name == "extract_from_webpage" and name == "--show_ux":
                     continue
                 if (
-                    util_name == "linkedin_search_to_csv"
-                    and name == "--num"
-                    and not val
+                        util_name == "linkedin_search_to_csv"
+                        and name == "--num"
+                        and not val
                 ):
                     val = "10"
                 if not val:
@@ -708,8 +716,8 @@ def run_utility():
             elif util_name == "extract_from_webpage":
                 out_path = common.make_temp_csv_filename(util_name)
                 if not any(
-                    f in cmd
-                    for f in ("--lead", "--leads", "--company", "--companies")
+                        f in cmd
+                        for f in ("--lead", "--leads", "--company", "--companies")
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
@@ -1133,6 +1141,7 @@ def push_to_dhisana():
     flash(f"Pushed {pushed} leads to Dhisana.")
     return redirect(url_for("run_utility"))
 
+
 def embed_text(text: str) -> np.ndarray:
     """Return the LLM embedding for the given text."""
     client = openai_client_sync()
@@ -1141,6 +1150,7 @@ def embed_text(text: str) -> np.ndarray:
         model="text-embedding-ada-002",
     )
     return np.array(response.data[0].embedding)
+
 
 def build_utility_embeddings() -> None:
     """Load or build utility embeddings and FAISS index cache."""
@@ -1198,6 +1208,7 @@ def build_utility_embeddings() -> None:
 
 build_utility_embeddings()
 load_custom_parameters()
+
 
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
@@ -1300,17 +1311,17 @@ def generate_utility():
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
-            hasattr(response, "output")
-            and isinstance(response.output, list)
-            and len(response.output) > 0
+                hasattr(response, "output")
+                and isinstance(response.output, list)
+                and len(response.output) > 0
         ):
             for msg in response.output:
                 if hasattr(msg, "content") and isinstance(msg.content, list):
                     for c in msg.content:
                         if (
-                            hasattr(c, "text")
-                            and isinstance(c.text, str)
-                            and c.text.strip()
+                                hasattr(c, "text")
+                                and isinstance(c.text, str)
+                                and c.text.strip()
                         ):
                             code = c.text.strip()
                             break
@@ -1333,10 +1344,10 @@ def generate_utility():
                             attempt + 1, compile_err)
             commented_code = "\n".join(f"# {line}" for line in code.splitlines())
             correction_prompt = (
-                codex_prompt
-                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
-                + f"{commented_code}\n"
-                + "# Please provide the full corrected utility code below:\n"
+                    codex_prompt
+                    + f"# The previous generated code failed to compile on attempt {attempt + 1}: {compile_err}\n"
+                    + f"{commented_code}\n"
+                    + "# Please provide the full corrected utility code below:\n"
             )
             response = client.responses.create(
                 model=model_name,
@@ -1360,7 +1371,7 @@ def generate_utility():
             code = new_code
     else:
         # Exhausted retries without valid code
-        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
+        err_msg = f"Code failed to compile after {attempt + 1} attempts: {compile_err}"
         logging.error(err_msg)
         return jsonify({"success": False, "error": err_msg}), 500
 
@@ -1428,3 +1439,226 @@ def save_utility():
     except Exception as e:
         logging.error('Error saving utility to file: %s', e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/web_parse_utility', methods=['GET', 'POST'])
+def web_parse_utility():
+    if request.method == 'GET':
+        # If it's a GET request with parameters, treat it as a POST
+        if request.args:
+            def generate():
+                # Set up logging at the start
+                logging.basicConfig(level=logging.INFO)
+                logger = logging.getLogger(__name__)
+
+                try:
+                    # Get parameters from query string
+                    url = request.args.get('url')
+                    fields = request.args.get('fields', '').split(',')
+                    max_depth = int(request.args.get('max_depth', 3))
+                    pagination = request.args.get('pagination', 'false').lower() == 'true'
+                    instructions = request.args.get('instructions', '')
+
+                    if not url:
+                        return json.dumps({'error': 'URL is required'})
+
+                    # Create requirement object
+                    requirement = codegen_barbarika_web_parsing.UserRequirement(
+                        target_url=url,
+                        data_to_extract=fields,
+                        max_depth=max_depth,
+                        pagination=pagination,
+                        additional_instructions=instructions
+                    )
+
+                    # Create web parser
+                    parser = codegen_barbarika_web_parsing.WebParser(requirement)
+
+                    # Create a new event loop
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+
+                    def log_message(message):
+                        logger.info(message)
+                        return f"data: {json.dumps({'type': 'log', 'message': message})}\n\n"
+
+                    try:
+                        # Analyze requirements
+                        yield log_message('Analyzing requirements...')
+                        loop.run_until_complete(parser.analyze_requirement())
+
+                        # Build page tree
+                        yield log_message('Building page tree...')
+                        loop.run_until_complete(parser.build_page_tree())
+
+                        # Generate code
+                        yield log_message('Generating extraction code...')
+                        loop.run_until_complete(parser.generate_extraction_code())
+
+                        # Execute code
+                        yield log_message('Executing generated code...')
+                        result = loop.run_until_complete(parser.execute_generated_code(url))
+
+                        # Send completion message
+                        yield f"data: {json.dumps({'type': 'complete', 'code': parser.generated_code, 'result': result})}\n\n"
+
+                    except Exception as e:
+                        error_msg = f"Error: {str(e)}"
+                        logger.error(error_msg)
+                        yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+                    finally:
+                        # Clean up
+                        loop.close()
+
+                except Exception as e:
+                    error_msg = f"Error: {str(e)}"
+                    logger.error(error_msg)
+                    yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+
+            return Response(
+                stream_with_context(generate()),
+                mimetype='text/event-stream',
+                headers={
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive',
+                    'X-Accel-Buffering': 'no',
+                    'Content-Type': 'text/event-stream'
+                }
+            )
+        # If it's a GET request without parameters, render the template
+        return render_template('web_parse_utility.html')
+
+    # Handle POST request
+    def generate():
+        # Set up logging at the start
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Get parameters from JSON body
+            data = request.get_json()
+            url = data.get('url')
+            fields = data.get('fields', '').split(',')
+            max_depth = int(data.get('max_depth', 3))
+            pagination = data.get('pagination', 'false').lower() == 'true'
+            instructions = data.get('instructions', '')
+
+            if not url:
+                return json.dumps({'error': 'URL is required'})
+
+            # Create requirement object
+            requirement = codegen_barbarika_web_parsing.UserRequirement(
+                target_url=url,
+                data_to_extract=fields,
+                max_depth=max_depth,
+                pagination=pagination,
+                additional_instructions=instructions
+            )
+
+            # Create web parser
+            parser = codegen_barbarika_web_parsing.WebParser(requirement)
+
+            # Create a new event loop
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            def log_message(message):
+                logger.info(message)
+                return f"data: {json.dumps({'type': 'log', 'message': message})}\n\n"
+
+            try:
+                # Analyze requirements
+                yield log_message('Analyzing requirements...')
+                loop.run_until_complete(parser.analyze_requirement())
+
+                # Build page tree
+                yield log_message('Building page tree...')
+                loop.run_until_complete(parser.build_page_tree())
+
+                # Generate code
+                yield log_message('Generating extraction code...')
+                loop.run_until_complete(parser.generate_extraction_code())
+
+                # Execute code
+                yield log_message('Executing generated code...')
+                result = loop.run_until_complete(parser.execute_generated_code(url))
+
+                # Send completion message
+                yield f"data: {json.dumps({'type': 'complete', 'code': parser.generated_code, 'result': result})}\n\n"
+
+            except Exception as e:
+                error_msg = f"Error: {str(e)}"
+                logger.error(error_msg)
+                yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+            finally:
+                # Clean up
+                loop.close()
+
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            logger.error(error_msg)
+            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+            'Content-Type': 'text/event-stream'
+        }
+    )
+
+
+@app.route('/save_web_parse_utility', methods=['POST'])
+def save_web_parse_utility():
+    """Save web parsing utility as a new utility."""
+    try:
+        data = request.get_json()
+        if not data or not all(k in data for k in ['code', 'name', 'description', 'prompt']):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        # Create event loop for async operations
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        try:
+            # Save the utility
+            success = loop.run_until_complete(save_utility(
+                code=data['code'],
+                name=data['name'],
+                description=data['description'],
+                prompt=data['prompt']
+            ))
+        finally:
+            loop.close()
+
+        if success:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': 'Failed to save utility'}), 500
+
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+class StreamLogger(logging.Handler):
+    def __init__(self, yield_func):
+        super().__init__()
+        self.yield_func = yield_func
+        self.buffer = []
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            self.buffer.append(msg)
+            self.yield_func({
+                'type': 'log',
+                'message': msg
+            })
+        except Exception:
+            self.handleError(record)
+
+    def get_buffer(self):
+        return self.buffer
