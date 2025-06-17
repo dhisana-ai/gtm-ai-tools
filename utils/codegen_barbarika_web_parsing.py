@@ -31,6 +31,9 @@ class PageData(BaseModel):
     to_be_filled_fields: List[str] = []
     page_type: str = None
     exclusive_fields: List[str] = []
+    generated_code: str = None  # Store the generated Python code
+    code_execution_result: Dict = None  # Store the execution result
+    code_execution_error: str = None  # Store any execution errors
 
 
 class WebParser:
@@ -107,6 +110,7 @@ class WebParser:
             return json.loads(json_data)
         except Exception as e:
             print(f"❌ Error converting HTML to JSON: {str(e)}")
+            print(f"❌ Error converting HTML to JSON len: {len(prompt)}")
             # raise Exception(e)
             json_data = call_openai_sync(
                 prompt=prompt,
@@ -123,89 +127,162 @@ class WebParser:
         Analyze this structured JSON data of a webpage and identify:
         1. Main content areas
         2. Navigation elements
-        3. Data patterns
-        4. Potential next pages to visit
+        3. patterns_identified
+        4. next_pages_to_visit (as a list of objects with url, label, page_type, identifier, generic_name  and relevance_score) 
+        5. Page type
+        6. Relevance score
+        7. available fields list for parsing from this page
+        8. generic_name_of_page 
+        9. python_code
+        10. python_code_function_name (the name of the main function that will be used to extract data)
         
         Required Data: {self.requirement.data_to_extract}
         
         Additional Instructions: {self.requirement.additional_instructions}
         plan : {self.plan}
+        
         Page Data:
         {json.dumps(page_data.json_data, indent=2)}
         
-        Return a JSON object with your analysis. Include:
-        - Content areas found
-        - Navigation elements
-        - patterns_identified
-        - next_pages_to_visit (as a list of objects with url, label, page_type, identifier, generic_name  and relevance_score) 
-        - Page type
-        - Relevance score
-        - available fields list for parsing from this page
-        - generic_name_of_page 
-        - python_code
-        
         For next pages to visit:
         1. Provide one url for each page_type, other url have same html structure so they can call sam  html parsing function.
-        2. Provide only full url and make sure they real url 
-        3. Don't provide placeholder urls
+        2. Provide only full url and make sure they real url
+        3. Here is already visited url : {self.visited_urls}
+        4. Here is is already visited page_types: {self.visited_page_types}
+        5. Don't provide placeholder urls
         IMPORTANT: If you're not 100% certain a URL is real and exists in the data, DO NOT include it.
         
         For python code:
         1. to get above html use this code:  from utils.extract_from_webpage import _fetch_and_clean
-    html_code = await _fetch_and_clean(url)
+     html_code = await _fetch_and_clean(url)
         2. write a python code to extract all information in a structure data   
         3. here is sample html_code: {page_data.html} 
-        {'4. here is existing python code from previous parent page is' + page_data.parent.page_type +". you need implement further  multi page extration and aggragate. " if page_data.parent else ''}
+        4. The main function name should be specified in python_code_function_name
+        5. The function should be async and take a url parameter
+        {'6. here is existing python code from previous parent page is' + page_data.parent.page_type +". you need implement further  multi page extration and aggragate. " if page_data.parent else ''}
             {page_data.parent.analysis_data['python_code'] if page_data.parent else ''}
-
-"""
+        """
 
         analysis = call_openai_sync(
             prompt=prompt,
             response_format={"type": "json_object"}
         )
-        analysis_data = json.loads(analysis)
+        try:
+            analysis_data = json.loads(analysis)
+        except json.decoder.JSONDecodeError as e :
+            print(e)
+            analysis = call_openai_sync(
+                prompt=prompt,
+                model="gpt-4o-mini",
+                response_format={"type": "json_object"}
+            )
+            analysis_data = json.loads(analysis)
+
         print(f"✅ Page analysis complete")
         print(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
         print(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
         print(f"next_pages_to_visit: {analysis_data.get('next_pages_to_visit', [])}")
+
+        # Store the generated code and function name
+        page_data.generated_code = analysis_data.get('python_code')
+        function_name = analysis_data.get('python_code_function_name', 'extract_data')
+        
+        # Execute and validate the generated code
+        if page_data.generated_code:
+            max_attempts = 4
+            current_attempt = 0
+            last_error = None
+            
+            while current_attempt < max_attempts:
+                try:
+                    current_attempt += 1
+                    print(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code for {page_data.url}")
+                    
+                    # Create a temporary module for execution
+                    import tempfile
+                    import importlib.util
+                    
+                    with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as f:
+                        f.write(page_data.generated_code.encode())
+                        f.flush()
+                        
+                        # Import the module
+                        spec = importlib.util.spec_from_file_location("page_extractor", f.name)
+                        module = importlib.util.module_from_spec(spec)
+                        spec.loader.exec_module(module)
+                        
+                        # Execute the code using the specified function name
+                        if hasattr(module, function_name):
+                            result = await getattr(module, function_name)(page_data.url)
+                            page_data.code_execution_result = result
+                            print(f"✅ Code execution successful for {page_data.url}", json.dumps(result, indent=2))
+                            break  # Success, exit the loop
+                        else:
+                            raise AttributeError(f"Function '{function_name}' not found in generated code")
+                            
+                except Exception as e:
+                    last_error = str(e)
+                    print(f"❌ Error in attempt {current_attempt}: {last_error}")
+                    
+                    if current_attempt < max_attempts:
+                        # Try to fix the code using another LLM
+                        fix_prompt = f"""
+                        Fix the following Python code that failed to execute with error: {last_error}
+                        
+                        Original code:
+                        {page_data.generated_code}
+                        
+                        Requirements:
+                        1. The code should extract data from the HTML
+                        2. It should handle the error: {last_error}
+                        3. It should return a dictionary with the extracted data
+                        4. The function should be named '{function_name}' and be async
+                        5. Use BeautifulSoup for parsing
+                        6. Previous attempts: {current_attempt}/{max_attempts}
+                        7. The function must be named exactly '{function_name}'
+                        
+                        Return only the fixed Python code without any explanations.
+                        """
+                        
+                        try:
+                            fixed_code = call_openai_sync(
+                                prompt=fix_prompt,
+                                model="gpt-4.1",  # Use a different model for fixing
+                                response_format={"type": "text"}
+                            )
+                            page_data.generated_code = fixed_code
+                            print(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
+                        except Exception as fix_error:
+                            print(f"❌ Failed to generate fixed code: {str(fix_error)}")
+                            break  # Exit if we can't even generate fixed code
+                    else:
+                        print(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
+                        break
+                        
+                finally:
+                    # Clean up temporary files
+                    try:
+                        os.unlink(f.name)
+                    except:
+                        pass
+            
+            # Store the final error if all attempts failed
+            if not page_data.code_execution_result:
+                page_data.code_execution_error = f"Failed after {current_attempt} attempts. Last error: {last_error}"
 
         page_data.exclusive_fields = list(set(analysis_data.get('available_fields', [])) - set(self.plan["already_extracted_fields"]))
         self.plan["already_extracted_fields"] = list(
             set(self.plan["already_extracted_fields"]).union(set(analysis_data.get('available_fields', []))))
         self.plan['to_be_extracted_fields'] = list(
             set(self.plan['to_be_extracted_fields']) - set(self.plan["already_extracted_fields"]))
-
-        # Process next pages to visit
         next_pages_to_visit = analysis_data.get('next_pages_to_visit', [])
-        if isinstance(next_pages_to_visit, list):
-            # Ensure each next page has the required structure
-            processed_pages = []
-            for page in next_pages_to_visit:
-                if isinstance(page, dict) and 'url' in page:
-                    if page['url'] not in self.visited_urls:
-                        if page["page_type"] not in self.visited_page_types:
-                            if page['relevance_score'] > 0.9:
-                                processed_page = {
-                                    'url': page['url'],
-                                    'label': page.get('label', ''),
-                                    'relevance_score': page.get('relevance_score', 0),
-                                    'page_type': page.get('page_type', '')
-                                }
-
-                                if processed_page['url'].startswith(('http://', 'https://')):
-                                    self.visited_urls.add(page['url'])
-                                    self.visited_page_types.add(page["page_type"])
-                                    processed_pages.append(processed_page)
-
-            # Sort by relevance score
-            # processed_pages.sort(key=lambda x: x['relevance_score'], reverse=True)
-            analysis_data['next_pages_to_visit'] = processed_pages
-
-            print(f"🔗 Found {len(processed_pages)} valid next pages to visit")
-            for page in processed_pages[:5]:  # Show top 5 pages
-                print(f"  - {page['label']} ({page['relevance_score']}): {page['url']}")
-
+        un_visited_pages = []
+        for page in next_pages_to_visit:
+            if page["relevance_score"] >= 0.9 and page["page_type"] not in self.visited_page_types and page["url"] not in self.visited_urls:
+                un_visited_pages.append(page)
+                self.visited_page_types.add(page["page_type"])
+                self.visited_urls.add(page["url"])
+        analysis_data['next_pages_to_visit']=un_visited_pages
         return analysis_data
 
     async def fetch_and_process_page(self, url: str, path: List[str] = None) -> PageData:
@@ -288,28 +365,33 @@ class WebParser:
     async def generate_extraction_code(self) -> str:
         """Generate Python code for data extraction."""
         print("\n💻 Generating extraction code...")
+        
+        # Collect all working code and their results
+        working_codes = []
+        for url, data in self.page_tree.items():
+            if data.generated_code and data.code_execution_result and not data.code_execution_error:
+                working_codes.append({
+                    'url': url,
+                    'code': data.generated_code,
+                    'result': data.code_execution_result,
+                    'page_type': data.page_type,
+                    'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None
+                })
+
         prompt = f"""
-        Here is python code for multi_pages pages you need to combined the code to achieve uer requirment 
-        {json.dumps({url: dict(python_code=data.analysis_data['python_code'] if data.analysis_data else None , 
-                               next_pages=[
-                                   dict(page_type=chi.page_type,
-                                        page_name=chi.analysis_data['generic_name_of_page'] if chi.analysis_data else None,
-                                        available_fields_list_for_parsing=chi.analysis_data.get('available_fields_list_for_parsing',
-                                                                                                chi.analysis_data.get('available_fields_list',None))) for chi in  data.children if chi.analysis_data]) for url, data in self.page_tree.items()}, indent=2)}
+        Here is python code for multi_pages pages you need to combined the code to achieve user requirement.
+        {json.dumps(working_codes, indent=2)}
         
         Python coding instructions:
         1. Extract these specific fields: {self.requirement.data_to_extract}
         2. Use BeautifulSoup for parsing
-        3. Handle all page types in the tree
-        5. This Python script is for {self.root_url} you should make it as hardcoded or default value,
-        6. make you implemented main function and this script is executable in cli
-        7. to get  html_code for any url use this code:  from utils.extract_from_webpage import _fetch_and_clean
-    html_code = await _fetch_and_clean(url)
-        
+        3. This Python script is for {self.root_url} you should make it as hardcoded or default value
+        4. make sure main function should start with {self.page_tree} {self.page_tree[self.root_url]}. i mean script start with {self.root_url}
+        5. make sure script is executable in cli
+        6. to get html_code for any url use this code: from utils.extract_from_webpage import _fetch_and_clean
+           html_code = await _fetch_and_clean(url)
         
         IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
-        The code should start with imports and end with the extraction function.
-        
         """
 
         code = await call_openai_async(
