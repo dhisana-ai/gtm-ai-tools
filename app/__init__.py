@@ -21,8 +21,11 @@ from utils import (
     generate_email,
     extract_from_webpage,
     common,
+    codegen_barbarika_web_parsing,
 )
 from pathlib import Path
+
+from utils.common import openai_client, openai_client_sync
 
 try:
     from flask import (
@@ -90,6 +93,7 @@ UTILITY_TITLES = {
     "generate_email": "Generate Email",
     "push_lead_to_dhisana_webhook": "Push Leads To Dhisana Webhook",
     "send_email_smtp": "Send Email",
+    "codegen_barbarika_web_parsing": "AI-Powered Web Parser",
 }
 
 # Display order for the utilities list
@@ -101,6 +105,7 @@ UTILITY_ORDER = {
     "push_lead_to_dhisana_webhook": 4,
     "generate_email": 5,
     "send_email_smtp": 6,
+    "codegen_barbarika_web_parsing": 7,
 }
 
 # Tags applied to utilities for filtering in the web UI
@@ -113,6 +118,7 @@ UTILITY_TAGS = {
     "fetch_html_playwright": ["find"],
     "extract_companies_from_image": ["find"],
     "extract_from_webpage": ["find"],
+    "codegen_barbarika_web_parsing": ["find", "enrich"],
 
     # Enrich leads
     "apollo_info": ["enrich"],
@@ -289,6 +295,13 @@ UTILITY_PARAMETERS = {
         {"name": "data", "label": "key=value pairs"},
         {"name": "--webhook_url", "label": "Webhook URL"},
         {"name": "--api_key", "label": "API key"},
+    ],
+    "codegen_barbarika_web_parsing": [
+        {"name": "url", "label": "Target URL"},
+        {"name": "--fields", "label": "Fields to extract (comma-separated)"},
+        {"name": "--max-depth", "label": "Maximum crawl depth", "type": "int"},
+        {"name": "--pagination", "label": "Enable pagination", "type": "boolean"},
+        {"name": "--instructions", "label": "Additional instructions"},
     ],
 }
 
@@ -883,7 +896,8 @@ def push_to_dhisana():
 
 
 def embed_text(text):
-    client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    client = openai_client_sync()
+    # client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     response = client.embeddings.create(input=text, model="text-embedding-ada-002")
     return np.array(response.data[0].embedding)
 
@@ -914,11 +928,9 @@ def get_top_k_utilities(prompt, k=3):
     return [util["code"] for score, util in scored[:k]]
 
 
-build_utility_embeddings()
-
-
 @app.route("/generate_utility", methods=["POST"])
 def generate_utility():
+    build_utility_embeddings()
     user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=3)
     prompt_lines = [
@@ -935,7 +947,8 @@ def generate_utility():
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 
     try:
-        client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        # client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        client = openai_client_sync()
         response = client.responses.create(model="gpt-4o-mini", input=codex_prompt)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None

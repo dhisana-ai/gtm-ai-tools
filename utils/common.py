@@ -6,13 +6,14 @@ import aiohttp
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
 
-from openai import AsyncOpenAI, AsyncAzureOpenAI, AzureOpenAI
+from openai import AsyncOpenAI, AsyncAzureOpenAI, AzureOpenAI, OpenAI
+
 
 async def search_google_serper(
-    query: str,
-    number_of_results: int = 10,
-    offset: int = 0,
-    as_oq: Optional[str] = None,
+        query: str,
+        number_of_results: int = 10,
+        offset: int = 0,
+        as_oq: Optional[str] = None,
 ) -> List[dict]:
     """Query Google via Serper.dev and return results as dictionaries."""
 
@@ -144,31 +145,46 @@ def make_temp_csv_filename(tool: str) -> str:
     path.touch()
     return str(path)
 
+
+def get_azure_conf():
+    api_key = os.getenv("AZURE_OPENAI_API_KEY1")
+    if not api_key:
+        raise RuntimeError("AZURE_OPENAI_API_KEY environment variable is not set")
+
+    endpoint = os.getenv("AZURE_OPENAI_BASE_URL1")
+    if not endpoint:
+        raise RuntimeError("AZURE_OPENAI_ENDPOINT environment variable is not set")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
+    if not api_version:
+        raise RuntimeError("AZURE_OPENAI_API_VERSION environment variable is not set")
+    return dict(api_version=api_version,
+                azure_endpoint=endpoint,
+                api_key=api_key)
+
+
 def openai_client() -> AsyncOpenAI | AsyncAzureOpenAI:
     """Create and return an OpenAI client instance."""
-    provider = os.getenv("OPENAI_PROVIDER", "azure")
-    if provider == "openai":
-
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-        return AsyncOpenAI(api_key=api_key)
-    elif provider == "azure":
-        api_key = os.getenv("AZURE_OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("AZURE_OPENAI_API_KEY environment variable is not set")
-
-        endpoint = os.getenv("AZURE_OPENAI_BASE_URL")
-        if not endpoint:
-            raise RuntimeError("AZURE_OPENAI_ENDPOINT environment variable is not set")
-        api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-        if not api_version:
-            raise RuntimeError("AZURE_OPENAI_API_VERSION environment variable is not set")
+    provider = os.getenv("OPENAI_PROVIDER", "openai")
+    if provider == "azure":
         return AsyncAzureOpenAI(
-                api_version=api_version,
-            azure_endpoint=endpoint,
-            api_key=api_key,
+            **get_azure_conf()
         )
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    return AsyncOpenAI(api_key=api_key)
+
+
+def openai_client_sync() -> OpenAI | AzureOpenAI:
+    """Create and return an OpenAI client instance."""
+    provider = os.getenv("OPENAI_PROVIDER", "openai")
+    if provider == "azure":
+        return AzureOpenAI(**get_azure_conf())
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
+    return OpenAI(api_key=api_key)
+
 
 async def call_openai_async(
         prompt: str,
@@ -202,7 +218,6 @@ async def call_openai_async(
             model=model or get_openai_model(),
             messages=chat_history,
             response_format=response_format or {"type": "json_object"},
-            temperature=temperature
         )
         chat_history.append({"role": "assistant", "content": response.choices[0].message.content})
         return response.choices[0].message.content or ""
@@ -259,17 +274,22 @@ def call_openai_sync(
     chat_history.append({"role": "user", "content": prompt})
 
     try:
+
         response = client.chat.completions.create(
             model=model or get_openai_model(),
             messages=chat_history,
             response_format=response_format or {"type": "json_object"},
-            temperature=temperature
         )
         chat_history.append({"role": "assistant", "content": response.choices[0].message.content})
         return response.choices[0].message.content or ""
 
     except Exception as e:
+        if "exceeded token rate limit" in str(e):
+            response = client.chat.completions.create(
+                model="o4-mini",
+                messages=chat_history,
+                response_format=response_format or {"type": "json_object"},
+            )
+            chat_history.append({"role": "assistant", "content": response.choices[0].message.content})
+            return response.choices[0].message.content or ""
         raise RuntimeError(f"OpenAI API call failed: {e}") from None
-
-
-
