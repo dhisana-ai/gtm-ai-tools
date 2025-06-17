@@ -380,6 +380,20 @@ UTILITY_PARAMETERS = {
 }
 
 
+def load_custom_parameters() -> None:
+    """Load parameter specs from meta files for user utilities."""
+    if not USER_UTIL_DIR.is_dir():
+        return
+    for path in USER_UTIL_DIR.glob("*.json"):
+        try:
+            meta_data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        params = meta_data.get("params")
+        if params:
+            UTILITY_PARAMETERS[path.stem] = params
+
+
 def load_env():
     return dotenv_values(ENV_FILE)
 
@@ -453,6 +467,9 @@ def _list_utils() -> list[dict[str, str]]:
                     meta_data = json.loads(meta.read_text(encoding="utf-8"))
                     title = meta_data.get("name", title)
                     desc = meta_data.get("description", desc)
+                    params = meta_data.get("params")
+                    if params:
+                        UTILITY_PARAMETERS[base] = params
                 except Exception:
                     pass
             items.append(
@@ -1131,6 +1148,7 @@ def build_utility_embeddings() -> None:
         pass
 
 build_utility_embeddings()
+load_custom_parameters()
 
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
@@ -1153,6 +1171,15 @@ def generate_utility():
             prompt_lines.append(f"# {line}")
     prompt_lines.append("# User wants a new GTM utility:")
     prompt_lines.append(f"# {user_prompt}")
+    prompt_lines.append(
+        "# The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file."
+    )
+    prompt_lines.append(
+        "# The input CSV columns should match the argument names without leading dashes."
+    )
+    prompt_lines.append(
+        "# The output CSV must keep all original columns and append any new columns produced by the utility."
+    )
     prompt_lines.append(
         "# Please output only the Python code for this utility below, without any markdown fences or additional text"
     )
@@ -1267,9 +1294,27 @@ def save_utility():
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(code)
 
-        meta = {"name": name, "description": desc, "prompt": prompt}
+        param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
+        help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
+        params: list[dict[str, str]] = []
+        for match in param_pattern.finditer(code):
+            arg_name = match.group(1)
+            rest = match.group(2)
+            help_match = help_pattern.search(rest)
+            label = (
+                help_match.group(1)
+                if help_match
+                else arg_name.lstrip("-").replace("_", " ").capitalize()
+            )
+            params.append({"name": arg_name, "label": label})
+
+        meta = {"name": name, "description": desc, "prompt": prompt, "params": params}
         with open(target_dir / f"{base}.json", "w", encoding="utf-8") as f:
             json.dump(meta, f)
+
+        if params:
+            UTILITY_PARAMETERS[base] = params
+            load_custom_parameters()
 
         logging.info("save_utility: wrote file %s", file_path)
         return jsonify({"success": True, "file_path": str(file_path)})
