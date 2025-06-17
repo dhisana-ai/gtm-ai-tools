@@ -1,13 +1,13 @@
 # Vibe coding new workflows
 
-You can create new GTM utilities directly from the web interface—no Codex CLI required.
+You can generate utilities right inside the web app—no Codex CLI needed.
 
-1. Launch the Docker container (or deploy with `fly deploy`).
-2. Make sure `OPENAI_API_KEY` and any other required keys are set.
-3. Open the app and click **Create New GTM Utility**.
-4. Describe what you want the utility to do—search, enrich, score, route and more—in natural language.
-5. Save the generated tool.
-6. Run it like any other utility once the keys are configured.
+1. Launch the Docker container.
+2. Open <http://127.0.0.1:8080/utility> in your browser.
+3. Click **Create New GTM Utility**.
+4. Describe what you want to build and hit **Generate**.
+5. Save the tool and use it from the app.
+6. Copy the source code if you want to run it elsewhere for automation.
 
 In a few minutes you can describe any GTM workflow and add it to your toolbox without complex or costly setups.
 
