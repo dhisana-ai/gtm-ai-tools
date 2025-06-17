@@ -571,8 +571,9 @@ def run_utility():
     tags_list = [t for t in tag_order if t in tags_set]
     tags_list.extend(sorted(tags_set - set(tag_order)))
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
+    is_custom = any(u.get("custom") and u["name"] == util_name for u in utils_list)
     prev_csv = session.get("prev_csv_path")
-    if prev_csv and os.path.exists(prev_csv):
+    if prev_csv and os.path.exists(prev_csv) and not is_custom:
         input_csv_path = prev_csv
     if request.method == "POST" and request.form.get("action") == "clear_csv":
         session.pop("prev_csv_path", None)
@@ -606,6 +607,7 @@ def run_utility():
             and input_mode == "previous"
             and prev_csv
             and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
         if (
@@ -613,6 +615,7 @@ def run_utility():
             and util_name in UPLOAD_ONLY_UTILS
             and prev_csv
             and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
 
@@ -624,6 +627,10 @@ def run_utility():
                 "gtm_utility" if (USER_UTIL_DIR / f"{util_name}.py").exists() else "utils"
             )
             cmd = ["python", "-m", f"{module_prefix}.{util_name}"]
+            if is_custom and not uploaded:
+                nonlocal input_csv_path
+                input_csv_path = common.make_temp_csv_filename("automation")
+                cmd.append(input_csv_path)
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec["name"]
                 val = (values.get(name) or "").strip()
@@ -932,7 +939,7 @@ def run_utility():
         output_rows = _load_csv_preview(output_csv_path)
     if input_csv_path and os.path.exists(input_csv_path):
         input_rows = _load_csv_preview(input_csv_path)
-    if output_csv_path and os.path.exists(output_csv_path):
+    if output_csv_path and os.path.exists(output_csv_path) and not is_custom:
         session["prev_csv_path"] = output_csv_path
         prev_csv = output_csv_path
     return render_template(
@@ -1182,6 +1189,25 @@ def generate_utility():
     )
     prompt_lines.append(
         "# Please output only the Python code for this utility below, without any markdown fences or additional text"
+    )
+    prompt_lines.append(
+        "# Generate e2e functional script will all required functions, dont take any dependency on content in utils directory or custom modules. Use the code in the prompt just as examples not as dependency. You can use only the standard python libraries  and following as dependencies when generating code.\n"
+        "httpx\n"
+        "openai\n"
+        "pydantic>=2.0\n"
+        "playwright==1.42.0\n"
+        "playwright-stealth\n"
+        "setuptools\n"
+        "aiohttp\n"
+        "\n"
+        "beautifulsoup4\n"
+        "aiosmtplib\n"
+        "requests\n"
+        "simple_salesforce\n"
+        "pytest>=7.0.0\n"
+        "numpy\n"
+        "greenlet>=2.0.2,\n"
+        "pandas"
     )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
