@@ -224,7 +224,7 @@ download link will be displayed. Plain text output is shown in the page.
 - [LinkedIn Search to CSV](docs/utils_usage.md#search-linkedin-urls) – gather LinkedIn profile URLs from Google.
 - [Find Company Info](docs/utils_usage.md#find-company-info) – discover a company's website and LinkedIn page.
 - [Find LinkedIn Profile by Name](docs/utils_usage.md#find-user-by-name-and-keywords) – look up a profile using a name and keywords.
-- [Find LinkedIn Profile by Job Title](docs/utils_usage.md#find-user-by-job-title-and-company) – search by title at a target company.
+- [Find LinkedIn Profile by Job Title](docs/utils_usage.md#find-user-by-job-title-and-organization) – search by title at a target organization.
 - [Bulk Find LinkedIn Profiles](docs/utils_usage.md#find-users-by-name-and-keywords) – process a CSV of names to find profiles.
 - [Find Email and Phone](docs/utils_usage.md#find-email-and-phone) – retrieve contact details with Findymail.
 - [Push Lead to Dhisana](docs/utils_usage.md#push-lead-to-dhisana-webhook) – send lead data to Dhisana for enrichment.

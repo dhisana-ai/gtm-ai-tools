@@ -1,4 +1,4 @@
-"""Locate a LinkedIn profile by job title at a target company."""
+"""Locate a LinkedIn profile by job title at a target organization."""
 
 from __future__ import annotations
 
@@ -18,15 +18,15 @@ logging.basicConfig(level=logging.INFO)
 
 async def find_user_linkedin_url_by_job_title(
     job_title: str,
-    company_name: str,
+    organization_name: str,
     search_keywords: str = "",
     exclude_profiles_intitle: bool = False,
 ) -> str:
-    """Return the LinkedIn profile URL for a title at a given company."""
-    if not job_title or not company_name:
+    """Return the LinkedIn profile URL for a title at a given organization."""
+    if not job_title or not organization_name:
         return ""
 
-    query = f'site:linkedin.com/in "{company_name}" "{job_title}"'
+    query = f'site:linkedin.com/in "{organization_name}" "{job_title}"'
     if search_keywords:
         query += f' "{search_keywords}"'
     if exclude_profiles_intitle:
@@ -46,9 +46,9 @@ async def find_user_linkedin_url_by_job_title(
     return ""
 
 
-def _get_company_name(row: dict[str, str]) -> str:
-    """Extract a company name from common CSV columns."""
-    for key in ("company_name", "organization_name"):
+def _get_organization_name(row: dict[str, str]) -> str:
+    """Extract an organization name from common CSV columns."""
+    for key in ("organization_name", "company_name"):
         name = (row.get(key) or "").strip()
         if name:
             return name
@@ -73,6 +73,7 @@ def find_user_by_job_title_from_csv(
     output_file: str | Path,
     *,
     job_title: str = "",
+    organization_name: str = "",
     search_keywords: str = "",
     exclude_profiles_intitle: bool = False,
 ) -> None:
@@ -100,19 +101,21 @@ def find_user_by_job_title_from_csv(
             "upload csv with organization_name or organization_linkedin_url or website column"
         )
 
-    out_fields = ["job_title", "company_name", "user_linkedin_url", "search_keywords"]
+    out_fields = ["job_title", "organization_name", "user_linkedin_url", "search_keywords"]
     processed: list[dict[str, str]] = []
     seen: set[str] = set()
 
     for row in rows:
-        company = _get_company_name(row)
-        if not company:
+        organization = _get_organization_name(row) or organization_name
+        row_job_title = (row.get("job_title") or job_title).strip()
+        if not row_job_title or not organization:
             continue
+        keywords = (row.get("search_keywords") or search_keywords).strip()
         url = asyncio.run(
             find_user_linkedin_url_by_job_title(
-                job_title,
-                company,
-                search_keywords,
+                row_job_title,
+                organization,
+                keywords,
                 exclude_profiles_intitle,
             )
         )
@@ -121,10 +124,10 @@ def find_user_by_job_title_from_csv(
         seen.add(url)
         processed.append(
             {
-                "job_title": job_title,
-                "company_name": company,
+                "job_title": row_job_title,
+                "organization_name": organization,
                 "user_linkedin_url": url,
-                "search_keywords": search_keywords,
+                "search_keywords": keywords,
             }
         )
 
@@ -137,10 +140,10 @@ def find_user_by_job_title_from_csv(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Find a LinkedIn profile by job title and company using Google search",
+        description="Find a LinkedIn profile by job title and organization using Google search",
     )
     parser.add_argument("job_title", help="User's job title")
-    parser.add_argument("company_name", help="Company name")
+    parser.add_argument("organization_name", help="Organization name")
     parser.add_argument(
         "search_keywords",
         nargs="?",
@@ -158,14 +161,14 @@ def main() -> None:
     url = asyncio.run(
         find_user_linkedin_url_by_job_title(
             args.job_title,
-            args.company_name,
+            args.organization_name,
             args.search_keywords,
             args.exclude_profiles_intitle,
         )
     )
     result = {
         "job_title": args.job_title,
-        "company_name": args.company_name,
+        "organization_name": args.organization_name,
         "user_linkedin_url": url,
         "search_keywords": args.search_keywords,
     }
