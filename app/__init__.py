@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 import csv
 import re
+from typing import List
 import asyncio
 import json
 import base64
@@ -384,14 +385,46 @@ def load_custom_parameters() -> None:
     """Load parameter specs from meta files for user utilities."""
     if not USER_UTIL_DIR.is_dir():
         return
-    for path in USER_UTIL_DIR.glob("*.json"):
-        try:
-            meta_data = json.loads(path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
-        params = meta_data.get("params")
+
+    def _parse_args(code: str) -> list[dict[str, str]]:
+        pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
+        help_re = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
+        skip = {
+            "output_file",
+            "--output_file",
+            "input_file",
+            "--input_file",
+            "csv_file",
+            "--csv_file",
+        }
+        params: list[dict[str, str]] = []
+        for m in pattern.finditer(code):
+            name = m.group(1)
+            if name in skip:
+                continue
+            rest = m.group(2)
+            h = help_re.search(rest)
+            label = h.group(1) if h else name.lstrip("-").replace("_", " ").capitalize()
+            params.append({"name": name, "label": label})
+        return params
+
+    for py_path in USER_UTIL_DIR.glob("*.py"):
+        base = py_path.stem
+        json_path = py_path.with_suffix(".json")
+        params: List[dict[str, str]] | None = None
+        if json_path.exists():
+            try:
+                meta_data = json.loads(json_path.read_text(encoding="utf-8"))
+                params = meta_data.get("params") or None
+            except Exception:
+                params = None
+        if params is None:
+            try:
+                params = _parse_args(py_path.read_text(encoding="utf-8"))
+            except Exception:
+                params = None
         if params:
-            UTILITY_PARAMETERS[path.stem] = params
+            UTILITY_PARAMETERS[base] = params
 
 
 def load_env():
