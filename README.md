@@ -174,25 +174,14 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 
 ## Vibe coding new workflows
 
-The Codex CLI lets you create new utilities with natural language prompts.
-It runs on your machine, not inside the container. This repository is vibe code ready—just describe what you want in natural language and you can have your custom workflow ready in 5 min.
+You can generate new utilities directly from the web interface—no Codex CLI required.
 
-1. Install **Node.js 22+** and the CLI. Run the helper task or follow the
-   [installation guide](docs/install_node.md):
-   ```bash
-   task setup:codex
-   ```
-2. Generate a utility from the project root. The `task add_utility` command runs
-   the Codex CLI in quiet, fully automated mode:
-   ```bash
-   task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
-   ```
-3. Review the changes, commit and push:
-   ```bash
-   git checkout -b my-feature
-   git commit -am "Add new utility"
-   git push origin my-feature
-   ```
+1. Launch the Docker container.
+2. Open <http://127.0.0.1:8080/utility> in your browser.
+3. Click **Create New GTM Utility**.
+4. Describe what you want to build and click **Generate**.
+5. Save the utility and run it from the app.
+6. Copy the source code if you want to automate it elsewhere.
 
 See [docs/vibe_coding_workflows.md](docs/vibe_coding_workflows.md) for a more
 detailed walkthrough.
@@ -201,7 +190,7 @@ detailed walkthrough.
 
 The repository ships with a library of small, focused utilities—fetch a CRM
 contact, search Google for a company or person, validate an email address, and
-so on. Feed these examples into the Codex CLI or the coding agent to generate a
+so on. Feed these examples into the utility generator or the coding agent to generate a
 custom workflow script. Once generated, you simply run that workflow over and
 over. When processing hundreds or thousands of records, this "generate once and
 reuse" model is far cheaper and more efficient than dynamically choosing tool
