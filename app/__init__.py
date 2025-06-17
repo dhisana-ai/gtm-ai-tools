@@ -440,6 +440,30 @@ def _list_utils() -> list[dict[str, str]]:
                 "tags": UTILITY_TAGS.get(base, []),
             }
         )
+
+    # Include user generated utilities from gtm_utility folder
+    if USER_UTIL_DIR.is_dir():
+        for path in USER_UTIL_DIR.glob("*.py"):
+            base = path.stem
+            meta = path.with_suffix(".json")
+            title = _format_title(base)
+            desc = base
+            if meta.exists():
+                try:
+                    meta_data = json.loads(meta.read_text(encoding="utf-8"))
+                    title = meta_data.get("name", title)
+                    desc = meta_data.get("description", desc)
+                except Exception:
+                    pass
+            items.append(
+                {
+                    "name": base,
+                    "title": title,
+                    "desc": desc,
+                    "tags": ["custom"],
+                    "custom": True,
+                }
+            )
     return sorted(
         items,
         key=lambda x: (
@@ -524,7 +548,9 @@ def run_utility():
     output_csv_path: str | None = None
     utils_list = _list_utils()
     tags_set = {t for tags in UTILITY_TAGS.values() for t in tags}
-    tag_order = ["find", "enrich", "score", "route"]
+    for util in utils_list:
+        tags_set.update(util.get("tags", []))
+    tag_order = ["find", "enrich", "score", "route", "custom"]
     tags_list = [t for t in tag_order if t in tags_set]
     tags_list.extend(sorted(tags_set - set(tag_order)))
     util_name = request.form.get("util_name", "linkedin_search_to_csv")
@@ -577,7 +603,10 @@ def run_utility():
             input_csv_path = uploaded
 
         def build_cmd(values: dict[str, str]) -> list[str]:
-            cmd = ["python", "-m", f"utils.{util_name}"]
+            module_prefix = (
+                "gtm_utility" if (USER_UTIL_DIR / f"{util_name}.py").exists() else "utils"
+            )
+            cmd = ["python", "-m", f"{module_prefix}.{util_name}"]
             for spec in UTILITY_PARAMETERS.get(util_name, []):
                 name = spec["name"]
                 val = (values.get(name) or "").strip()
@@ -1214,31 +1243,36 @@ def generate_utility():
 def save_utility():
     try:
         data = request.get_json(force=True)
-        code = data.get('code')
+        code = data.get("code")
         if not code:
-            return jsonify({'success': False, 'error': 'No code to save'}), 400
-        prompt = data.get('prompt', '').strip()
+            return jsonify({"success": False, "error": "No code to save"}), 400
+        name = data.get("name", "").strip()
+        desc = data.get("description", "").strip()
+        prompt = data.get("prompt", "").strip()
 
-        # Build filename from prompt or fallback to timestamped utility name
-        if prompt:
-            # Sanitize prompt to safe file prefix
-            safe = re.sub(r'\s+', '_', prompt)
-            safe = re.sub(r'[^A-Za-z0-9_-]', '', safe)
-            safe = safe[:30]
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f"{safe}_{timestamp}.py"
-        else:
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'utility_{timestamp}.py'
+        if not name:
+            return jsonify({"success": False, "error": "Name required"}), 400
+
+        # Sanitize name and build unique base
+        safe = re.sub(r"\s+", "_", name)
+        safe = re.sub(r"[^A-Za-z0-9_-]", "", safe)
+        safe = safe[:30]
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"{safe}_{timestamp}"
 
         target_dir = USER_UTIL_DIR
         logging.info("save_utility: target folder=%s", target_dir)
 
-        file_path = target_dir / filename
-        with open(file_path, 'w', encoding='utf-8') as f:
+        file_path = target_dir / f"{base}.py"
+        with open(file_path, "w", encoding="utf-8") as f:
             f.write(code)
+
+        meta = {"name": name, "description": desc, "prompt": prompt}
+        with open(target_dir / f"{base}.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+
         logging.info("save_utility: wrote file %s", file_path)
-        return jsonify({'success': True, 'file_path': str(file_path)})
+        return jsonify({"success": True, "file_path": str(file_path)})
     except Exception as e:
         logging.error('Error saving utility to file: %s', e)
         return jsonify({'success': False, 'error': str(e)}), 500
