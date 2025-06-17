@@ -1201,15 +1201,9 @@ def get_top_k_utilities(prompt: str, k: int) -> list[str]:
 @app.route("/generate_utility", methods=["POST"])
 def generate_utility():
     user_prompt = request.form["prompt"]
-    top_examples = get_top_k_utilities(user_prompt, k=3)
-    prompt_lines = [
-        "# The following are Python utilities for GTM automation, lead generation, enrichment, outreach, or sales/marketing workflows.",
-    ]
-    for idx, example in enumerate(top_examples, start=1):
-        prompt_lines.append(f"# Example {idx}:")
-        for line in example.splitlines():
-            prompt_lines.append(f"# {line}")
-    prompt_lines.append("# User wants a new GTM utility:")
+    top_examples = get_top_k_utilities(user_prompt, k=5)
+    prompt_lines = []
+    prompt_lines.append("# User wants to build a new GTM utility with the following details:")
     prompt_lines.append(f"# {user_prompt}")
     prompt_lines.append(
         "# The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file."
@@ -1270,6 +1264,16 @@ def generate_utility():
     )
     prompt_lines.append(
         "# The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value."
+    )
+    prompt_lines.append(
+        "# Use following as examples which can help you generate the code required for above GTM utility.",
+    )
+    for idx, example in enumerate(top_examples, start=1):
+        prompt_lines.append(f"# Example {idx}:")
+        for line in example.splitlines():
+            prompt_lines.append(f"# {line}")
+    prompt_lines.append(
+        "# Helo generate a fully functional python utility code that user wants.",
     )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
