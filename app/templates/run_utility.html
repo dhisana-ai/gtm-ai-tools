@@ -68,6 +68,7 @@
             </div>
           </div>
           <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
+            <button type="button" id="close-utility-btn" class="btn btn-secondary" data-bs-dismiss="modal" style="display:none;">Close</button>
             <button type="button" id="generate-utility-btn" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
           </div>
         </form>
@@ -432,6 +433,10 @@
           document.getElementById('generated-code-container').style.display = '';
           document.getElementById('utility-meta').style.display = '';
           if (saveBtn) saveBtn.style.display = '';
+          const genButton = document.getElementById('generate-utility-btn');
+          const closeButton = document.getElementById('close-utility-btn');
+          if (genButton) genButton.style.display = 'none';
+          if (closeButton) closeButton.style.display = '';
         } else {
           statusDiv.textContent = 'Failed to generate utility.';
           document.getElementById('generated-code-container').style.display = 'none';
