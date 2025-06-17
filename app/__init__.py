@@ -1191,6 +1191,9 @@ def generate_utility():
         "# Please output only the Python code for this utility below, without any markdown fences or additional text"
     )
     prompt_lines.append(
+        "# Get fully functional, compiling standalone python script with all the required imports."
+    )
+    prompt_lines.append(
         "# Generate e2e functional script will all required functions, dont take any dependency on content in utils directory or custom modules. Use the code in the prompt just as examples not as dependency. You can use only the standard python libraries  and following as dependencies when generating code.\n"
         "httpx\n"
         "openai\n"
@@ -1214,8 +1217,9 @@ def generate_utility():
 
     try:
         client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        model_name = os.getenv("MODEL_TO_GENERATE_UTILITY", "o3")
         response = client.responses.create(
-            model="gpt-4o-mini",
+            model=model_name,
             input=codex_prompt
         )
         prev_response_id = getattr(response, 'id', None)
@@ -1261,7 +1265,7 @@ def generate_utility():
                 + "# Please provide the full corrected utility code below:\n"
             )
             response = client.responses.create(
-                model="gpt-4o-mini",
+                model=model_name,
                 input=correction_prompt,
                 previous_response_id=prev_response_id,
             )
