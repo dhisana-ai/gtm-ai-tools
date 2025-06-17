@@ -209,7 +209,7 @@ UTILITY_PARAMETERS = {
     ],
     "find_user_by_job_title": [
         {"name": "job_title", "label": "Job title"},
-        {"name": "company_name", "label": "Company name"},
+        {"name": "organization_name", "label": "Organization name"},
         {"name": "search_keywords", "label": "Search keywords"},
     ],
     "find_users_by_name_and_keywords": [],
@@ -860,8 +860,6 @@ def run_utility():
                     find_user_by_job_title.find_user_by_job_title_from_csv(
                         uploaded,
                         out_path,
-                        job_title=request.form.get("job_title", ""),
-                        search_keywords=request.form.get("search_keywords", ""),
                     )
                     download_name = out_path
                     output_csv_path = out_path
