@@ -1185,6 +1185,15 @@ def generate_utility():
         "# The input CSV columns should match the argument names without leading dashes."
     )
     prompt_lines.append(
+        "# Do NOT create a 'mode' argument or any sub-commands. main() should simply parse \"output_file\" as the first positional argument followed by optional parameters."
+    )
+    prompt_lines.append(
+        "# Provide a <utility_name>_from_csv(input_file, output_file, **kwargs) helper that reads the same parameters from a CSV file."
+    )
+    prompt_lines.append(
+        "# The input CSV headers must match the argument names (without leading dashes) except for output_file."
+    )
+    prompt_lines.append(
         "# The output CSV must keep all original columns and append any new columns produced by the utility."
     )
     prompt_lines.append(
@@ -1344,8 +1353,11 @@ def save_utility():
         param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
         help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
         params: list[dict[str, str]] = []
+        skip_args = {"output_file", "--output_file", "input_file", "--input_file", "csv_file", "--csv_file"}
         for match in param_pattern.finditer(code):
             arg_name = match.group(1)
+            if arg_name in skip_args:
+                continue
             rest = match.group(2)
             help_match = help_pattern.search(rest)
             label = (

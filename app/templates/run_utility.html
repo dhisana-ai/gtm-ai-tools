@@ -120,7 +120,7 @@
           {% endif %}
         </div>
         <div class="mb-3" id="file-container" style="display:none;">
-          <label class="form-label" id="csv-help">CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column</label>
+          <label class="form-label" id="csv-help">Upload CSV with required columns</label>
           <input class="form-control" type="file" name="csv_file">
         </div>
         <div id="params-container"></div>
@@ -246,13 +246,11 @@
 (function() {
   const PARAM_MAP = {{ util_params|tojson|safe }};
   const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
-  const CSV_HELP = {
-    default: 'CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column',
-    find_company_info:
-      'Upload CSV (must include <code>organization_name</code>, <code>organization_linkedin_url</code> or <code>organization_website</code> column)',
-    find_user_by_job_title:
-      'CSV must include <code>organization_name</code> or <code>organization_linkedin_url</code> or <code>website</code> column'
-  };
+  function buildCsvHelp(util) {
+    const params = (PARAM_MAP[util] || []).map(p => p.name).filter(n => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(n));
+    const cols = params.map(n => `<code>${n.replace(/^--?/, '')}</code>`).join(', ');
+    return cols ? `CSV must include ${cols}` : 'Upload CSV file';
+  }
   const utilInput = document.getElementById('util-name-input');
 
       function selectUtil(name) {
@@ -274,7 +272,7 @@
       const container = document.getElementById('params-container');
       container.innerHTML = '';
       const util = utilInput.value;
-      const params = PARAM_MAP[util] || [];
+      const params = (PARAM_MAP[util] || []).filter(p => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(p.name));
       const mode = document.querySelector('input[name="input_mode"]:checked')?.value || 'single';
       let apolloTitleDiv = null;
       params.forEach(p => {
@@ -356,9 +354,9 @@
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
         const helpEl = document.getElementById('csv-help');
         if (helpEl) {
-          helpEl.innerHTML = CSV_HELP[util] || CSV_HELP.default;
+          helpEl.innerHTML = buildCsvHelp(util);
         }
-        const params = PARAM_MAP[util] || [];
+        const params = (PARAM_MAP[util] || []).filter(p => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(p.name));
         const paramsVisible = params.length > 0 && !(
           ['file', 'previous'].includes(mode) &&
           !['call_openai_llm', 'score_lead', 'extract_from_webpage', 'find_user_by_job_title'].includes(util)
