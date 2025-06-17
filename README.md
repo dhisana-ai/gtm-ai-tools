@@ -58,17 +58,31 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
-4. **Start the container and open the app**
-   ```bash
-   docker run --env-file .env -p 8080:8080 \
-       -v $(pwd)/data:/data gtm-ai-tools
-   ```
-   Then browse to <http://localhost:8080>.
-   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
-   password set in `APP_PASSWORD`.
-   Mounting a host directory to `/data` lets you access uploaded and generated
-   files outside the container. Replace `$(pwd)/data` with any path on your
-   system.
+   4. **Start the container and open the app**
+
+      ```bash
+       # In Git Bash, get the Windows-style path of your current directory:
+       H="$(pwd -W)"
+   
+       # Run the container, bind-mounting your host folders correctly:
+      docker run \
+        --env-file .env \
+        -p 8080:8080 \
+        -v "${H}/data:/data" \
+        -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
+        gtm-ai-tools
+      ```
+
+      Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+      password set in `APP_PASSWORD`.
+      Mounting your host `data` directory to `/data` lets you access uploads and
+      outputs outside the container. Replace `$(pwd)/data` with any path on your
+      system.
+
+      To add custom utilities, mount your host `gtm_utility` folder into the
+      container's gtm_utility path:
+
+         -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
 
 ## Repository structure
 
@@ -160,25 +174,14 @@ See [Using the utilities](docs/utils_usage.md) for examples of running the sampl
 
 ## Vibe coding new workflows
 
-The Codex CLI lets you create new utilities with natural language prompts.
-It runs on your machine, not inside the container. This repository is vibe code ready—just describe what you want in natural language and you can have your custom workflow ready in 5 min.
+You can generate new utilities directly from the web interface—no Codex CLI required.
 
-1. Install **Node.js 22+** and the CLI. Run the helper task or follow the
-   [installation guide](docs/install_node.md):
-   ```bash
-   task setup:codex
-   ```
-2. Generate a utility from the project root. The `task add_utility` command runs
-   the Codex CLI in quiet, fully automated mode:
-   ```bash
-   task add_utility -- search_vp_sales "search for VP of sales and push to Dhisana Webhook"
-   ```
-3. Review the changes, commit and push:
-   ```bash
-   git checkout -b my-feature
-   git commit -am "Add new utility"
-   git push origin my-feature
-   ```
+1. Launch the Docker container.
+2. Open <http://127.0.0.1:8080/utility> in your browser.
+3. Click **Create New GTM Utility**.
+4. Describe what you want to build and click **Generate**.
+5. Save the utility and run it from the app.
+6. Copy the source code if you want to automate it elsewhere.
 
 See [docs/vibe_coding_workflows.md](docs/vibe_coding_workflows.md) for a more
 detailed walkthrough.
@@ -187,7 +190,7 @@ detailed walkthrough.
 
 The repository ships with a library of small, focused utilities—fetch a CRM
 contact, search Google for a company or person, validate an email address, and
-so on. Feed these examples into the Codex CLI or the coding agent to generate a
+so on. Feed these examples into the utility generator or the coding agent to generate a
 custom workflow script. Once generated, you simply run that workflow over and
 over. When processing hundreds or thousands of records, this "generate once and
 reuse" model is far cheaper and more efficient than dynamically choosing tool
@@ -236,7 +239,7 @@ download link will be displayed. Plain text output is shown in the page.
 - [Update Salesforce Contact](docs/utils_usage.md#update-salesforce-contact) – modify contact fields.
 - [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
 - [Scrape Website HTML (Playwright)](utils/fetch_html_playwright.py) – scrape page HTML for lead extraction.
-- [Extract Leads From Website](utils/extract_from_webpage.py) – pull leads and companies from any website. You can provide natural language actions for page navigation and parsing with options like `--initial_actions` and `--pagination_actions`.
+- [Extract Leads From Website](utils/extract_from_webpage.py) – pull leads and companies from any website. You can provide natural language actions for page navigation and parsing with options like `--initial_actions` and `--pagination_actions`. Use `--show_ux` to run Playwright with a visible browser.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 - [Create Dhisana Webhook](docs/create_dhisana_webhook.md) – configure your webhook and API key.
 

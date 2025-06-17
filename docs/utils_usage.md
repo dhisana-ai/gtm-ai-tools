@@ -49,16 +49,19 @@ After the command finishes, everything in `output/` is also copied to
 
 ## Find Company Info
 
-`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERPER_API_KEY` environment variable for Google queries.
-The LinkedIn URL returned is normalized to the `https://www.linkedin.com/company/<id>` form.
+`find_company_info.py` looks up a company's website, primary domain and LinkedIn page using Google search. It uses the `SERPER_API_KEY` environment variable for Google queries. The LinkedIn URL returned is normalized to the `https://www.linkedin.com/company/<id>` form.
 
-Run it with the company name and optional location:
+Provide an organization name, LinkedIn URL or website:
 
 ```bash
-task run:command -- find_company_info "Dhisana" -l "San Francisco"
+task run:command -- find_company_info --organization_name "Dhisana" --location "San Francisco"
 ```
 
-The script prints a JSON object containing `company_website`, `company_domain` and `linkedin_url`.
+The script prints JSON with `organization_name`, `organization_website`, `primary_domain_of_organization` and `organization_linkedin_url`.
+
+You can also upload a CSV containing an `organization_name`, `organization_linkedin_url`
+or `organization_website` column to look up multiple companies at once. The processed
+results will be written to a CSV file for download in the web interface.
 
 ## Find User by Name and Keywords
 
@@ -124,13 +127,18 @@ The resulting CSV includes columns for the parsed lead details
 ## Find Email and Phone
 
 `find_contact_with_findymail.py` queries the Findymail API for a person's
-e-mail address and phone number using their full name and company domain.
-Set the `FINDYMAIL_API_KEY` environment variable before running the script.
+e-mail address and phone number. Provide a LinkedIn profile URL when
+available, otherwise supply the person's full name and
+`primary_domain_of_organization`. Set the `FINDYMAIL_API_KEY` environment
+variable before running the script.
 
-Run it with the name and domain:
+Run it with a name and domain or with a LinkedIn URL:
 
 ```bash
+# using name and company domain
 task run:command -- find_contact_with_findymail "Jane Doe" example.com
+# or using a LinkedIn profile
+task run:command -- find_contact_with_findymail "Jane Doe" --linkedin_url https://linkedin.com/in/janedoe
 ```
 
 The script prints a JSON object containing `email`, `phone` and the raw
@@ -374,6 +382,14 @@ the `OPENAI_API_KEY` and `SERPER_API_KEY` environment variables.
 ```bash
 task run:command -- extract_companies_from_image http://example.com/logo.png
 ```
+## Crawls a website and extract the content from a website to answer some basic questions
+
+`get_website_information.py` scrapes company website and uses an LLM to answer the questions about the website. It requires
+the `OPENAI_API_KEY` in the environment variables.
+
+```bash
+task run:command -- get_website_information http://example.com/ "what is the main color of the website?"
+```
 
 ## Extract Leads From Website
 
@@ -386,6 +402,7 @@ supplying natural language instructions with `--initial_actions`,
 with `--parse_instructions`. Use `--max_pages` to limit how many pages are
 navigated. The previous `--next_page_selector` and `--max_next_pages` options
 still work as a fallback.
+Pass `--show_ux` to launch a visible browser window and wait 30 seconds on each page.
 
 You can also pass a CSV file with a `website_url` column using the `--csv`
 option. Each website in the file is processed and the aggregated results are

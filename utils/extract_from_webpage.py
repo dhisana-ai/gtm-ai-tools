@@ -68,14 +68,13 @@ async def _get_structured_data_internal(
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
-    client = AsyncOpenAI(api_key=api_key)
     try:
-        response = await client.chat.completions.create(
-            model=common.get_openai_model(),
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-        )
-        text = response.choices[0].message.content or ""
+        async with AsyncOpenAI(api_key=api_key) as client:
+            response = await client.responses.create(
+                model=common.get_openai_model(),
+                input=prompt,
+            )
+        text = getattr(response, "output_text", "") or ""
         if not text:
             return None, "ERROR"
         return model.model_validate_json(text), "SUCCESS"
@@ -434,9 +433,35 @@ def extract_from_webpage_from_csv(
             agg_companies.extend(results)
 
     if mode in {"lead", "leads"}:
-        _write_leads_csv(agg_leads, str(out_path))
+        # Deduplicate leads by company and by user identifier
+        deduped: list[Lead] = []
+        seen_companies: set[str] = set()
+        seen_users: set[str] = set()
+        for lead in agg_leads:
+            comp_key = (lead.organization_name or "").strip().lower()
+            user_key = (lead.user_linkedin_url or lead.email or "").strip().lower()
+            if comp_key and comp_key in seen_companies:
+                continue
+            if user_key and user_key in seen_users:
+                continue
+            if comp_key:
+                seen_companies.add(comp_key)
+            if user_key:
+                seen_users.add(user_key)
+            deduped.append(lead)
+        _write_leads_csv(deduped, str(out_path))
     else:
-        _write_companies_csv(agg_companies, str(out_path))
+        # Deduplicate companies by organization name
+        deduped: list[Company] = []
+        seen: set[str] = set()
+        for comp in agg_companies:
+            key = (comp.organization_name or "").strip().lower()
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            deduped.append(comp)
+        _write_companies_csv(deduped, str(out_path))
 
 
 async def extract_lead_from_webpage(
@@ -619,8 +644,16 @@ def main() -> None:
         default=1,
         help="Max pages to navigate",
     )
+    parser.add_argument(
+        "--show_ux",
+        action="store_true",
+        help="Show the website in a browser window while parsing",
+    )
     parser.add_argument("--output_csv", help="Output CSV path")
     args = parser.parse_args()
+
+    if args.show_ux:
+        os.environ["HEADLESS"] = "false"
 
     if bool(args.csv) == bool(args.url):
         parser.error("Provide either a URL or --csv")

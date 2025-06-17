@@ -16,18 +16,18 @@
     Vibe code and add your own GTM workflow in 5 min!
     <a href="https://github.com/dhisana-ai/gtm-ai-tools/blob/main/docs/vibe_coding_workflows.md" target="_blank">Vibe coding instructions</a>
   </p>
-  <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
-    Create New GTM Utility
-  </button>
-  <div class="mb-3">
-    <label for="tag-select" class="form-label">Filter by Category</label>
+  <div class="d-flex align-items-end mb-3">
+    <button class="btn btn-primary me-3" data-bs-toggle="modal" data-bs-target="#generateUtilityModal">
+      Create New GTM Utility
+    </button>
+    <label for="tag-select" class="form-label me-2 mb-0">Filter by Category</label>
     {% set tag_labels = {
       'find': 'Find/Search Leads',
       'enrich': 'Enrich Leads',
       'score': 'Score Leads',
       'route': 'Route Leads'
     } %}
-    <select id="tag-select" class="form-select w-auto d-inline-block ms-2">
+    <select id="tag-select" class="form-select w-auto d-inline-block">
       <option value="">All Tools</option>
       {% for tag in tags %}
         <option value="{{ tag }}">{{ tag_labels.get(tag, tag|capitalize) }}</option>
@@ -37,7 +37,7 @@
   <div class="modal fade" id="generateUtilityModal" tabindex="-1" aria-labelledby="generateUtilityModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl modal-dialog-centered">
       <div class="modal-content shadow-lg border-0" style="border-radius: 1rem;">
-        <form id="generate-utility-form" method="post" action="{{ url_for('generate_utility') }}">
+        <form id="generate-utility-form">
           <div class="modal-header bg-primary text-white" style="border-top-left-radius: 1rem; border-top-right-radius: 1rem;">
             <h4 class="modal-title fw-bold" id="generateUtilityModalLabel">Create New GTM Utility</h4>
             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -47,17 +47,29 @@
             <textarea class="form-control mb-3" id="utilityPrompt" name="prompt" rows="5" required style="font-size:1.1em; border-radius:0.5em;"></textarea>
             <div id="generate-utility-status" class="mt-2"></div>
             <div id="generated-code-container" style="display:none;">
-              <label for="generated-code" class="form-label mt-3 fw-semibold">Generated Code:</label>
-              <div class="position-relative">
-                <pre id="generated-code" class="bg-white border rounded p-3" style="font-size:1em; max-height:400px; overflow:auto;"></pre>
-                <button type="button" class="btn btn-outline-secondary btn-sm position-absolute top-0 end-0 m-2" id="copy-code-btn" title="Copy to clipboard">
-                  <i class="bi bi-clipboard"></i> Copy
+              <pre id="generated-code" style="display:none;"></pre>
+              <div class="mb-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="copy-code-btn" title="Copy code">
+                  <i class="bi bi-clipboard"></i> Copy Code
                 </button>
+              </div>
+              <div id="utility-meta" style="display:none;">
+                <div class="mb-3">
+                  <label for="utilityName" class="form-label fw-semibold">Utility Name</label>
+                  <input type="text" class="form-control" id="utilityName" required>
+                </div>
+                <div class="mb-3">
+                  <label for="utilityDesc" class="form-label fw-semibold">Description</label>
+                  <input type="text" class="form-control" id="utilityDesc">
+                </div>
+                <button type="button" class="btn btn-primary" id="save-code-btn">Save</button>
+                <div id="save-info" class="mt-2 text-success" style="display:none;"></div>
               </div>
             </div>
           </div>
           <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
-            <button type="submit" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
+            <button type="button" id="close-utility-btn" class="btn btn-secondary" data-bs-dismiss="modal" style="display:none;">Close</button>
+            <button type="button" id="generate-utility-btn" class="btn btn-success px-4 py-2 fw-bold">Generate Utility</button>
           </div>
         </form>
       </div>
@@ -108,10 +120,11 @@
           </div>
           {% endif %}
         </div>
-        <div id="params-container"></div>
         <div class="mb-3" id="file-container" style="display:none;">
+          <label class="form-label" id="csv-help">Upload CSV with required columns</label>
           <input class="form-control" type="file" name="csv_file">
         </div>
+        <div id="params-container"></div>
         <input type="hidden" name="selected_rows" id="selected-rows">
         <button id="run-button" class="btn btn-success" type="submit" name="action" value="run_util">Run</button>
         <div id="run-spinner" class="spinner-border text-success ms-2" role="status" style="display:none;width:1rem;height:1rem;">
@@ -227,11 +240,18 @@
       </div>
     </div>
   </div>
+{% endblock %}
 
 {% block scripts %}
 <script>
+(function() {
   const PARAM_MAP = {{ util_params|tojson|safe }};
-    const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
+  const UPLOAD_ONLY_UTILS = {{ upload_only|tojson }};
+  function buildCsvHelp(util) {
+    const params = (PARAM_MAP[util] || []).map(p => p.name).filter(n => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(n));
+    const cols = params.map(n => `<code>${n.replace(/^--?/, '')}</code>`).join(', ');
+    return cols ? `CSV must include ${cols}` : 'Upload CSV file';
+  }
   const utilInput = document.getElementById('util-name-input');
 
       function selectUtil(name) {
@@ -253,38 +273,71 @@
       const container = document.getElementById('params-container');
       container.innerHTML = '';
       const util = utilInput.value;
-      const params = PARAM_MAP[util] || [];
+      const params = (PARAM_MAP[util] || []).filter(p => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(p.name));
+      const mode = document.querySelector('input[name="input_mode"]:checked')?.value || 'single';
+      let apolloTitleDiv = null;
       params.forEach(p => {
+        if (util === 'extract_from_webpage' && mode === 'file' && p.name === 'url') {
+          return;
+        }
         const div = document.createElement('div');
-        const input = document.createElement('input');
         const label = document.createElement('label');
         label.textContent = p.label;
-        input.name = p.name;
-        if (util === 'linkedin_search_to_csv' && p.name === '--num') {
-          input.value = '10';
-        }
-        if (util === 'linkedin_search_to_csv' && p.name === 'query') {
-          input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
-        }
+        let input;
         if (p.type === 'boolean') {
           div.className = 'form-check mb-3';
+          input = document.createElement('input');
           input.type = 'checkbox';
           input.className = 'form-check-input';
           input.value = '1';
           input.id = p.name;
           label.className = 'form-check-label';
           label.setAttribute('for', p.name);
-          div.appendChild(input);
-          div.appendChild(label);
+        } else if (p.choices) {
+          div.className = 'mb-3';
+          label.className = 'form-label';
+          input = document.createElement('select');
+          input.className = 'form-select';
+          if (p.multiple) input.multiple = true;
+          p.choices.forEach(optVal => {
+            const opt = document.createElement('option');
+            opt.value = optVal;
+            opt.textContent = optVal;
+            input.appendChild(opt);
+          });
         } else {
           div.className = 'mb-3';
+          label.className = 'form-label';
+          input = document.createElement('input');
           input.type = 'text';
           input.className = 'form-control';
-          label.className = 'form-label';
+        }
+        input.name = p.name;
+        if (util === 'linkedin_search_to_csv' && p.name === '--num') {
+          input.value = '10';
+        }
+        if (util === 'apollo_people_search' && p.name === '--num_leads') {
+          input.value = '10';
+        }
+        if (util === 'linkedin_search_to_csv' && p.name === 'query') {
+          input.value = 'site:linkedin.com/in "VP Sales" OR "Head of Sales"';
+        }
+        if (util === 'apollo_people_search' && p.name === '--include_similar_titles' && apolloTitleDiv) {
+          const checkDiv = document.createElement('div');
+          checkDiv.className = 'form-check form-check-inline ms-2';
+          input.className = 'form-check-input';
+          label.className = 'form-check-label ms-1';
+          checkDiv.appendChild(input);
+          checkDiv.appendChild(label);
+          apolloTitleDiv.appendChild(checkDiv);
+        } else {
           div.appendChild(label);
           div.appendChild(input);
+          container.appendChild(div);
+          if (util === 'apollo_people_search' && p.name === '--person_titles') {
+            apolloTitleDiv = div;
+          }
         }
-        container.appendChild(div);
       });
     }
 
@@ -300,11 +353,17 @@
         }
         const mode = isUploadOnly ? 'file' : document.querySelector('input[name="input_mode"]:checked').value;
         document.getElementById('file-container').style.display = mode === 'file' ? '' : 'none';
-        const paramsVisible = !(
+        const helpEl = document.getElementById('csv-help');
+        if (helpEl) {
+          helpEl.innerHTML = buildCsvHelp(util);
+        }
+        const params = (PARAM_MAP[util] || []).filter(p => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(p.name));
+        const paramsVisible = params.length > 0 && !(
           ['file', 'previous'].includes(mode) &&
-          !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
+          !['call_openai_llm', 'score_lead', 'extract_from_webpage', 'find_user_by_job_title'].includes(util)
         );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
+        renderParams();
       }
   document.querySelectorAll('.util-card').forEach(card => {
         card.addEventListener('click', () => {
@@ -347,27 +406,41 @@
     filterUtils();
   });
   // Codex utility modal form handler
-  const genForm = document.getElementById('generate-utility-form');
-  if (genForm) {
-    genForm.addEventListener('submit', function(e) {
+  // Generate utility via AJAX (single entrypoint)
+  const genBtn = document.getElementById('generate-utility-btn');
+  if (genBtn) {
+    genBtn.addEventListener('click', function(e) {
       e.preventDefault();
-      const prompt = document.getElementById('utilityPrompt').value;
+      e.stopPropagation();
+      const promptText = document.getElementById('utilityPrompt').value;
       const statusDiv = document.getElementById('generate-utility-status');
+      const saveBtn = document.getElementById('save-code-btn');
+      const saveInfo = document.getElementById('save-info');
       statusDiv.textContent = 'Generating...';
+      if (saveBtn) saveBtn.style.display = 'none';
+      if (saveInfo) saveInfo.style.display = 'none';
+      console.trace('About to call /generate_utility');
       fetch('/generate_utility', {
         method: 'POST',
-        body: new URLSearchParams({prompt}),
+        body: new URLSearchParams({prompt: promptText}),
         headers: {'Content-Type': 'application/x-www-form-urlencoded'}
       })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          statusDiv.textContent = 'Utility created! Here is your code:';
+          statusDiv.textContent = 'Utility created. Copy the code or save it below.';
           document.getElementById('generated-code').textContent = data.code;
           document.getElementById('generated-code-container').style.display = '';
+          document.getElementById('utility-meta').style.display = '';
+          if (saveBtn) saveBtn.style.display = '';
+          const genButton = document.getElementById('generate-utility-btn');
+          const closeButton = document.getElementById('close-utility-btn');
+          if (genButton) genButton.style.display = 'none';
+          if (closeButton) closeButton.style.display = '';
         } else {
           statusDiv.textContent = 'Failed to generate utility.';
           document.getElementById('generated-code-container').style.display = 'none';
+          if (saveBtn) saveBtn.style.display = 'none';
         }
       })
       .catch(() => {
@@ -388,6 +461,49 @@
       });
     });
   }
+  // Save to desktop functionality
+  const saveBtn = document.getElementById('save-code-btn');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const code = document.getElementById('generated-code').textContent;
+      const saveInfo = document.getElementById('save-info');
+      const name = document.getElementById('utilityName').value;
+      const desc = document.getElementById('utilityDesc').value;
+      saveBtn.disabled = true;
+      if (saveInfo) { saveInfo.style.display = 'none'; }
+      const promptText = document.getElementById('utilityPrompt').value;
+      fetch('/save_utility', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({code, name, description: desc, prompt: promptText}),
+      })
+      .then(res => res.json())
+      .then(resp => {
+        if (resp.success) {
+          saveInfo.classList.remove('text-danger');
+          saveInfo.classList.add('text-success');
+          saveInfo.textContent = 'Saved to ' + resp.file_path;
+        } else {
+          saveInfo.classList.remove('text-success');
+          saveInfo.classList.add('text-danger');
+          saveInfo.textContent = 'Save failed: ' + (resp.error || 'error');
+        }
+        if (saveInfo) saveInfo.style.display = '';
+        saveBtn.disabled = false;
+      })
+      .catch(() => {
+        if (saveInfo) {
+          saveInfo.classList.remove('text-success');
+          saveInfo.classList.add('text-danger');
+          saveInfo.textContent = 'Error saving file';
+          saveInfo.style.display = '';
+        }
+        saveBtn.disabled = false;
+      });
+    });
+  }
+})();
 </script>
-{% endblock %}
 {% endblock %}

@@ -101,3 +101,51 @@ def test_extract_from_webpage_from_csv_missing_col(tmp_path):
     bad.write_text("foo\n1\n")
     with pytest.raises(ValueError):
         mod.extract_from_webpage_from_csv(bad, tmp_path / "o.csv")
+
+
+def test_extract_from_webpage_from_csv_dedup_leads(tmp_path, monkeypatch):
+    calls = 0
+
+    async def fake_many(url, *a, **k):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return [
+                mod.Lead(first_name="A1", user_linkedin_url="u1", organization_name="Acme"),
+                mod.Lead(first_name="A2", user_linkedin_url="u2", organization_name="Beta"),
+            ]
+        return [
+            mod.Lead(first_name="B1", user_linkedin_url="u1", organization_name="Acme"),
+            mod.Lead(first_name="B2", user_linkedin_url="u3", organization_name="Beta"),
+            mod.Lead(first_name="B3", email="x@example.com", organization_name="Gamma"),
+        ]
+
+    monkeypatch.setattr(mod, "extract_multiple_leads_from_webpage", fake_many)
+    in_file = tmp_path / "in.csv"
+    in_file.write_text("website_url\nhttp://a.com\nhttp://b.com\n")
+    out_file = tmp_path / "out.csv"
+    mod.extract_from_webpage_from_csv(in_file, out_file)
+    rows = list(csv.DictReader(out_file.open()))
+    assert len(rows) == 3
+    assert {r["organization_name"] for r in rows} == {"Acme", "Beta", "Gamma"}
+
+
+def test_extract_from_webpage_from_csv_dedup_companies(tmp_path, monkeypatch):
+    calls = 0
+
+    async def fake_many(url, *a, **k):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return [mod.Company(organization_name="Acme")]
+        return [mod.Company(organization_name="Acme"), mod.Company(organization_name="Beta")]
+
+    monkeypatch.setattr(mod, "extract_multiple_companies_from_webpage", fake_many)
+    in_file = tmp_path / "in.csv"
+    in_file.write_text("website_url\nhttp://a.com\nhttp://b.com\n")
+    out_file = tmp_path / "out.csv"
+    mod.extract_from_webpage_from_csv(in_file, out_file, mode="companies")
+    rows = list(csv.DictReader(out_file.open()))
+    assert len(rows) == 2
+    assert {r["organization_name"] for r in rows} == {"Acme", "Beta"}
+

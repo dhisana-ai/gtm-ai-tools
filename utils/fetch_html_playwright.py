@@ -198,7 +198,8 @@ async def _do_fetch(
                 except PwTimeout:
                     pass
             await solve_any_captcha(page, url, captcha_key)
-        await asyncio.sleep(5)
+        wait_time = 30 if os.getenv("HEADLESS", "true").lower() == "false" else 5
+        await asyncio.sleep(wait_time)
         return await page.content()
 
 
