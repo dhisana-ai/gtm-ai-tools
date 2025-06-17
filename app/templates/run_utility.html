@@ -358,7 +358,8 @@
         if (helpEl) {
           helpEl.innerHTML = CSV_HELP[util] || CSV_HELP.default;
         }
-        const paramsVisible = !(
+        const params = PARAM_MAP[util] || [];
+        const paramsVisible = params.length > 0 && !(
           ['file', 'previous'].includes(mode) &&
           !['call_openai_llm', 'score_lead', 'extract_from_webpage', 'find_user_by_job_title'].includes(util)
         );
