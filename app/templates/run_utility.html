@@ -47,17 +47,24 @@
             <textarea class="form-control mb-3" id="utilityPrompt" name="prompt" rows="5" required style="font-size:1.1em; border-radius:0.5em;"></textarea>
             <div id="generate-utility-status" class="mt-2"></div>
             <div id="generated-code-container" style="display:none;">
-              <label for="generated-code" class="form-label mt-3 fw-semibold">Generated Code:</label>
-              <div class="position-relative">
-                <pre id="generated-code" class="bg-white border rounded p-3" style="font-size:1em; max-height:400px; overflow:auto;"></pre>
-                <button type="button" class="btn btn-outline-secondary btn-sm position-absolute top-0 end-0 m-2" id="copy-code-btn" title="Copy to clipboard">
-                  <i class="bi bi-clipboard"></i> Copy
-                </button>
-                <button type="button" class="btn btn-outline-primary btn-sm position-absolute top-0 end-0 me-5 m-2" id="save-code-btn" title="Save to Desktop" style="display:none;">
-                  <i class="bi bi-save"></i> Save
+              <pre id="generated-code" style="display:none;"></pre>
+              <div class="mb-3">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="copy-code-btn" title="Copy code">
+                  <i class="bi bi-clipboard"></i> Copy Code
                 </button>
               </div>
-              <div id="save-info" class="mt-2 text-success" style="display:none;"></div>
+              <div id="utility-meta" style="display:none;">
+                <div class="mb-3">
+                  <label for="utilityName" class="form-label fw-semibold">Utility Name</label>
+                  <input type="text" class="form-control" id="utilityName" required>
+                </div>
+                <div class="mb-3">
+                  <label for="utilityDesc" class="form-label fw-semibold">Description</label>
+                  <input type="text" class="form-control" id="utilityDesc">
+                </div>
+                <button type="button" class="btn btn-primary" id="save-code-btn">Save</button>
+                <div id="save-info" class="mt-2 text-success" style="display:none;"></div>
+              </div>
             </div>
           </div>
           <div class="modal-footer bg-light" style="border-bottom-left-radius: 1rem; border-bottom-right-radius: 1rem;">
@@ -421,9 +428,10 @@
       .then(res => res.json())
       .then(data => {
         if (data.success) {
-          statusDiv.textContent = 'Utility created! Here is your code:';
+          statusDiv.textContent = 'Utility created. Copy the code or save it below.';
           document.getElementById('generated-code').textContent = data.code;
           document.getElementById('generated-code-container').style.display = '';
+          document.getElementById('utility-meta').style.display = '';
           if (saveBtn) saveBtn.style.display = '';
         } else {
           statusDiv.textContent = 'Failed to generate utility.';
@@ -457,13 +465,15 @@
       e.stopPropagation();
       const code = document.getElementById('generated-code').textContent;
       const saveInfo = document.getElementById('save-info');
+      const name = document.getElementById('utilityName').value;
+      const desc = document.getElementById('utilityDesc').value;
       saveBtn.disabled = true;
       if (saveInfo) { saveInfo.style.display = 'none'; }
-        const promptText = document.getElementById('utilityPrompt').value;
-        fetch('/save_utility', {
+      const promptText = document.getElementById('utilityPrompt').value;
+      fetch('/save_utility', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({code, prompt: promptText}),
+        body: JSON.stringify({code, name, description: desc, prompt: promptText}),
       })
       .then(res => res.json())
       .then(resp => {
