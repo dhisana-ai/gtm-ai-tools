@@ -1200,17 +1200,34 @@ def generate_utility():
         "pydantic>=2.0\n"
         "playwright==1.42.0\n"
         "playwright-stealth\n"
-        "setuptools\n"
         "aiohttp\n"
-        "\n"
         "beautifulsoup4\n"
         "aiosmtplib\n"
         "requests\n"
         "simple_salesforce\n"
-        "pytest>=7.0.0\n"
         "numpy\n"
         "greenlet>=2.0.2,\n"
         "pandas"
+    )
+    prompt_lines.append(
+        "# arguments to mail will be like in example below, output_file is always a parameter. input arguments like --person_title etc are custom parameters that can be passed as input the to script\n"
+        "def main() -> None:\n"
+        "    parser = argparse.ArgumentParser(description=\"Search people in Apollo.io\")\n"
+        "    parser.add_argument(\"output_file\", help=\"CSV file to create\")\n"
+        "    parser.add_argument(\"--person_titles\", default=\"\", help=\"Comma separated job titles\")\n"
+        "    parser.add_argument(\"--person_locations\", default=\"\", help=\"Comma separated locations\")"
+    )
+    prompt_lines.append(
+        "# Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization"
+    )
+    prompt_lines.append(
+        "# Use user_linkedin_url property to represent ursers linked in url"
+    )
+    prompt_lines.append(
+        "# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open(\"w\", newline=\"\", encoding=\"utf-8\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n"
+    )
+    prompt_lines.append(
+        "# The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value."
     )
     codex_prompt = "\n".join(prompt_lines) + "\n"
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
