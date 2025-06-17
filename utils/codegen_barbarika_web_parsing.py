@@ -1,6 +1,8 @@
 import asyncio
 import json
 import os
+import argparse
+import logging
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -8,16 +10,74 @@ from pydantic import BaseModel
 from utils.extract_from_webpage import _fetch_and_clean
 from utils.common import call_openai_async, call_openai_sync
 
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
 dotenv_path = os.path.join(os.path.dirname(__file__), "../.env")
 load_dotenv(dotenv_path)
 
 
 class UserRequirement(BaseModel):
     target_url: str
-    data_to_extract: List[str]
+    data_to_extract: Optional[List[str]] = None
     max_depth: int = 3
     pagination: bool = False
     additional_instructions: str = ""
+    extraction_spec: Optional[Dict[str, Any]] = None
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        if not self.data_to_extract:
+            # Use LLM to determine what data to extract based on requirements
+            prompt = f"""
+            Based on the following user requirements, create a structured JSON specification for data extraction:
+            
+            Target URL: {self.target_url}
+            Additional Instructions: {self.additional_instructions}
+            
+            Return a JSON object with the following structure:
+            {{
+                "extraction_fields": [
+                    {{
+                        "field_name": "name of the field in snake_case",
+                        "description": "what this field represents",
+                        "example": "example value",
+                        "required": true/false,
+                        "validation_rules": ["list of validation rules"]
+                    }}
+                ],
+                "data_structure": {{
+                    "type": "list/object",
+                    "description": "how the data should be structured"
+                }},
+                "output_format": {{
+                    "type": "json/csv",
+                    "fields": ["list of fields to include in output"]
+                }}
+            }}
+            
+            Make sure the fields are:
+            1. Specific and well-defined
+            2. Likely to be found on the target website
+            3. Relevant to the user's requirements
+            4. In snake_case format
+            5. Include validation rules where appropriate
+            """
+
+            try:
+                spec = call_openai_sync(
+                    prompt=prompt,
+                    response_format={"type": "json_object"}
+                )
+                spec_data = json.loads(spec)
+                self.data_to_extract = [field["field_name"] for field in spec_data["extraction_fields"]]
+                self.extraction_spec = spec_data
+                print(f"📋 LLM generated extraction specification:")
+                print(json.dumps(spec_data, indent=2))
+            except Exception as e:
+                print(f"❌ Error generating extraction specification: {str(e)}")
+                self.data_to_extract = []
+                self.extraction_spec = None
 
 
 class PageData(BaseModel):
@@ -412,15 +472,21 @@ class WebParser:
         
         Here is user requirement: {self.requirement.additional_instructions}
         
+        Here is the extraction specification:
+        {json.dumps(self.requirement.extraction_spec, indent=2)}
+        
         Python coding instructions:
-        1. Extract these data: {self.requirement.data_to_extract}
+        1. Extract data according to the extraction specification above
         2. Use BeautifulSoup for parsing
-        3. This Python script main function start with  {self.root_url} 
+        3. The target URL is {self.root_url} - use this URL directly in the code, don't take it as a parameter
         4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.page_tree[self.root_url]}. i mean script start with {self.root_url}
         5. make sure script is executable in cli
         6. to get html_code for any url use this code: from utils.extract_from_webpage import _fetch_and_clean
            html_code = await _fetch_and_clean(url)
-        7.make sure there are no demo code, make production ready code
+        7. make sure there are no demo code, make production ready code
+        8. The main extraction function should NOT take any parameters - it should use the URL directly from the code
+        9. Validate the extracted data according to the validation rules in the specification
+        10. Structure the output according to the data_structure in the specification
         
         IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
         Return a JSON object with the following structure:
@@ -445,7 +511,7 @@ class WebParser:
 
         # Ensure the code has an async extract_data function
         if "async def extract_data" not in code:
-            code += "\n\nasync def extract_data(url: str) -> dict:\n    # Implement extraction logic here\n    return {}"
+            code += "\n\nasync def extract_data() -> dict:\n    # Implement extraction logic here\n    return {}"
 
         self.generated_code = code
         self.python_code_function_name = code_gen['python_code_function_name']
@@ -479,10 +545,10 @@ class WebParser:
                 if hasattr(module, self.python_code_function_name):
                     result = await getattr(module, self.python_code_function_name)()
                     print("✅ Code execution complete")
+                    print(f"result: {json.dumps(result, indent=2)}")
                     if not result:
                         raise Exception("empty result")
                     return result
-
                 else:
                     raise AttributeError(f"Function '{self.python_code_function_name}' not found in generated code")
             except Exception as e:
@@ -497,46 +563,156 @@ class WebParser:
                 os.unlink(f.name)
 
 
-async def main():
-    # Example usage with user requirements
+def web_parse_to_json(
+    url: str,
+    data_to_extract: Optional[List[str]] = None,
+    max_depth: int = 3,
+    pagination: bool = False,
+    additional_instructions: str = "",
+    output_file: str = "output.json"
+) -> None:
+    """Parse a website and save the extracted data to a JSON file."""
+    
     requirement = UserRequirement(
-        target_url="https://producthunt.com/",
-        data_to_extract=[
-            "lead first name",
-            "lead last_name",
-            "lead job title",
-            "lead head line",
-            "lead bio",
-            "lead email",
-            "lead phone",
-            "lead linkedin_url",
-            "lead link_to_more_information",
-            "organization_name",
-            "organization_website",
-            "primary_domain_of_organization",
-            "link_to_more_information",
-            "organization_linkedin_url",
-
-        ],
-        max_depth=3,
-        pagination=True,
-        additional_instructions="visit app details page, app makers/team page and profile page, shortlist only founders "
+        target_url=url,
+        data_to_extract=data_to_extract,
+        max_depth=max_depth,
+        pagination=pagination,
+        additional_instructions=additional_instructions
     )
 
     parser = WebParser(requirement)
+    
+    try:
+        # Build page tree and generate code
+        asyncio.run(parser.build_page_tree())
+        asyncio.run(parser.generate_extraction_code())
+        
+        # Execute the generated code
+        result = asyncio.run(parser.execute_generated_code(url))
+        
+        # Convert to CSV if specified in the extraction spec
+        if requirement.extraction_spec and requirement.extraction_spec["output_format"]["type"] == "csv":
+            csv_file = output_file.replace(".json", ".csv")
+            import pandas as pd
+            df = pd.DataFrame(result)
+            df.to_csv(csv_file, index=False)
+            print(f"✅ Results saved to CSV: {csv_file}")
+        
+        # Save results to JSON file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2)
+            
+        logger.info("Successfully parsed website and saved results to %s", output_file)
+        return result
+    except Exception as e:
+        logger.error("Error parsing website: %s", str(e))
+        raise
 
-    # Build page tree
-    await parser.build_page_tree()
+def web_parse_to_json_from_csv(input_file: str, output_file: str) -> None:
+    """Run web parsing from a CSV and aggregate results.
+    
+    The input_file must contain these columns:
+    - url: Target URL to parse
+    - data_to_extract: Comma-separated list of fields to extract (optional)
+    - max_depth: Maximum crawl depth (optional)
+    - pagination: Whether to enable pagination (optional)
+    - additional_instructions: Custom extraction instructions (optional)
+    """
+    import csv
+    
+    with open(input_file, newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        fieldnames = reader.fieldnames or []
+        if "url" not in fieldnames:
+            raise ValueError("Input CSV must contain a 'url' column")
+        rows = list(reader)
 
-    # Generate extraction code
-    code = await parser.generate_extraction_code()
+    aggregated_results = []
+    for row in rows:
+        url = row.get("url", "").strip()
+        if not url:
+            continue
+            
+        data_to_extract = None
+        if "data_to_extract" in row and row["data_to_extract"]:
+            data_to_extract = [f.strip() for f in row["data_to_extract"].split(",")]
+            
+        max_depth = 3
+        if "max_depth" in row and row["max_depth"]:
+            try:
+                max_depth = int(row["max_depth"])
+            except ValueError:
+                pass
+                
+        pagination = False
+        if "pagination" in row and row["pagination"]:
+            pagination = row["pagination"].lower() in ("true", "1", "yes")
+            
+        additional_instructions = row.get("additional_instructions", "").strip()
+        
+        try:
+            result = web_parse_to_json(
+                url=url,
+                data_to_extract=data_to_extract,
+                max_depth=max_depth,
+                pagination=pagination,
+                additional_instructions=additional_instructions,
+                output_file=None  # Don't save individual results
+            )
+            if result:
+                aggregated_results.append(result)
+        except Exception as e:
+            logger.error("Error processing URL %s: %s", url, str(e))
+            continue
 
-    # Execute for specific URL
-    result = await parser.execute_generated_code(requirement.target_url)
+    # Save aggregated results
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(aggregated_results, f, indent=2)
+    
+    logger.info("Wrote %d results to %s", len(aggregated_results), output_file)
 
-    print("\n📊 Final Results:")
-    print(json.dumps(result, indent=2))
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Web Parser Tool - Extract structured data from websites using AI-powered analysis"
+    )
+    parser.add_argument("url", help="Target URL to parse", default='https://www.producthunt.com')
+    parser.add_argument(
+        "-f", "--fields",
+        nargs="+",
+        help="Specific fields to extract (optional)"
+    )
+    parser.add_argument(
+        "-d", "--max-depth",
+        type=int,
+        default=3,
+        help="Maximum depth for crawling (default: 3)"
+    )
+    parser.add_argument(
+        "-p", "--pagination",
+        action="store_true",
+        help="Enable pagination support"
+    )
+    parser.add_argument(
+        "-i", "--instructions",
+        default="",
+        help="Additional instructions for data extraction"
+    )
+    parser.add_argument(
+        "-o", "--output",
+        default="output.json",
+        help="Output JSON file (default: output.json)"
+    )
+    args = parser.parse_args()
 
+    web_parse_to_json(
+        url=args.url,
+        data_to_extract=args.fields,
+        max_depth=args.max_depth,
+        pagination=args.pagination,
+        additional_instructions=args.instructions,
+        output_file=args.output
+    )
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
