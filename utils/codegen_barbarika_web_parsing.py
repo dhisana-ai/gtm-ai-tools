@@ -7,6 +7,8 @@ from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from pydantic import BaseModel
+
+from utils import common
 from utils.extract_from_webpage import _fetch_and_clean
 from utils.common import call_openai_async, call_openai_sync
 
@@ -15,6 +17,10 @@ logging.basicConfig(level=logging.INFO)
 
 dotenv_path = os.path.join(os.path.dirname(__file__), "../.env")
 load_dotenv(dotenv_path)
+
+with open("utils/fetch_html_playwright.py", 'r', encoding='utf-8') as f:
+    sample_of_playwright_usage = f.read()
+sample_of_playwright_usage = f"Here is minium edge cases for playwright usage : {sample_of_playwright_usage}"
 
 
 class UserRequirement(BaseModel):
@@ -135,7 +141,8 @@ class WebParser:
             "pagination_strategy": "",
             "validation_rules": [],
             "already_extracted_fields: []
-            "to_be_extracted_fields":[]
+            "to_be_extracted_fields":[],
+            "required_data":[]
         }}
         """
 
@@ -145,6 +152,7 @@ class WebParser:
         )
         plan_data = json.loads(plan)
         print("✅ Requirement analysis complete")
+        print(json.dumps(plan_data, indent=2))
         print(f"📋 Extraction steps: {len(plan_data['extraction_steps'])}")
         # print(f"🔗 Required pages: {len(plan_data['required_pages'])}")
         return plan_data
@@ -160,12 +168,12 @@ class WebParser:
         - Target URL: {url}
         - Required Data to Extract: {self.requirement.data_to_extract}
         - Additional Instructions: {self.requirement.additional_instructions}
-        - Current Plan: {self.plan}
+        - Main Plan: {json.dumps(self.plan, indent=2)}
         - Already Visited Page Types: {self.visited_page_types}
         - Parent Page Type: {parent_page.page_type if parent_page else 'None'}
 
         HTML Content:
-        {html}
+        {html[:500_000]}
 
         Return a JSON object with the following structure:
         {{
@@ -173,6 +181,7 @@ class WebParser:
             "main_content_areas": "List of main content areas found",
             "navigation_elements": "List of navigation elements found", 
             "patterns_identified": "Data patterns identified in the page",
+            "summery" : <summery of the page as per requirment>
             "next_pages_to_visit": [
                 {{
                     "url": "full URL",
@@ -180,6 +189,8 @@ class WebParser:
                     "page_type": <page type>,
                     "identifier": <unique identifier>,
                     "relevance_score": <from 0.0 to 1.0>
+                    "why": <why this page needed>
+                    
                 }}
             ],
             "page_type": "page type",
@@ -202,8 +213,8 @@ class WebParser:
         6. DO NOT hallucinate URLs or page types - only use what exists in the HTML
 
         Rules for python_code:
-        1. Use this code to get HTML: from utils.extract_from_webpage import _fetch_and_clean
-           html_code = await _fetch_and_clean(url)
+        1. Always use _fetch_and_clean with url for fetching HTML code  : from utils.extract_from_webpage import _fetch_and_clean
+           html_code = await _fetch_and_clean(url) # this using Playwright
         2. Write Python code to extract all required information in structured data
         3. The function should be async and take a url parameter
         4. Use BeautifulSoup for parsing
@@ -231,6 +242,7 @@ class WebParser:
         8. DO NOT hallucinate any data - only use what exists in the HTML
         9. Verify all extracted data against the HTML content
         10. Add validation steps to ensure data accuracy
+        11. {sample_of_playwright_usage}
         """
 
         try:
@@ -251,7 +263,6 @@ class WebParser:
         print(f"✅ Page analysis complete")
         print(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
         print(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
-        print(f"🔗 Next pages to visit: {len(analysis_data.get('next_pages_to_visit', []))}")
 
         # Store the generated code and function name
         generated_code = analysis_data.get('python_code')
@@ -354,6 +365,7 @@ class WebParser:
             # Store the final error if all attempts failed
             if not code_execution_result:
                 code_execution_error = f"Failed after {current_attempt} attempts. Last error: {last_error}"
+                print(f"python code: \n {'START=' * 30} {generated_code} {'END=' * 30}")
 
         # Update plan with available fields
         available_fields = analysis_data.get('available_fields', [])
@@ -367,13 +379,13 @@ class WebParser:
         next_pages_to_visit = analysis_data.get('next_pages_to_visit', [])
         un_visited_pages = []
         for page in next_pages_to_visit:
-            if (page.get("relevance_score", 0) >= 0.9 and
+            if (page.get("relevance_score", 0) >= 0.8 and
                     page.get("page_type") not in self.visited_page_types and
                     page.get("url") not in self.visited_urls):
                 un_visited_pages.append(page)
                 self.visited_page_types.add(page["page_type"])
                 self.visited_urls.add(page["url"])
-
+        print(f"🔗 Next pages to visit:{json.dumps(dict(next_visit_pages=un_visited_pages), indent=2)}")
         # Return comprehensive analysis data
         return {
             "structured_data": analysis_data.get("structured_data", {}),
@@ -438,7 +450,7 @@ class WebParser:
         )
 
         # Store in tree
-        if page_data.relevance_score >= 0.9:
+        if page_data.relevance_score >= 0.8 or self.root_url == url:
             self.page_tree[url] = page_data
 
         return page_data
@@ -459,7 +471,7 @@ class WebParser:
                 print(f"⏹️ Reached max depth {depth}, stopping...")
                 return
 
-            print(f"\n📑 Processing page at depth {depth}: {page.url}: score: {page.relevance_score}")
+            print(f"\n📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
             # Analysis is already done in fetch_and_process_page, just use the existing data
             analysis = page.analysis_data
             page.page_type = analysis["page_type"]
@@ -469,12 +481,12 @@ class WebParser:
             if isinstance(next_pages_to_visit, list):
                 print(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
                 for next_page in next_pages_to_visit:
-                    print(f"📥 Processing next page: {next_page['label']} ({next_page['relevance_score']})")
+                    print(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
                     child_page = await self.fetch_and_process_page(
                         next_page['url'],
                         path=page.path + [next_page['url']]
                     )
-                    if child_page.relevance_score >= 0.9:
+                    if child_page.relevance_score >= 0.8:
                         page.children.append(child_page)
                         child_page.parent = page
                         await process_page(child_page, depth + 1)
@@ -494,15 +506,51 @@ class WebParser:
                 working_codes.append({
                     'url': url,
                     'code': data.generated_code,
-                    'result': data.code_execution_result,
+                    'result': data.code_execution_result if len(
+                        json.dumps(data.code_execution_result, indent=2)) < 30_000 else json.dumps(
+                        data.code_execution_result, indent=2)[:10_000] + "....." + json.dumps(data.code_execution_result,
+                                                                                             indent=2)[-10_000:],
                     'page_type': data.page_type,
                     "children": [child.page_type for child in data.children],
                     'parent': data.parent.page_type if data.parent else None,
                     'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None
                 })
 
+        with open("utils/linkedin_search_to_csv.py", 'r', encoding='utf-8') as f:
+            sample_utility_code = f.read()
         prompt = f"""
-        Here is python code for multi_pages pages you need to combined the code to achieve user requirement.
+        User wants to build a new GTM utility with the following details:
+        
+        The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file.
+        
+        The input CSV columns should match the argument names without leading dashes.
+        
+        Do NOT create a 'mode' argument or any sub-commands. main() should simply parse \"output_file\" as the first positional argument followed by optional parameters
+        
+        Provide a <utility_name>_from_csv(input_file, output_file, **kwargs) helper that reads the same parameters from a CSV file.
+        
+        The input CSV headers must match the argument names (without leading dashes) except for output_file.
+        
+        The output CSV must keep all original columns and append any new columns produced by the utility.
+        
+        Please output only the Python code for this utility below, without any markdown fences or additional text
+        
+        Get fully functional, compiling standalone python script with all the required imports.
+        
+        arguments to mail will be like in example below, output_file is always a parameter. input arguments like --person_title etc are custom parameters that can be passed as input the to script\n"
+        "def main() -> None:\n"
+        "    parser = argparse.ArgumentParser(description=\"Search people in Apollo.io\")\n"
+        "    parser.add_argument(\"output_file\", help=\"CSV file to create\")\n"
+        
+        Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization
+        Use user_linkedin_url property to represent ursers linked in url.
+        Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open(\"w\", newline=\"\", encoding=\"utf-8\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n
+        The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value.
+        
+
+
+        Here is python code for multi_pages pages you need to combined the code to achieve user requirement:
+        
         {json.dumps(working_codes, indent=2)}
 
         Here is user requirement: {self.requirement.additional_instructions}
@@ -514,24 +562,7 @@ class WebParser:
         1. Extract data according to the extraction specification above
         2. Use BeautifulSoup for parsing
         3. The target URL is {self.root_url} - use this URL directly in the code, don't take it as a parameter
-        4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.page_tree[self.root_url]}. i mean script start with {self.root_url}
-        5. make sure script is executable in cli
-        6. to get html_code for any url use this code: from utils.extract_from_webpage import _fetch_and_clean
-           html_code = await _fetch_and_clean(url)
-        7. make sure there are no demo code, make production ready code
-        8. The main extraction function should NOT take any parameters - it should use the URL directly from the code
-        9. Validate the extracted data according to the validation rules in the specification
-        10. Structure the output according to the data_structure in the specification
-        11. Include proper error handling and logging
-        12. Use type hints for all functions
-        13. Add docstrings for all functions
-        14. Follow PEP 8 style guidelines
-        15. Use async/await consistently throughout the code
-        16. Handle rate limiting and retries for HTTP requests
-        17. Include proper exception handling for network errors
-        18. Add validation for extracted data
-        19. Include progress logging
-        20. Add proper cleanup in case of errors
+        4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.root_url}. i mean script start with {self.root_url} 5. make sure script is executable in cli 6. to get html_code for any url use this code: from utils.extract_from_webpage import _fetch_and_clean html_code = await _fetch_and_clean(url) #  this is using Playwright 7. Make sure there are no demo code, make production ready code 8. Make CLI \"output_file\" as only one mandatory positional args for main().The first \"output_file\"  positional argument followed by optional parameters 9. Validate the extracted data according to the validation rules in the specification 10. Structure the output according to the data_structure in the specification 11. Include proper error handling and logging 12. Use type hints for all functions 13. Add docstrings for all functions 14. Follow PEP 8 style guidelines 15. Use async/await consistently throughout the code 16. Handle rate limiting and retries for HTTP requests 17. Include proper exception handling for network errors 18. Add validation for extracted data 19. Include progress logging 20. Add proper cleanup in case of errors 
 
         Required imports:
         - asyncio
@@ -548,6 +579,10 @@ class WebParser:
         Return a JSON object with the following structure:
         {{
             "python_code_function_name": <name of the main extraction function>,
+            "utility_name": <name this utility>,
+            "description": <description  of utility>
+            "successfully data": <describe what are data successfully parsed >,
+            "score": "provide score(0 to 10) for as per user requirement achievement"
             "python_code": <python_code>
         }}
 
@@ -559,14 +594,25 @@ class WebParser:
         5. All functions must be properly typed
         6. Include docstrings for all functions
         7. Follow PEP 8 style guidelines
+        9. Handle CLI arguments properly
+        10. Avoid all deprecated packages and functions
+         
+         use following as example for playwright edge cases:
+         {sample_of_playwright_usage}
+         
+         Use following as examples which can help you generate the code required for above GTM utility:
+         {sample_utility_code}
         """
-
+        print(f"prompt len:{len(prompt)}")
         code_gen = await call_openai_async(
             prompt=prompt,
             response_format={"type": "json_object"}
         )
         code_gen = json.loads(code_gen)
         code = code_gen["python_code"]
+        for k, v in code_gen.items():
+            if not k == "python_code":
+                print(k, ":", v)
         self.python_code_function_name = code_gen.get("python_code_function_name", "extract_data")
 
         # Clean any markdown formatting
@@ -594,6 +640,7 @@ class WebParser:
 
                     # Check if the required function exists
                     if not hasattr(module, self.python_code_function_name):
+                        print(f"Function '{self.python_code_function_name}' not found in generated code")
                         raise AttributeError(f"Function '{self.python_code_function_name}' not found in generated code")
 
                     print("✅ Code validation successful")
@@ -613,6 +660,23 @@ class WebParser:
                     4. Use BeautifulSoup for parsing
                     5. Follow all the requirements from the original prompt
                     6. The main function MUST be named '{self.python_code_function_name}'
+
+                    CRITICAL REQUIREMENTS TO PREVENT COMMON ISSUES:
+                    8. Proper CLI argument handling:
+                        - Use argparse.ArgumentParser() correctly
+                        - Define all expected arguments with proper types
+                        - Handle the case when no arguments are provided
+                        - Use parser.parse_args() to parse arguments
+                        - Add proper help text for all arguments
+                    9. Avoid deprecated packages:
+                        - DO NOT use pkg_resources (use importlib.metadata instead)
+                        - DO NOT use any deprecated imports or functions
+                        - Use modern Python 3.8+ syntax
+                    10. Proper script structure:
+                        - Include if __name__ == "__main__": block
+                        - Handle both direct execution and import scenarios
+                        - Use asyncio.run() for async main functions
+                        - Proper error handling in main function
 
                     Return only the fixed Python code without any explanations.
                     IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
@@ -634,7 +698,7 @@ class WebParser:
 
         except Exception as e:
             print(f"❌ Error during code validation: {str(e)}")
-            raise
+            raise Exception(e)
 
         self.generated_code = code
         print("✅ Code generation complete")
@@ -650,7 +714,7 @@ class WebParser:
         if not self.generated_code:
             raise ValueError("No code generated yet")
 
-        max_attempts = 5
+        max_attempts = 2
         current_attempt = 0
         last_error = None
         current_code = self.generated_code
@@ -675,11 +739,13 @@ class WebParser:
 
                         # Execute the code using the specified function name
                         if hasattr(module, self.python_code_function_name):
-                            result = await getattr(module, self.python_code_function_name)()
+                            out_path = common.make_temp_csv_filename("codegen_barbarika_webparsing")
+
+                            result = await getattr(module, self.python_code_function_name)(out_path)
                             print("✅ Code execution successful")
                             print(f"📊 Result: {json.dumps(result, indent=2)}")
                             if not result:
-                                raise Exception("Empty result returned")
+                                return dict()
                             return result
                         else:
                             raise AttributeError(
@@ -703,7 +769,7 @@ class WebParser:
                             3. It should return a dictionary with the extracted data
                             4. Use BeautifulSoup for parsing
                             5. Previous attempts: {current_attempt}/{max_attempts}
-                            6. The function must be named exactly '{self.python_code_function_name}'
+                            6. The main function MUST be named '{self.python_code_function_name}'
                             7. Include proper error handling and logging
                             8. Use type hints for all functions
                             9. Add docstrings for all functions
@@ -713,6 +779,23 @@ class WebParser:
                             13. DO NOT hallucinate data - only extract what exists in the HTML
                             14. Add validation steps for extracted data
                             15. Add logging for any assumptions made
+
+                            CRITICAL REQUIREMENTS TO PREVENT COMMON ISSUES:
+                            17. Proper CLI argument handling:
+                                - Use argparse.ArgumentParser() correctly
+                                - Define  Analyzing user requirementall expected arguments with proper types
+                                - Handle the case when no arguments are provided
+                                - Use parser.parse_args() to parse arguments
+                                - Add proper help text for all arguments
+                            18. Avoid deprecated packages:
+                                - DO NOT use pkg_resources (use importlib.metadata instead)
+                                - DO NOT use any deprecated imports or functions
+                                - Use modern Python 3.8+ syntax
+                            19. Proper script structure:
+                                - Include if __name__ == "__main__": block
+                                - Handle both direct execution and import scenarios
+                                - Use asyncio.run() for async main functions
+                                - Proper error handling in main function
 
                             Return only the fixed Python code without any explanations.
                             IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
@@ -744,12 +827,12 @@ class WebParser:
                 last_error = str(e)
                 print(f"❌ Error during execution: {last_error}")
                 if current_attempt >= max_attempts:
-                    return None
+                    return {}
 
         # If we get here, all attempts failed
         error_msg = f"Failed after {current_attempt} attempts. Last error: {last_error}"
         print(f"❌ {error_msg}")
-        raise Exception(error_msg)
+        return {}
 
 
 def web_parse_to_json(
@@ -796,7 +879,7 @@ def web_parse_to_json(
         return result
     except Exception as e:
         logger.error("Error parsing website: %s", str(e))
-        raise
+        raise e
 
 
 def web_parse_to_json_from_csv(input_file: str, output_file: str) -> None:
