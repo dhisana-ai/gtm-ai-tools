@@ -5,7 +5,6 @@ import subprocess
 import tempfile
 import csv
 import re
-import traceback
 from typing import List
 import asyncio
 import json
@@ -30,7 +29,7 @@ from utils import (
 )
 from pathlib import Path
 
-from utils.common import openai_client, openai_client_sync
+from utils.common import openai_client_sync
 
 try:
     from flask import (
@@ -67,11 +66,8 @@ try:
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+import faiss
 
-# try:
-#     import faiss
-# except ImportError:
-#     import faiss_cpu as faiss
 logging.basicConfig(level=logging.INFO)
 
 app = Flask(__name__)
@@ -125,7 +121,6 @@ UTILITY_TITLES = {
     "generate_email": "Generate Email",
     "push_lead_to_dhisana_webhook": "Push Leads To Dhisana Webhook",
     "send_email_smtp": "Send Email",
-    "codegen_barbarika_web_parsing": "AI-Powered Web Parser",
 }
 
 # Display order for the utilities list
@@ -138,7 +133,6 @@ UTILITY_ORDER = {
     "push_lead_to_dhisana_webhook": 4,
     "generate_email": 5,
     "send_email_smtp": 6,
-    "codegen_barbarika_web_parsing": 7,
 }
 
 # Tags applied to utilities for filtering in the web UI
@@ -152,7 +146,6 @@ UTILITY_TAGS = {
     "fetch_html_playwright": ["find"],
     "extract_companies_from_image": ["find"],
     "extract_from_webpage": ["find"],
-    "codegen_barbarika_web_parsing": ["find", "enrich"],
 
     # Enrich leads
     "apollo_info": ["enrich"],
@@ -222,7 +215,7 @@ UTILITY_PARAMETERS = {
     ],
     "find_user_by_job_title": [
         {"name": "job_title", "label": "Job title"},
-        {"name": "company_name", "label": "Company name"},
+        {"name": "organization_name", "label": "Organization name"},
         {"name": "search_keywords", "label": "Search keywords"},
     ],
     "find_users_by_name_and_keywords": [],
@@ -360,8 +353,7 @@ UTILITY_PARAMETERS = {
         {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
         {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
         {"name": "--page_actions", "label": "Actions to do When each page loads."},
-        {"name": "--parse_instructions",
-         "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
+        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
         {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
         {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
@@ -391,13 +383,6 @@ UTILITY_PARAMETERS = {
         {"name": "data", "label": "key=value pairs"},
         {"name": "--webhook_url", "label": "Webhook URL"},
         {"name": "--api_key", "label": "API key"},
-    ],
-    "codegen_barbarika_web_parsing": [
-        {"name": "url", "label": "Target URL"},
-        {"name": "--fields", "label": "Fields to extract (comma-separated)"},
-        {"name": "--max-depth", "label": "Maximum crawl depth", "type": "int"},
-        {"name": "--pagination", "label": "Enable pagination", "type": "boolean"},
-        {"name": "--instructions", "label": "Additional instructions"},
     ],
 }
 
@@ -462,11 +447,11 @@ def get_credentials() -> tuple[str, str]:
     """Return (username, password) for the login page."""
     env = load_env()
     username = (
-            env.get("APP_USERNAME")
-            or os.environ.get("APP_USERNAME")
-            or env.get("APP_USER")
-            or os.environ.get("APP_USER")
-            or "user"
+        env.get("APP_USERNAME")
+        or os.environ.get("APP_USERNAME")
+        or env.get("APP_USER")
+        or os.environ.get("APP_USER")
+        or "user"
     )
     password = env.get("APP_PASSWORD") or os.environ.get("APP_PASSWORD")
     if not password:
@@ -588,8 +573,8 @@ def login():
     username, password = get_credentials()
     if request.method == "POST":
         if (
-                request.form.get("password") == password
-                and request.form.get("username") == username
+            request.form.get("password") == password
+            and request.form.get("username") == username
         ):
             session["logged_in"] = True
             return redirect(url_for("run_utility"))
@@ -657,19 +642,19 @@ def run_utility():
             file.save(filename)
             uploaded = filename
         if (
-                not uploaded
-                and input_mode == "previous"
-                and prev_csv
-                and os.path.exists(prev_csv)
-                and not is_custom
+            not uploaded
+            and input_mode == "previous"
+            and prev_csv
+            and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
         if (
-                not uploaded
-                and util_name in UPLOAD_ONLY_UTILS
-                and prev_csv
-                and os.path.exists(prev_csv)
-                and not is_custom
+            not uploaded
+            and util_name in UPLOAD_ONLY_UTILS
+            and prev_csv
+            and os.path.exists(prev_csv)
+            and not is_custom
         ):
             uploaded = prev_csv
 
@@ -691,9 +676,9 @@ def run_utility():
                 if util_name == "extract_from_webpage" and name == "--show_ux":
                     continue
                 if (
-                        util_name == "linkedin_search_to_csv"
-                        and name == "--num"
-                        and not val
+                    util_name == "linkedin_search_to_csv"
+                    and name == "--num"
+                    and not val
                 ):
                     val = "10"
                 if not val:
@@ -716,8 +701,8 @@ def run_utility():
             elif util_name == "extract_from_webpage":
                 out_path = common.make_temp_csv_filename(util_name)
                 if not any(
-                        f in cmd
-                        for f in ("--lead", "--leads", "--company", "--companies")
+                    f in cmd
+                    for f in ("--lead", "--leads", "--company", "--companies")
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
@@ -881,8 +866,6 @@ def run_utility():
                     find_user_by_job_title.find_user_by_job_title_from_csv(
                         uploaded,
                         out_path,
-                        job_title=request.form.get("job_title", ""),
-                        search_keywords=request.form.get("search_keywords", ""),
                     )
                     download_name = out_path
                     output_csv_path = out_path
@@ -1169,7 +1152,7 @@ def build_utility_embeddings() -> None:
     codes: list[str] = []
     embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if not fname.endswith('.py') or fname == 'common.py':
+        if not fname.endswith('.py') or fname in ['common.py', "codegen_barbarika_web_parsing.py"]:
             continue
         path = os.path.join(UTILS_DIR, fname)
         with open(path, 'r', encoding='utf-8') as f:
@@ -1209,7 +1192,6 @@ def build_utility_embeddings() -> None:
 build_utility_embeddings()
 load_custom_parameters()
 
-
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
     query_vec = embed_text(prompt).astype(np.float32)
@@ -1220,7 +1202,6 @@ def get_top_k_utilities(prompt: str, k: int) -> list[str]:
 
 @app.route("/generate_utility", methods=["POST"])
 def generate_utility():
-    build_utility_embeddings()
     user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=5)
     prompt_lines = []
@@ -1300,7 +1281,6 @@ def generate_utility():
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 
     try:
-
         client = openai_client_sync()
         model_name = os.getenv("MODEL_TO_GENERATE_UTILITY", "o3")
         response = client.responses.create(
@@ -1311,17 +1291,17 @@ def generate_utility():
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
-                hasattr(response, "output")
-                and isinstance(response.output, list)
-                and len(response.output) > 0
+            hasattr(response, "output")
+            and isinstance(response.output, list)
+            and len(response.output) > 0
         ):
             for msg in response.output:
                 if hasattr(msg, "content") and isinstance(msg.content, list):
                     for c in msg.content:
                         if (
-                                hasattr(c, "text")
-                                and isinstance(c.text, str)
-                                and c.text.strip()
+                            hasattr(c, "text")
+                            and isinstance(c.text, str)
+                            and c.text.strip()
                         ):
                             code = c.text.strip()
                             break
@@ -1344,10 +1324,10 @@ def generate_utility():
                             attempt + 1, compile_err)
             commented_code = "\n".join(f"# {line}" for line in code.splitlines())
             correction_prompt = (
-                    codex_prompt
-                    + f"# The previous generated code failed to compile on attempt {attempt + 1}: {compile_err}\n"
-                    + f"{commented_code}\n"
-                    + "# Please provide the full corrected utility code below:\n"
+                codex_prompt
+                + f"# The previous generated code failed to compile on attempt {attempt+1}: {compile_err}\n"
+                + f"{commented_code}\n"
+                + "# Please provide the full corrected utility code below:\n"
             )
             response = client.responses.create(
                 model=model_name,
@@ -1371,7 +1351,7 @@ def generate_utility():
             code = new_code
     else:
         # Exhausted retries without valid code
-        err_msg = f"Code failed to compile after {attempt + 1} attempts: {compile_err}"
+        err_msg = f"Code failed to compile after {attempt+1} attempts: {compile_err}"
         logging.error(err_msg)
         return jsonify({"success": False, "error": err_msg}), 500
 
@@ -1619,46 +1599,17 @@ def save_web_parse_utility():
         if not data or not all(k in data for k in ['code', 'name', 'description', 'prompt']):
             return jsonify({'error': 'Missing required fields'}), 400
 
-        # Create event loop for async operations
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
+        # Save the utility using the existing save_utility function
         try:
-            # Save the utility
-            success = loop.run_until_complete(save_utility(
-                code=data['code'],
-                name=data['name'],
-                description=data['description'],
-                prompt=data['prompt']
-            ))
-        finally:
-            loop.close()
-
-        if success:
-            return jsonify({'success': True})
-        else:
-            return jsonify({'error': 'Failed to save utility'}), 500
+            # Create a temporary request context with the data
+            with app.test_request_context(json=data):
+                # Call save_utility which will get the data from request.get_json()
+                response = save_utility()
+                return response
+        except Exception as e:
+            logging.error('Error in save_utility: %s', str(e))
+            return jsonify({'success': False, 'error': str(e)}), 500
 
     except Exception as e:
+        logging.error('Error in save_web_parse_utility: %s', str(e))
         return jsonify({'error': str(e)}), 500
-
-
-class StreamLogger(logging.Handler):
-    def __init__(self, yield_func):
-        super().__init__()
-        self.yield_func = yield_func
-        self.buffer = []
-
-    def emit(self, record):
-        try:
-            msg = self.format(record)
-            self.buffer.append(msg)
-            self.yield_func({
-                'type': 'log',
-                'message': msg
-            })
-        except Exception:
-            self.handleError(record)
-
-    def get_buffer(self):
-        return self.buffer
