@@ -48,6 +48,18 @@
                         </div>
                     </div>
 
+                    <!-- Tree View Visualization -->
+                    <div id="tree-view-container" class="d-none mb-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-0">Crawl Tree Visualization</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="tree-view"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div id="result-container" class="d-none">
                         <div class="card mb-4">
                             <div class="card-header">
@@ -107,6 +119,16 @@
                             <div class="card-body" id="extra-info"></div>
                         </div>
                     </div>
+
+                    <div id="plan-container" class="card mb-4 d-none">
+                        <div class="card-header">
+                            <h5 class="mb-0">Extraction Plan <a href="#" id="plan-toggle" style="font-size:0.85em; color:#007bff; margin-left:8px;">[Show]</a></h5>
+                        </div>
+                        <div class="card-body" id="plan-panel" style="display:none;">
+                            <button class="btn btn-sm btn-outline-secondary" id="copy-plan-btn" style="float:right; margin-bottom:4px;">Copy</button>
+                            <pre id="plan-json" style="background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;"></pre>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -162,9 +184,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const tableHeaders = document.getElementById('table-headers');
     const tableBody = document.getElementById('table-body');
     const downloadCsvBtn = document.getElementById('download-csv-btn');
+    const treeViewContainer = document.getElementById('tree-view-container');
+    const treeView = document.getElementById('tree-view');
+    const planContainer = document.getElementById('plan-container');
+    const planPanel = document.getElementById('plan-panel');
+    const planJson = document.getElementById('plan-json');
+    const planToggle = document.getElementById('plan-toggle');
+    const copyPlanBtn = document.getElementById('copy-plan-btn');
     let currentCode = '';
     let currentData = null;
     let currentCsvFile = null;
+    let currentPlan = null;
 
     // Handle form submission
     form.addEventListener('submit', async function(e) {
@@ -178,6 +208,12 @@ document.addEventListener('DOMContentLoaded', function() {
         logs.textContent = '';
         dataTableContainer.classList.add('d-none');
         downloadCsvBtn.classList.add('d-none');
+        treeViewContainer.classList.add('d-none');
+        treeView.innerHTML = '';
+        planContainer.classList.add('d-none');
+        planPanel.style.display = 'none';
+        planJson.textContent = '';
+        planToggle.textContent = '[Show]';
         status.textContent = 'Starting web parsing...';
         
         // Get form data
@@ -202,6 +238,7 @@ document.addEventListener('DOMContentLoaded', function() {
             eventSource.onmessage = function(event) {
                 try {
                     const data = JSON.parse(event.data);
+                    console.log("eventSource:onmessage: ", data)
                     
                     switch(data.type) {
                         case 'status':
@@ -210,6 +247,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         case 'log':
                             logs.textContent += data.message + '\n';
                             logs.scrollTop = logs.scrollHeight;
+                            break;
+                        case 'plan':
+                            if (data.plan) {
+                                planContainer.classList.remove('d-none');
+                                planJson.textContent = JSON.stringify(data.plan, null, 2);
+                                currentPlan = data.plan;
+                                planPanel.style.display = 'none';
+                                planToggle.textContent = '[Hide]';
+                            }
                             break;
                         case 'complete':
                             currentCode = data.code;
@@ -221,8 +267,6 @@ document.addEventListener('DOMContentLoaded', function() {
                             
                             // Display extracted data
                             if (data.extracted_data && data.extracted_data.length > 0) {
-                                extractedData.textContent = JSON.stringify(data.extracted_data, null, 2);
-                                
                                 // Populate data table
                                 populateDataTable(data.extracted_data);
                                 dataTableContainer.classList.remove('d-none');
@@ -276,6 +320,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             error.classList.remove('d-none');
                             status.classList.add('d-none');
                             eventSource.close();
+                            break;
+                        case 'tree_update':
+                            if (data.tree) {
+                                treeViewContainer.classList.remove('d-none');
+                                treeView.innerHTML = `<ul>${renderTree(data.tree)}</ul>`;
+                            }
                             break;
                     }
                 } catch (err) {
@@ -416,6 +466,195 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (err) {
             alert('Error saving utility: ' + err.message);
+        }
+    });
+
+    // Helper to render the tree recursively
+    function renderTree(node, depth = 0, nodeIdPrefix = 'tree-node-') {
+        if (!node) return '';
+        let childrenHtml = '';
+        if (node.children && node.children.length > 0) {
+            childrenHtml = `<ul style='margin-left: 1em;'>${node.children.map((child, idx) => renderTree(child, depth + 1, nodeIdPrefix + idx + '-')).join('')}</ul>`;
+        }
+        const statusColor = node.status === 'done' ? '#28a745' : '#ffc107';
+        let exclusiveFieldsHtml = '';
+        if (node.exclusive_fields && node.exclusive_fields.length > 0) {
+            exclusiveFieldsHtml = `<div style='font-size:0.85em; color:#888; margin-top:2px;'>Exclusive fields: <span style='color:#555;'>${node.exclusive_fields.join(', ')}</span></div>`;
+        }
+        let urlHtml = '';
+        if (node.url) {
+            urlHtml = `<div style='font-size:0.85em; color:#888;'><a href='${node.url}' target='_blank' style='color:#888; text-decoration:underline;'>${node.url}</a></div>`;
+        }
+        // Summery toggle
+        let summeryToggleHtml = '';
+        let summeryPanelHtml = '';
+        const summeryId = nodeIdPrefix + 'summery-' + Math.random().toString(36).substr(2, 6);
+        if (node.summery && node.summery.length > 0) {
+            summeryToggleHtml = `<a href='#' class='tree-summery-toggle' data-node-id='${summeryId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Summary]</a>`;
+            summeryPanelHtml = `<div id='${summeryId}' class='tree-summery-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Summary:</b></div>
+                <div style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:120px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.summery)}</div>
+            </div>`;
+        }
+        // Separate toggles and panels for python_code and code_execution_result
+        let codeToggleHtml = '';
+        let codePanelHtml = '';
+        let resultToggleHtml = '';
+        let resultPanelHtml = '';
+        const codeId = nodeIdPrefix + 'code-' + Math.random().toString(36).substr(2, 6);
+        const resultId = nodeIdPrefix + 'result-' + Math.random().toString(36).substr(2, 6);
+        if (node.python_code && node.python_code.length > 0) {
+            codeToggleHtml = `<a href='#' class='tree-code-toggle' data-node-id='${codeId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Python Code]</a>`;
+            codePanelHtml = `<div id='${codeId}' class='tree-code-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${codeId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Python Code:</b></div>
+                <pre id='${codeId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.python_code)}</pre>
+            </div>`;
+        }
+        if (node.code_execution_result && JSON.stringify(node.code_execution_result).length > 2) {
+            resultToggleHtml = `<a href='#' class='tree-result-toggle' data-node-id='${resultId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Output]</a>`;
+            resultPanelHtml = `<div id='${resultId}' class='tree-result-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${resultId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Execution Result:</b></div>
+                <pre id='${resultId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.code_execution_result, null, 2))}</pre>
+            </div>`;
+        }
+        // Analysis data toggle
+        let analysisToggleHtml = '';
+        let analysisPanelHtml = '';
+        const analysisId = nodeIdPrefix + 'analysis-' + Math.random().toString(36).substr(2, 6);
+        if (node.analysis_data && Object.keys(node.analysis_data).length > 0) {
+            analysisToggleHtml = `<a href='#' class='tree-analysis-toggle' data-node-id='${analysisId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Analysis JSON]</a>`;
+            analysisPanelHtml = `<div id='${analysisId}' class='tree-analysis-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${analysisId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Analysis Data (JSON):</b></div>
+                <pre id='${analysisId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.analysis_data, null, 2))}</pre>
+            </div>`;
+        }
+        return `<li style='margin-bottom: 0.5em;'>
+            <span style='font-weight:bold; color:${statusColor}'>${node.label || node.url}</span>
+            <span style='color: #888; font-size: 0.9em;'> [${node.page_type || ''}]</span>
+            <span style='color: #aaa; font-size: 0.8em;'> (score: ${node.relevance_score?.toFixed(2)})</span>
+            ${exclusiveFieldsHtml}
+            ${urlHtml}
+            ${summeryToggleHtml}
+            ${summeryPanelHtml}
+            ${codeToggleHtml}
+            ${codePanelHtml}
+            ${resultToggleHtml}
+            ${resultPanelHtml}
+            ${analysisToggleHtml}
+            ${analysisPanelHtml}
+            ${childrenHtml}
+        </li>`;
+    }
+
+    // Helper to escape HTML for code blocks
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/&/g, "&amp;")
+                   .replace(/</g, "&lt;")
+                   .replace(/>/g, "&gt;")
+                   .replace(/\"/g, '&quot;')
+                   .replace(/'/g, '&#39;');
+    }
+
+    // Toggle code, result, summery, and analysis panels on click
+    document.addEventListener('click', function(e) {
+        // Python code toggle
+        if (e.target && e.target.classList.contains('tree-code-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Python Code]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Python Code]';
+                }
+            }
+        }
+        // Execution result toggle
+        if (e.target && e.target.classList.contains('tree-result-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Output]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Output]';
+                }
+            }
+        }
+        // Summery toggle
+        if (e.target && e.target.classList.contains('tree-summery-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Summary]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Summary]';
+                }
+            }
+        }
+        // Analysis data toggle
+        if (e.target && e.target.classList.contains('tree-analysis-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Analysis JSON]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Analysis JSON]';
+                }
+            }
+        }
+        // Copy button
+        if (e.target && e.target.classList.contains('tree-copy-btn')) {
+            e.preventDefault();
+            const preId = e.target.getAttribute('data-copy-target');
+            const pre = document.getElementById(preId);
+            if (pre) {
+                const text = pre.innerText;
+                navigator.clipboard.writeText(text).then(() => {
+                    e.target.textContent = 'Copied!';
+                    setTimeout(() => e.target.textContent = 'Copy', 1500);
+                });
+            }
+        }
+    });
+
+    // Plan toggle
+    planToggle.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (planPanel.style.display === 'none') {
+            planPanel.style.display = 'block';
+            planToggle.textContent = '[Hide]';
+        } else {
+            planPanel.style.display = 'none';
+            planToggle.textContent = '[Show]';
+        }
+    });
+
+    // Copy plan button
+    copyPlanBtn.addEventListener('click', function() {
+        if (currentPlan) {
+            navigator.clipboard.writeText(JSON.stringify(currentPlan, null, 2)).then(() => {
+                copyPlanBtn.textContent = 'Copied!';
+                setTimeout(() => copyPlanBtn.textContent = 'Copy', 1500);
+            });
         }
     });
 });

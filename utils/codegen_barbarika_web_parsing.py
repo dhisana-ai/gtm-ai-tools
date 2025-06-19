@@ -108,13 +108,14 @@ class PageData(BaseModel):
 
 
 class WebParser:
-    def __init__(self, requirement: UserRequirement):
+    def __init__(self, requirement: UserRequirement, log_update_callback=None,tree_update_callback=None):
         logger.info(f"\n🚀 Initializing WebParser with URL: {requirement.target_url}")
         logger.info(f"📋 Data to extract: {requirement.data_to_extract}")
         logger.info(f"🔍 Max depth: {requirement.max_depth}")
         logger.info(f"📄 Pagination: {requirement.pagination}")
         logger.info(f"📝 Additional instructions: {requirement.additional_instructions}")
-
+        self.log_update_callback = log_update_callback
+        self.tree_update_callback = tree_update_callback
         self.requirement = requirement
         self.root_url = requirement.target_url
         self.page_tree: Dict[str, PageData] = {}
@@ -129,13 +130,14 @@ class WebParser:
         """Analyze user requirement and create extraction plan."""
         logger.info("\n📊 Analyzing user requirements...")
         prompt = f"""
-        Analyze this web scraping requirement and create an extraction plan:
-
+        You are an expert web scraping architect. Your task is to analyze a web scraping requirement and create a comprehensive, actionable extraction plan in JSON format.
+        
+        Here is the user requirement : {self.requirement.additional_instructions}
         Target URL: {self.requirement.target_url}
         Data to Extract: {self.requirement.data_to_extract}
         Max Depth: {self.requirement.max_depth}
         Pagination: {self.requirement.pagination}
-        Additional Instructions: {self.requirement.additional_instructions}
+        
 
         Create a plan in JSON format:
         {{
@@ -148,6 +150,13 @@ class WebParser:
             "to_be_extracted_fields":[],
             "required_data":[]
         }}
+        
+        
+        standards instruction :
+            - Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization
+            - provide proper required data
+            - provide proper extraction_steps
+
         """
 
         plan = call_openai_sync(
@@ -252,12 +261,14 @@ class WebParser:
 
         try:
             logger.info(f"calling openai sync")
+            self.log_update_callback(f"🔍 Analyzing page directly: {url} calling llm")
             analysis = call_openai_sync(
                 prompt=prompt,
                 response_format={"type": "json_object"},
                 client=openai_client
             )
             analysis_data = json.loads(analysis)
+
         except json.decoder.JSONDecodeError as e:
             logger.error(f"❌ JSON decode error: {e}")
             analysis = call_openai_sync(
@@ -269,6 +280,7 @@ class WebParser:
             analysis_data = json.loads(analysis)
 
         logger.info(f"✅ Page analysis complete")
+        self.log_update_callback(f"✅ Page analysis complete")
         logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
         logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
         # Store the generated code and function name
@@ -288,7 +300,7 @@ class WebParser:
                 try:
                     current_attempt += 1
                     logger.info(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
-
+                    self.log_update_callback(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
                     # Create a temporary module for execution
                     import tempfile
                     import importlib.util
@@ -307,6 +319,7 @@ class WebParser:
                             result = await getattr(module, function_name)(url)
                             code_execution_result = result
                             logger.info(f"✅ Code execution successful for {url}")
+                            self.log_update_callback(f"✅ Code execution successful for {url}")
                             logger.info(f"📊 Result: {json.dumps(result, indent=2)}")
                             if not result:
                                 raise Exception("empty result")
@@ -317,7 +330,7 @@ class WebParser:
                 except Exception as e:
                     last_error = str(e)
                     logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
-
+                    self.log_update_callback(f"❌ Error in attempt {current_attempt}: {last_error}")
                     if current_attempt < max_attempts:
                         # Try to fix the code using another LLM
                         fix_prompt = f"""
@@ -361,6 +374,7 @@ class WebParser:
                             break  # Exit if we can't even generate fixed code
                     else:
                         logger.error(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
+                        self.log_update_callback(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
                         break
 
                 finally:
@@ -409,7 +423,8 @@ class WebParser:
             "python_code_function_name": function_name,
             "exclusive_fields": exclusive_fields,
             "code_execution_result": code_execution_result,
-            "code_execution_error": code_execution_error
+            "code_execution_error": code_execution_error,
+            "summery": analysis_data.get("summery",'')
         }
 
     async def fetch_and_process_page(self, url: str, path: List[str] = None) -> PageData:
@@ -463,10 +478,30 @@ class WebParser:
 
         return page_data
 
-    async def build_page_tree(self):
-        """Build tree of pages starting from root."""
+    def _serialize_tree(self, node):
+        """Recursively serialize the PageData tree for UI visualization."""
+        if not node:
+            return None
+        return {
+            'url': node.url,
+            'page_type': node.page_type,
+            'relevance_score': node.relevance_score,
+            'exclusive_fields': node.exclusive_fields,
+            'children': [self._serialize_tree(child) for child in getattr(node, 'children', [])],
+            'parent_url': node.parent.url if node.parent else None,
+            'label': node.analysis_data.get('generic_name_of_page') if node.analysis_data else node.url,
+            'status': 'done' if node.analysis_data else 'pending',
+            'summery': node.analysis_data.get("summery") if node.analysis_data else '',
+            'python_code': node.analysis_data.get("python_code") if node.analysis_data else '',
+            'code_execution_result': node.analysis_data.get("code_execution_result") if node.analysis_data else '',
+            'analysis_data': node.analysis_data if node.analysis_data else {}
+        }
+
+    async def build_page_tree(self, tree_update_callback=None, log_update_callback=None):
+        """Build tree of pages starting from root. Optionally call tree_update_callback after each node."""
         logger.info("\n🌳 Building page tree...")
-        # First analyze the requirement
+        if log_update_callback:
+            log_update_callback("\n🌳 Building page tree...")
         plan = await self.analyze_requirement()
         self.plan = plan
 
@@ -477,14 +512,21 @@ class WebParser:
         async def process_page(page: PageData, depth: int):
             if depth >= self.requirement.max_depth:
                 logger.info(f"⏹️ Reached max depth {depth}, stopping...")
+                if log_update_callback:
+                    log_update_callback(f"⏹️ Reached max depth {depth}, stopping...")
                 return
 
             logger.info(f"\n📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
-            # Analysis is already done in fetch_and_process_page, just use the existing data
             analysis = page.analysis_data
             page.page_type = analysis["page_type"]
 
-            # Process next pages to visit
+            # Emit tree update after processing this node
+            if tree_update_callback:
+                try:
+                    tree_update_callback(self._serialize_tree(self.tree_root))
+                except Exception as e:
+                    logger.warning(f"Tree update callback error: {e}")
+
             next_pages_to_visit = analysis.get('next_pages_to_visit', [])
             if isinstance(next_pages_to_visit, list):
                 logger.info(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
@@ -506,6 +548,7 @@ class WebParser:
     async def generate_extraction_code(self) -> str:
         """Generate Python code for data extraction."""
         logger.info("\n💻 Generating extraction code...")
+        self.log_update_callback("\n💻 Generating extraction code...")
 
         # Collect all working code and their results
         working_codes = []
@@ -612,6 +655,7 @@ class WebParser:
          {sample_utility_code}
         """
         logger.info(f"prompt len:{len(prompt)}")
+        self.log_update_callback(f"llm call final cogen :prompt len:{len(prompt)}")
         code_gen = await call_openai_async(
             prompt=prompt,
             response_format={"type": "json_object"},
@@ -624,11 +668,13 @@ class WebParser:
         for k, v in code_gen.items():
             if not k == "python_code":
                 logger.info(f"{k} : {v}")
+                self.log_update_callback(f"{k} : {v}")
         self.python_code_function_name = code_gen.get("python_code_function_name", "extract_data")
 
         # Clean any markdown formatting
         code = code.replace("```python", "").replace("```", "").strip()
         self.generated_code = code
+        self.log_update_callback("✅ Code generation complete")
         logger.info("✅ Code generation complete")
         logger.info(f"\nGenerated code: entry function is  {self.python_code_function_name}")
         logger.info("=" * 50)
@@ -656,6 +702,7 @@ class WebParser:
 
                     logger.info("✅ Code validation successful")
                 except Exception as e:
+                    self.log_update_callback(f"❌ Generated code validation failed: {str(e)}")
                     logger.error(f"❌ Generated code validation failed: {str(e)}")
                     # Try to fix the code
                     fix_prompt = f"""
@@ -713,6 +760,7 @@ class WebParser:
             raise Exception(e)
 
         self.generated_code = code
+        self.log_update_callback("✅ Code generation complete")
         logger.info("✅ Code generation complete")
         logger.info("\nGenerated code preview:")
         logger.info("=" * 50)
@@ -735,6 +783,7 @@ class WebParser:
             try:
                 current_attempt += 1
                 logger.info(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code")
+                self.log_update_callback(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code")
 
                 # Create a temporary module
                 import tempfile
@@ -780,6 +829,7 @@ class WebParser:
                         if proc.returncode != 0:
                             last_error = f"Subprocess failed with return code {proc.returncode}.\nStdout:\n{proc.stdout}\nStderr:\n{proc.stderr}"
                             logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
+                            self.log_update_callback(f"❌ Error in attempt {current_attempt}: {last_error}")
                             if current_attempt < max_attempts:
                                 fix_prompt = f"""
                                 Fix the following Python code that failed to execute with error: {last_error}
@@ -824,16 +874,19 @@ class WebParser:
                                     )
                                     current_code = fixed_code
                                     logger.info(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
+                                    self.log_update_callback(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
                                     continue  # Retry with fixed code
                                 except Exception as fix_error:
                                     logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
                                     break  # Exit if we can't even generate fixed code
                             else:
+                                self.log_update_callback(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
                                 logger.error(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
                                 break
 
                         # If we have extracted data, return it
                         if extracted_data:
+                            self.log_update_callback("✅ Code execution successful with extracted data")
                             logger.info("✅ Code execution successful with extracted data")
                             logger.info(f"📊 Extracted {len(extracted_data)} items")
                             return {
