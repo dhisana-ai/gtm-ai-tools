@@ -3,6 +3,7 @@ import json
 import os
 import argparse
 import logging
+import subprocess
 from typing import Dict, List, Optional, Any
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
@@ -10,7 +11,7 @@ from pydantic import BaseModel
 
 from utils import common
 from utils.extract_from_webpage import _fetch_and_clean
-from utils.common import call_openai_async, call_openai_sync
+from utils.common import call_openai_async, call_openai_sync, openai_client_sync, openai_client as openai_client_async
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -22,7 +23,9 @@ with open("utils/fetch_html_playwright.py", 'r', encoding='utf-8') as f:
     sample_of_playwright_usage = f.read()
 sample_of_playwright_usage = f"Here is minium edge cases for playwright usage : {sample_of_playwright_usage}"
 
-
+# Create a single OpenAI client instance for reuse
+openai_async_client = openai_client_async()
+openai_client = openai_client_sync()
 class UserRequirement(BaseModel):
     target_url: str
     data_to_extract: Optional[List[str]] = None
@@ -73,15 +76,16 @@ class UserRequirement(BaseModel):
             try:
                 spec = call_openai_sync(
                     prompt=prompt,
-                    response_format={"type": "json_object"}
+                    response_format={"type": "json_object"},
+                    client=openai_client
                 )
                 spec_data = json.loads(spec)
                 self.data_to_extract = [field["field_name"] for field in spec_data["extraction_fields"]]
                 self.extraction_spec = spec_data
-                print(f"📋 LLM generated extraction specification:")
-                print(json.dumps(spec_data, indent=2))
+                logger.info(f"📋 LLM generated extraction specification:")
+                logger.info(json.dumps(spec_data, indent=2))
             except Exception as e:
-                print(f"❌ Error generating extraction specification: {str(e)}")
+                logger.error(f"❌ Error generating extraction specification: {str(e)}")
                 self.data_to_extract = []
                 self.extraction_spec = None
 
@@ -105,11 +109,11 @@ class PageData(BaseModel):
 
 class WebParser:
     def __init__(self, requirement: UserRequirement):
-        print(f"\n🚀 Initializing WebParser with URL: {requirement.target_url}")
-        print(f"📋 Data to extract: {requirement.data_to_extract}")
-        print(f"🔍 Max depth: {requirement.max_depth}")
-        print(f"📄 Pagination: {requirement.pagination}")
-        print(f"📝 Additional instructions: {requirement.additional_instructions}")
+        logger.info(f"\n🚀 Initializing WebParser with URL: {requirement.target_url}")
+        logger.info(f"📋 Data to extract: {requirement.data_to_extract}")
+        logger.info(f"🔍 Max depth: {requirement.max_depth}")
+        logger.info(f"📄 Pagination: {requirement.pagination}")
+        logger.info(f"📝 Additional instructions: {requirement.additional_instructions}")
 
         self.requirement = requirement
         self.root_url = requirement.target_url
@@ -123,7 +127,7 @@ class WebParser:
 
     async def analyze_requirement(self) -> Dict:
         """Analyze user requirement and create extraction plan."""
-        print("\n📊 Analyzing user requirements...")
+        logger.info("\n📊 Analyzing user requirements...")
         prompt = f"""
         Analyze this web scraping requirement and create an extraction plan:
 
@@ -148,18 +152,19 @@ class WebParser:
 
         plan = call_openai_sync(
             prompt=prompt,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            client=openai_client
         )
         plan_data = json.loads(plan)
-        print("✅ Requirement analysis complete")
-        print(json.dumps(plan_data, indent=2))
-        print(f"📋 Extraction steps: {len(plan_data['extraction_steps'])}")
+        logger.info("✅ Requirement analysis complete")
+        logger.info(json.dumps(plan_data, indent=2))
+        logger.info(f"📋 Extraction steps: {len(plan_data['extraction_steps'])}")
         # print(f"🔗 Required pages: {len(plan_data['required_pages'])}")
         return plan_data
 
     async def analyze_page_directly(self, html: str, url: str, parent_page: PageData = None) -> Dict:
         """Analyze HTML directly and return all analysis data in one call."""
-        print(f"\n🔍 Analyzing page directly: {url}")
+        logger.info(f"\n🔍 Analyzing page directly: {url}")
 
         prompt = f"""
         Analyze this HTML content of a webpage and provide comprehensive analysis in one JSON response.
@@ -246,24 +251,26 @@ class WebParser:
         """
 
         try:
+            logger.info(f"calling openai sync")
             analysis = call_openai_sync(
                 prompt=prompt,
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                client=openai_client
             )
             analysis_data = json.loads(analysis)
         except json.decoder.JSONDecodeError as e:
-            print(f"❌ JSON decode error: {e}")
+            logger.error(f"❌ JSON decode error: {e}")
             analysis = call_openai_sync(
                 prompt=prompt,
                 model="gpt-4o-mini",
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                client=openai_client
             )
             analysis_data = json.loads(analysis)
 
-        print(f"✅ Page analysis complete")
-        print(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
-        print(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
-
+        logger.info(f"✅ Page analysis complete")
+        logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
+        logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
         # Store the generated code and function name
         generated_code = analysis_data.get('python_code')
         function_name = analysis_data.get('python_code_function_name', 'extract_data')
@@ -280,7 +287,7 @@ class WebParser:
             while current_attempt < max_attempts:
                 try:
                     current_attempt += 1
-                    print(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
+                    logger.info(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
 
                     # Create a temporary module for execution
                     import tempfile
@@ -299,8 +306,8 @@ class WebParser:
                         if hasattr(module, function_name):
                             result = await getattr(module, function_name)(url)
                             code_execution_result = result
-                            print(f"✅ Code execution successful for {url}")
-                            print(f"📊 Result: {json.dumps(result, indent=2)}")
+                            logger.info(f"✅ Code execution successful for {url}")
+                            logger.info(f"📊 Result: {json.dumps(result, indent=2)}")
                             if not result:
                                 raise Exception("empty result")
                             break  # Success, exit the loop
@@ -309,7 +316,7 @@ class WebParser:
 
                 except Exception as e:
                     last_error = str(e)
-                    print(f"❌ Error in attempt {current_attempt}: {last_error}")
+                    logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
 
                     if current_attempt < max_attempts:
                         # Try to fix the code using another LLM
@@ -344,15 +351,16 @@ class WebParser:
                             fixed_code = call_openai_sync(
                                 prompt=fix_prompt,
                                 model="gpt-4.1",  # Use a different model for fixing
-                                response_format={"type": "text"}
+                                response_format={"type": "text"},
+                                client=openai_client
                             )
                             generated_code = fixed_code
-                            print(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
+                            logger.info(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
                         except Exception as fix_error:
-                            print(f"❌ Failed to generate fixed code: {str(fix_error)}")
+                            logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
                             break  # Exit if we can't even generate fixed code
                     else:
-                        print(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
+                        logger.error(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
                         break
 
                 finally:
@@ -365,7 +373,7 @@ class WebParser:
             # Store the final error if all attempts failed
             if not code_execution_result:
                 code_execution_error = f"Failed after {current_attempt} attempts. Last error: {last_error}"
-                print(f"python code: \n {'START=' * 30} {generated_code} {'END=' * 30}")
+                logger.error(f"python code: \n START{'=' * 30} {generated_code} \nEND{'=' * 30}")
 
         # Update plan with available fields
         available_fields = analysis_data.get('available_fields', [])
@@ -385,7 +393,7 @@ class WebParser:
                 un_visited_pages.append(page)
                 self.visited_page_types.add(page["page_type"])
                 self.visited_urls.add(page["url"])
-        print(f"🔗 Next pages to visit:{json.dumps(dict(next_visit_pages=un_visited_pages), indent=2)}")
+        logger.info(f"🔗 Next pages to visit:{json.dumps(dict(next_visit_pages=un_visited_pages), indent=2)}")
         # Return comprehensive analysis data
         return {
             "structured_data": analysis_data.get("structured_data", {}),
@@ -406,13 +414,13 @@ class WebParser:
 
     async def fetch_and_process_page(self, url: str, path: List[str] = None) -> PageData:
         """Fetch and process a page."""
-        print(f"\n📥 Fetching page: {url}")
+        logger.info(f"\n📥 Fetching page: {url}")
         if path is None:
             path = [url]
 
         # Fetch HTML
         html = await _fetch_and_clean(url)
-        print(f"📄 Fetched HTML content ({len(html)} bytes)")
+        logger.info(f"📄 Fetched HTML content ({len(html)} bytes)")
 
         # Analyze page directly (merged html_to_json + analyze_page_structure)
         analysis = await self.analyze_page_directly(html, url)
@@ -420,17 +428,17 @@ class WebParser:
         # Ensure proper data types
         structured_data = analysis.get("structured_data", {})
         if not isinstance(structured_data, dict):
-            print(f"⚠️ Warning: structured_data is not a dict, converting: {type(structured_data)}")
+            logger.warning(f"⚠️ Warning: structured_data is not a dict, converting: {type(structured_data)}")
             structured_data = {"data": structured_data} if structured_data else {}
 
         code_execution_result = analysis.get("code_execution_result")
         if code_execution_result is not None and not isinstance(code_execution_result, dict):
-            print(f"⚠️ Warning: code_execution_result is not a dict, converting: {type(code_execution_result)}")
+            logger.warning(f"⚠️ Warning: code_execution_result is not a dict, converting: {type(code_execution_result)}")
             code_execution_result = {"result": code_execution_result} if code_execution_result else None
 
         code_execution_error = analysis.get("code_execution_error")
         if code_execution_error is not None and not isinstance(code_execution_error, str):
-            print(f"⚠️ Warning: code_execution_error is not a string, converting: {type(code_execution_error)}")
+            logger.warning(f"⚠️ Warning: code_execution_error is not a string, converting: {type(code_execution_error)}")
             code_execution_error = str(code_execution_error) if code_execution_error else None
 
         # Create page data
@@ -457,7 +465,7 @@ class WebParser:
 
     async def build_page_tree(self):
         """Build tree of pages starting from root."""
-        print("\n🌳 Building page tree...")
+        logger.info("\n🌳 Building page tree...")
         # First analyze the requirement
         plan = await self.analyze_requirement()
         self.plan = plan
@@ -468,10 +476,10 @@ class WebParser:
 
         async def process_page(page: PageData, depth: int):
             if depth >= self.requirement.max_depth:
-                print(f"⏹️ Reached max depth {depth}, stopping...")
+                logger.info(f"⏹️ Reached max depth {depth}, stopping...")
                 return
 
-            print(f"\n📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
+            logger.info(f"\n📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
             # Analysis is already done in fetch_and_process_page, just use the existing data
             analysis = page.analysis_data
             page.page_type = analysis["page_type"]
@@ -479,9 +487,9 @@ class WebParser:
             # Process next pages to visit
             next_pages_to_visit = analysis.get('next_pages_to_visit', [])
             if isinstance(next_pages_to_visit, list):
-                print(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
+                logger.info(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
                 for next_page in next_pages_to_visit:
-                    print(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
+                    logger.info(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
                     child_page = await self.fetch_and_process_page(
                         next_page['url'],
                         path=page.path + [next_page['url']]
@@ -492,12 +500,12 @@ class WebParser:
                         await process_page(child_page, depth + 1)
 
         await process_page(root_page, 0)
-        print("\n✅ Page tree building complete")
-        print(f"📊 Total pages processed: {len(self.page_tree)}")
+        logger.info("\n✅ Page tree building complete")
+        logger.info(f"📊 Total pages processed: {len(self.page_tree)}")
 
     async def generate_extraction_code(self) -> str:
         """Generate Python code for data extraction."""
-        print("\n💻 Generating extraction code...")
+        logger.info("\n💻 Generating extraction code...")
 
         # Collect all working code and their results
         working_codes = []
@@ -603,26 +611,29 @@ class WebParser:
          Use following as examples which can help you generate the code required for above GTM utility:
          {sample_utility_code}
         """
-        print(f"prompt len:{len(prompt)}")
+        logger.info(f"prompt len:{len(prompt)}")
         code_gen = await call_openai_async(
             prompt=prompt,
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            client=openai_async_client
         )
         code_gen = json.loads(code_gen)
         code = code_gen["python_code"]
+        # Collect extra info for UI
+        self.extra_info = {k: v for k, v in code_gen.items() if k != "python_code"}
         for k, v in code_gen.items():
             if not k == "python_code":
-                print(k, ":", v)
+                logger.info(f"{k} : {v}")
         self.python_code_function_name = code_gen.get("python_code_function_name", "extract_data")
 
         # Clean any markdown formatting
         code = code.replace("```python", "").replace("```", "").strip()
         self.generated_code = code
-        print("✅ Code generation complete")
-        print(f"\nGenerated code: entry function is  {self.python_code_function_name}")
-        print("=" * 50)
-        print(code)
-        print("=" * 50)
+        logger.info("✅ Code generation complete")
+        logger.info(f"\nGenerated code: entry function is  {self.python_code_function_name}")
+        logger.info("=" * 50)
+        logger.info(code)
+        logger.info("=" * 50)
         # Validate the generated code by attempting to execute it
         try:
             # Create a temporary module
@@ -640,12 +651,12 @@ class WebParser:
 
                     # Check if the required function exists
                     if not hasattr(module, self.python_code_function_name):
-                        print(f"Function '{self.python_code_function_name}' not found in generated code")
+                        logger.error(f"Function '{self.python_code_function_name}' not found in generated code")
                         raise AttributeError(f"Function '{self.python_code_function_name}' not found in generated code")
 
-                    print("✅ Code validation successful")
+                    logger.info("✅ Code validation successful")
                 except Exception as e:
-                    print(f"❌ Generated code validation failed: {str(e)}")
+                    logger.error(f"❌ Generated code validation failed: {str(e)}")
                     # Try to fix the code
                     fix_prompt = f"""
                     Fix the following Python code that failed validation with error: {str(e)}
@@ -686,31 +697,32 @@ class WebParser:
                         fixed_code = call_openai_sync(
                             prompt=fix_prompt,
                             model="gpt-4.1",
-                            response_format={"type": "text"}
+                            response_format={"type": "text"},
+                            client=openai_client
                         )
                         code = fixed_code
-                        print(f"🔄 Generated fixed code")
+                        logger.info(f"🔄 Generated fixed code")
                     except Exception as fix_error:
-                        print(f"❌ Failed to generate fixed code: {str(fix_error)}")
+                        logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
                 finally:
                     # Clean up
                     os.unlink(f.name)
 
         except Exception as e:
-            print(f"❌ Error during code validation: {str(e)}")
+            logger.error(f"❌ Error during code validation: {str(e)}")
             raise Exception(e)
 
         self.generated_code = code
-        print("✅ Code generation complete")
-        print("\nGenerated code preview:")
-        print("=" * 50)
-        print(code[:500] + "..." if len(code) > 500 else code)
-        print("=" * 50)
+        logger.info("✅ Code generation complete")
+        logger.info("\nGenerated code preview:")
+        logger.info("=" * 50)
+        logger.info(code[:500] + "..." if len(code) > 500 else code)
+        logger.info("=" * 50)
         return code
 
     async def execute_generated_code(self, url: str) -> Dict:
         """Execute the generated code for a specific URL."""
-        print(f"\n▶️ Executing generated code for URL: {url}")
+        logger.info(f"\n▶️ Executing generated code for URL: {url}")
         if not self.generated_code:
             raise ValueError("No code generated yet")
 
@@ -722,7 +734,7 @@ class WebParser:
         while current_attempt < max_attempts:
             try:
                 current_attempt += 1
-                print(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code")
+                logger.info(f"\n🔄 Attempt {current_attempt}/{max_attempts} to execute code")
 
                 # Create a temporary module
                 import tempfile
@@ -732,90 +744,122 @@ class WebParser:
                     try:
                         f.write(current_code.encode())
                         f.flush()
+                        script_path = f.name
 
-                        spec = importlib.util.spec_from_file_location("page_extractor", f.name)
-                        module = importlib.util.module_from_spec(spec)
-                        spec.loader.exec_module(module)
+                        out_path = common.make_temp_csv_filename("codegen_barbarika_webparsing")
+                        # Execute the function using subprocess
+                        env = os.environ.copy()
+                        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                        env["PYTHONPATH"] = env.get("PYTHONPATH", "") + ":" + root_dir
 
-                        # Execute the code using the specified function name
-                        if hasattr(module, self.python_code_function_name):
-                            out_path = common.make_temp_csv_filename("codegen_barbarika_webparsing")
+                        cmd = ["python", script_path, out_path]
+                        proc = subprocess.run(cmd, capture_output=True, text=True, env=env)
+                        status = "SUCCESS" if proc.returncode == 0 else "FAIL"
+                        output = (
+                            proc.stdout
+                            if proc.returncode == 0
+                            else (proc.stderr or "Error running command")
+                        )
+                        logger.info(f"[Subprocess] Status: {status}")
+                        logger.info(f"[Subprocess] Output: {output}")
 
-                            result = await getattr(module, self.python_code_function_name)(out_path)
-                            print("✅ Code execution successful")
-                            print(f"📊 Result: {json.dumps(result, indent=2)}")
-                            if not result:
-                                return dict()
-                            return result
+                        # Try to read the CSV file to get the actual extracted data
+                        extracted_data = []
+                        if os.path.exists(out_path):
+                            logger.info(f"read the CSV file to get the actual extracted data: {out_path}")
+                            import csv
+                            try:
+                                with open(out_path, 'r', newline='', encoding='utf-8') as csvfile:
+                                    reader = csv.DictReader(csvfile)
+                                    extracted_data = list(reader)
+                                    logger.info(f"✅ Successfully read {len(extracted_data)} rows from CSV")
+                            except Exception as csv_error:
+                                logger.warning(f"⚠️ Warning: Could not read CSV file: {csv_error}")
+
+                        # If subprocess failed, trigger code-fix logic
+                        if proc.returncode != 0:
+                            last_error = f"Subprocess failed with return code {proc.returncode}.\nStdout:\n{proc.stdout}\nStderr:\n{proc.stderr}"
+                            logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
+                            if current_attempt < max_attempts:
+                                fix_prompt = f"""
+                                Fix the following Python code that failed to execute with error: {last_error}
+
+                                Original code:
+                                {current_code}
+
+                                Subprocess stdout:
+                                {proc.stdout}
+
+                                Subprocess stderr:
+                                {proc.stderr}
+
+                                Requirements:
+                                1. The code should extract data from the HTML
+                                2. It should handle the error: {last_error}
+                                3. It should return a dictionary with the extracted data
+                                4. Use BeautifulSoup for parsing
+                                5. Previous attempts: {current_attempt}/{max_attempts}
+                                6. The main function MUST be named '{self.python_code_function_name}'
+                                7. Include proper error handling and logging
+                                8. Use type hints for all functions
+                                9. Add docstrings for all functions
+                                10. Follow PEP 8 style guidelines
+                                11. Handle rate limiting and retries
+                                12. Include proper exception handling
+                                13. DO NOT hallucinate data - only extract what exists in the HTML
+                                14. Add validation steps for extracted data
+                                15. Add logging for any assumptions made
+
+                                CRITICAL: Do NOT use asyncio.run() or any event loop management in the generated code. The main function will be called as a script or awaited by the caller.
+
+                                Return only the fixed Python code without any explanations.
+                                IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
+                                """
+                                try:
+                                    fixed_code = call_openai_sync(
+                                        prompt=fix_prompt,
+                                        model="gpt-4o-mini",  # Use a different model for fixing
+                                        response_format={"type": "text"},
+                                        client=openai_client
+                                    )
+                                    current_code = fixed_code
+                                    logger.info(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
+                                    continue  # Retry with fixed code
+                                except Exception as fix_error:
+                                    logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
+                                    break  # Exit if we can't even generate fixed code
+                            else:
+                                logger.error(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
+                                break
+
+                        # If we have extracted data, return it
+                        if extracted_data:
+                            logger.info("✅ Code execution successful with extracted data")
+                            logger.info(f"📊 Extracted {len(extracted_data)} items")
+                            return {
+                                "extracted_data": extracted_data,
+                                "csv_file": out_path,
+                                "total_items": len(extracted_data),
+                                "execution_success": proc.returncode == 0,
+                                "subprocess_status": status,
+                                "subprocess_output": output
+                            }
                         else:
-                            raise AttributeError(
-                                f"Function '{self.python_code_function_name}' not found in generated code")
-
+                            # No data extracted, return subprocess output for debugging
+                            logger.info("⚠️ No data extracted")
+                            return {
+                                "extracted_data": [],
+                                "csv_file": out_path,
+                                "total_items": 0,
+                                "execution_success": proc.returncode == 0,
+                                "subprocess_status": status,
+                                "subprocess_output": output,
+                                "message": "No data found to extract or CSV could not be read"
+                            }
                     except Exception as e:
                         last_error = str(e)
-                        print(f"❌ Error in attempt {current_attempt}: {last_error}")
-
-                        if current_attempt < max_attempts:
-                            # Try to fix the code using another LLM
-                            fix_prompt = f"""
-                            Fix the following Python code that failed to execute with error: {last_error}
-
-                            Original code:
-                            {current_code}
-
-                            Requirements:
-                            1. The code should extract data from the HTML
-                            2. It should handle the error: {last_error}
-                            3. It should return a dictionary with the extracted data
-                            4. Use BeautifulSoup for parsing
-                            5. Previous attempts: {current_attempt}/{max_attempts}
-                            6. The main function MUST be named '{self.python_code_function_name}'
-                            7. Include proper error handling and logging
-                            8. Use type hints for all functions
-                            9. Add docstrings for all functions
-                            10. Follow PEP 8 style guidelines
-                            11. Handle rate limiting and retries
-                            12. Include proper exception handling
-                            13. DO NOT hallucinate data - only extract what exists in the HTML
-                            14. Add validation steps for extracted data
-                            15. Add logging for any assumptions made
-
-                            CRITICAL REQUIREMENTS TO PREVENT COMMON ISSUES:
-                            17. Proper CLI argument handling:
-                                - Use argparse.ArgumentParser() correctly
-                                - Define  Analyzing user requirementall expected arguments with proper types
-                                - Handle the case when no arguments are provided
-                                - Use parser.parse_args() to parse arguments
-                                - Add proper help text for all arguments
-                            18. Avoid deprecated packages:
-                                - DO NOT use pkg_resources (use importlib.metadata instead)
-                                - DO NOT use any deprecated imports or functions
-                                - Use modern Python 3.8+ syntax
-                            19. Proper script structure:
-                                - Include if __name__ == "__main__": block
-                                - Handle both direct execution and import scenarios
-                                - Use asyncio.run() for async main functions
-                                - Proper error handling in main function
-
-                            Return only the fixed Python code without any explanations.
-                            IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
-                            """
-
-                            try:
-                                fixed_code = call_openai_sync(
-                                    prompt=fix_prompt,
-                                    model="gpt-4.1",  # Use a different model for fixing
-                                    response_format={"type": "text"}
-                                )
-                                current_code = fixed_code
-                                print(f"🔄 Generated fixed code for attempt {current_attempt + 1}")
-                            except Exception as fix_error:
-                                print(f"❌ Failed to generate fixed code: {str(fix_error)}")
-                                break  # Exit if we can't even generate fixed code
-                        else:
-                            print(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
-                            break
-
+                        logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
+                        # No code-fix logic here; only handle in proc.returncode != 0
                     finally:
                         # Clean up temporary files
                         try:
@@ -825,14 +869,19 @@ class WebParser:
 
             except Exception as e:
                 last_error = str(e)
-                print(f"❌ Error during execution: {last_error}")
+                logger.error(f"❌ Error during execution: {last_error}")
                 if current_attempt >= max_attempts:
                     return {}
 
         # If we get here, all attempts failed
         error_msg = f"Failed after {current_attempt} attempts. Last error: {last_error}"
-        print(f"❌ {error_msg}")
-        return {}
+        logger.error(f"❌ {error_msg}")
+        return {
+            "extracted_data": [],
+            "total_items": 0,
+            "execution_success": False,
+            "error": error_msg
+        }
 
 
 def web_parse_to_json(
@@ -869,7 +918,7 @@ def web_parse_to_json(
             import pandas as pd
             df = pd.DataFrame(result)
             df.to_csv(csv_file, index=False)
-            print(f"✅ Results saved to CSV: {csv_file}")
+            logger.info(f"✅ Results saved to CSV: {csv_file}")
 
         # Save results to JSON file
         with open(output_file, 'w', encoding='utf-8') as f:

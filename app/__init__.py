@@ -1479,8 +1479,24 @@ def web_parse_utility():
                         yield log_message('Executing generated code...')
                         result = loop.run_until_complete(parser.execute_generated_code(url))
 
-                        # Send completion message
-                        yield f"data: {json.dumps({'type': 'complete', 'code': parser.generated_code, 'result': result})}\n\n"
+                        # Send completion message with extracted data
+                        completion_data = {
+                            'type': 'complete',
+                            'code': parser.generated_code,
+                            'result': result,
+                            'extracted_data': result.get('extracted_data', []),
+                            'total_items': result.get('total_items', 0),
+                            'execution_success': result.get('execution_success', False),
+                            'csv_file': result.get('csv_file', ''),
+                            'message': result.get('message', ''),
+                            'extra_info': getattr(parser, 'extra_info', {})
+                        }
+                        
+                        # Store CSV file path in session for download
+                        if result.get('csv_file'):
+                            session['web_parse_csv_file'] = result.get('csv_file')
+                        
+                        yield f"data: {json.dumps(completion_data)}\n\n"
 
                     except Exception as e:
                         error_msg = f"Error: {str(e)}"
@@ -1563,8 +1579,24 @@ def web_parse_utility():
                 yield log_message('Executing generated code...')
                 result = loop.run_until_complete(parser.execute_generated_code(url))
 
-                # Send completion message
-                yield f"data: {json.dumps({'type': 'complete', 'code': parser.generated_code, 'result': result})}\n\n"
+                # Send completion message with extracted data
+                completion_data = {
+                    'type': 'complete',
+                    'code': parser.generated_code,
+                    'result': result,
+                    'extracted_data': result.get('extracted_data', []),
+                    'total_items': result.get('total_items', 0),
+                    'execution_success': result.get('execution_success', False),
+                    'csv_file': result.get('csv_file', ''),
+                    'message': result.get('message', ''),
+                    'extra_info': getattr(parser, 'extra_info', {})
+                }
+                
+                # Store CSV file path in session for download
+                if result.get('csv_file'):
+                    session['web_parse_csv_file'] = result.get('csv_file')
+                
+                yield f"data: {json.dumps(completion_data)}\n\n"
 
             except Exception as e:
                 error_msg = f"Error: {str(e)}"
@@ -1613,3 +1645,20 @@ def save_web_parse_utility():
     except Exception as e:
         logging.error('Error in save_web_parse_utility: %s', str(e))
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/download_web_parse_csv')
+def download_web_parse_csv():
+    """Download the CSV file from the latest web parsing session."""
+    csv_file = session.get('web_parse_csv_file')
+    if not csv_file or not os.path.exists(csv_file):
+        flash("No CSV file found from web parsing session.")
+        return redirect(url_for("run_utility"))
+    
+    filename = os.path.basename(csv_file)
+    return send_from_directory(
+        os.path.dirname(csv_file), 
+        filename, 
+        as_attachment=True,
+        download_name='extracted_data.csv'
+    )
