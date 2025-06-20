@@ -360,7 +360,7 @@
         const params = (PARAM_MAP[util] || []).filter(p => !['output_file','--output_file','input_file','--input_file','csv_file','--csv_file'].includes(p.name));
         const paramsVisible = params.length > 0 && !(
           ['file', 'previous'].includes(mode) &&
-          !['call_openai_llm', 'score_lead', 'extract_from_webpage', 'find_user_by_job_title'].includes(util)
+          !['call_openai_llm', 'score_lead', 'extract_from_webpage'].includes(util)
         );
         document.getElementById('params-container').style.display = paramsVisible ? '' : 'none';
         renderParams();
