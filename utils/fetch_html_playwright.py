@@ -18,7 +18,7 @@ import httpx
 from openai import OpenAI
 from playwright.async_api import TimeoutError as PwTimeout
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
+from playwright_stealth import stealth_async
 
 from utils import common
 
@@ -48,8 +48,7 @@ CHALLENGE_INDICATORS = [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Stealth 2.0 instance for applying evasions to Playwright contexts
-stealth = Stealth()
+# Playwright stealth helper
 
 
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
@@ -106,46 +105,56 @@ async def _submit_and_poll(
 
 async def solve_any_captcha(page, url: str, api_key: Optional[str]):
     if not api_key:
+        logger.info("No captcha key provided, skipping captcha check")
         return
+    logger.info("Checking page for captcha challenges")
     ts_div = await page.query_selector("div.cf-turnstile[data-sitekey]")
     if ts_div:
         sk = await ts_div.get_attribute("data-sitekey")
+        logger.info("Solving Cloudflare Turnstile captcha")
         token = await _submit_and_poll("turnstile", sk, url, api_key)
         if token:
             await page.evaluate(
                 "(tok)=>{window.postMessage({cf-turnstile-response:tok},'*');}", token
             )
             await asyncio.sleep(2)
+            logger.info("Turnstile captcha solved")
             return
     h_iframe = await page.query_selector("iframe[src*='hcaptcha.com']")
     if h_iframe:
         src = await h_iframe.get_attribute("src") or ""
         if "sitekey=" in src:
             sk = src.split("sitekey=")[1].split("&")[0]
+            logger.info("Solving hCaptcha challenge")
             js = "(tok)=>{let el=document.querySelector('[name=\"h-captcha-response\"]')||document.createElement('textarea');el.name='h-captcha-response';el.style.display='none';el.value=tok;document.body.appendChild(el);}"
             token = await _submit_and_poll("hcaptcha", sk, url, api_key)
             if token:
                 await page.evaluate(js, token)
                 await asyncio.sleep(2)
+                logger.info("hCaptcha solved")
                 return
     r_iframe = await page.query_selector("iframe[src*='recaptcha']")
     if r_iframe:
         src = await r_iframe.get_attribute("src") or ""
         if "k=" in src:
             sk = src.split("k=")[1].split("&")[0]
+            logger.info("Solving reCAPTCHA challenge")
             js = "(tok)=>{let el=document.querySelector('[name=\"g-recaptcha-response\"]')||document.createElement('textarea');el.name='g-recaptcha-response';el.style.display='none';el.value=tok;document.body.appendChild(el);}"
             token = await _submit_and_poll("userrecaptcha", sk, url, api_key)
             if token:
                 await page.evaluate(js, token)
                 await asyncio.sleep(2)
+                logger.info("reCAPTCHA solved")
 
 
 @asynccontextmanager
 async def browser_ctx(proxy_url: Optional[str]):
     fp = fingerprint()
     async with async_playwright() as p:
+        headless = os.getenv("HEADLESS", "true").lower() != "false"
+        logger.info("Launching browser headless=%s", headless)
         launch: Dict[str, Any] = {
-            "headless": os.getenv("HEADLESS", "true").lower() != "false",
+            "headless": headless,
             "args": [
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
@@ -153,6 +162,7 @@ async def browser_ctx(proxy_url: Optional[str]):
             ],
         }
         if proxy_url:
+            logger.info("Using proxy %s", proxy_url)
             launch["proxy"] = parse_proxy(proxy_url)
         browser = await p.chromium.launch(**launch)
         try:
@@ -168,7 +178,7 @@ async def browser_ctx(proxy_url: Optional[str]):
                 ignore_https_errors=True,
             )
             # Apply Stealth evasions to every page in the context
-            await stealth.apply_stealth_async(ctx)
+            await stealth_async(ctx)
             yield ctx
             await ctx.storage_state(path=COOKIE_FILE)
         finally:
@@ -226,6 +236,7 @@ async def _do_fetch(
                 logger.warning("Nav timeout, retrying…")
 
         if proxy_url:
+            logger.info("Applying proxy fallback")
             if await page.evaluate(CF_TITLE_JS):
                 logger.info("Waiting out Cloudflare JS challenge…")
                 try:
@@ -235,6 +246,7 @@ async def _do_fetch(
 
             await wait_for_cf_clearance(ctx, urlparse(url).hostname)
             await solve_any_captcha(page, url, captcha_key)
+            logger.info("Proxy and captcha handling complete")
 
         # Lazy scroll and click "Show more" buttons
         last_height = None
@@ -283,7 +295,7 @@ async def fetch_html(
             logger.info("\u2713 Successful fetch without proxy")
             return html
 
-        logger.info("\ud83d\udd33 Challenge detected, retrying with proxy")
+        logger.info("\ud83d\udd33 Challenge detected, retrying with proxy %s", proxy_url)
     except Exception as exc:
         logger.warning("Initial fetch without proxy failed: %s", exc)
 
