@@ -259,11 +259,11 @@ download link will be displayed. Plain text output is shown in the page.
 - [Update Salesforce Contact](docs/utils_usage.md#update-salesforce-contact) – modify contact fields.
 - [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
 - [Scrape Website HTML (Playwright)](utils/fetch_html_playwright.py) – scrape page HTML for lead extraction.
-- [scrape and extract leads from website](utils/extract_from_webpage.py) – scrape any web page with Playwright and extract companies or leads listed. Provide Brightdata proxy and 2captcha API keys for stealth mode. The script leverages the `Stealth` class from `playwright_stealth` 2.0 to avoid detection. You can supply natural language actions for navigation with `--initial_actions` and `--pagination_actions`. Use `--show_ux` to see the browser.
+- [scrape and extract leads from website](utils/extract_from_webpage.py) – scrape any web page with Playwright and extract companies or leads listed. Provide Brightdata proxy and 2captcha API keys for stealth mode.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 - [Create Dhisana Webhook](docs/create_dhisana_webhook.md) – configure your webhook and API key.
 
-## Next Workitems
+## Next Workitems in Roadmap:
 
 Playbooks to train and test the AI agent:
 - [Common playbooks](docs/playbooks.md)
