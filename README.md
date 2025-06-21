@@ -4,6 +4,8 @@
 
 <a href="https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de" target="_blank">Watch project introduction</a>
 
+![Run utility example](docs/assets/images/dhisana_run_utility_ex.gif)
+
 ## How Does GTM Builder Agent Work?
 
 We’ve seeded the repository with few-shot examples of essential tools and workflows commonly used in GTM operations. When a GTM engineer describes a new workflow in natural language, the agent selects relevant examples, applies the user’s instructions along with a meta prompt, and generates a new tool or workflow. It then runs tests and outputs a ready-to-use tool.
