@@ -18,7 +18,7 @@ import httpx
 from openai import OpenAI
 from playwright.async_api import TimeoutError as PwTimeout
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
+from playwright_stealth import stealth_async
 
 from utils import common
 
@@ -48,8 +48,7 @@ CHALLENGE_INDICATORS = [
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Stealth 2.0 instance for applying evasions to Playwright contexts
-stealth = Stealth()
+# Playwright stealth helper
 
 
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
@@ -179,7 +178,7 @@ async def browser_ctx(proxy_url: Optional[str]):
                 ignore_https_errors=True,
             )
             # Apply Stealth evasions to every page in the context
-            await stealth.apply_stealth_async(ctx)
+            await stealth_async(ctx)
             yield ctx
             await ctx.storage_state(path=COOKIE_FILE)
         finally:
