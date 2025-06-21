@@ -44,7 +44,9 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    ```bash
    docker build -t gtm-ai-tools .
    ```
-3. **Add your API keys** to `.env` (see [API key setup](docs/api_keys.md))
+3. **Add your environment variables** to `.env` (see
+   [Environment variables](docs/environment_variables.md) and
+   [API key setup](docs/api_keys.md))
    ```bash
    OPENAI_API_KEY=...
    OPENAI_MODEL_NAME=gpt-4.1
