@@ -170,7 +170,11 @@ if 'playwright' not in sys.modules:
 
 if 'playwright_stealth' not in sys.modules:
     stealth = types.ModuleType('playwright_stealth')
-    stealth.stealth_async = lambda page: None
+    class Stealth:
+        async def apply_stealth_async(self, ctx):
+            return None
+
+    stealth.Stealth = Stealth
     sys.modules['playwright_stealth'] = stealth
 
 if 'flask' not in sys.modules:

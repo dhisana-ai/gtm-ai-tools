@@ -299,7 +299,7 @@ async def fetch_html(
     except Exception as exc:
         logger.warning("Initial fetch without proxy failed: %s", exc)
 
-    logger.info("\ud83c\df10 Using proxy for fetch")
+    logger.info("\U0001f310 Using proxy for fetch")
     return await _do_fetch(url, proxy_url, captcha_key)
 
 
