@@ -11,16 +11,16 @@ import logging
 import os
 import random
 from contextlib import asynccontextmanager
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
 from urllib.parse import urlparse
 
+import httpx
 from openai import OpenAI
+from playwright.async_api import TimeoutError as PwTimeout
+from playwright.async_api import async_playwright
+from playwright_stealth import Stealth
 
 from utils import common
-
-import httpx
-from playwright.async_api import async_playwright, TimeoutError as PwTimeout
-from playwright_stealth import stealth_async
 
 COOKIE_FILE = str(common.get_output_dir() / "playwright_state.json")
 CF_TITLE_JS = "document.title.toLowerCase().includes('just a moment')"
@@ -47,6 +47,9 @@ CHALLENGE_INDICATORS = [
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+# Stealth 2.0 instance for applying evasions to Playwright contexts
+stealth = Stealth()
 
 
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
@@ -164,25 +167,55 @@ async def browser_ctx(proxy_url: Optional[str]):
                 storage_state=storage,
                 ignore_https_errors=True,
             )
+            # Apply Stealth evasions to every page in the context
+            await stealth.apply_stealth_async(ctx)
             yield ctx
             await ctx.storage_state(path=COOKIE_FILE)
         finally:
             await browser.close()
 
 
-async def apply_stealth(page):
+async def _extra_evasions(page):
+    """Tiny manual evasions layered on top of Stealth."""
     await page.add_init_script(
-        "Object.defineProperty(navigator,'webdriver',{get:()=>false});"
+        """
+        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+        window.chrome = { runtime: {} };
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+        """
     )
-    await stealth_async(page)
+
+
+async def new_page(context):
+    """Create a new page with extra evasions applied."""
+    page = await context.new_page()
+    await _extra_evasions(page)
+    return page
+
+
+async def wait_for_cf_clearance(context, host: str, timeout: int = 60_000) -> bool:
+    """Poll context cookies until the `cf_clearance` cookie appears."""
+    for _ in range(int(timeout / 1_000)):
+        for c in await context.cookies():
+            if c["name"] == "cf_clearance" and host.endswith(c["domain"].lstrip(".")):
+                logger.info("cf_clearance cookie present \u2714")
+                return True
+        await asyncio.sleep(1)
+    logger.warning("cf_clearance cookie not set within timeout.")
+    return False
 
 
 async def _do_fetch(
     url: str, proxy_url: Optional[str], captcha_key: Optional[str]
 ) -> str:
     async with browser_ctx(proxy_url) as ctx:
-        page = await ctx.new_page()
-        await apply_stealth(page)
+        page = await new_page(ctx)
+
+        # Human-like mouse movement
+        await page.mouse.move(120, 120)
+        await asyncio.sleep(0.4)
+
         for attempt in (1, 2):
             try:
                 await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
@@ -190,14 +223,37 @@ async def _do_fetch(
             except PwTimeout:
                 if attempt == 2:
                     raise
-                logger.warning("navigation timeout, retrying")
+                logger.warning("Nav timeout, retrying…")
+
         if proxy_url:
             if await page.evaluate(CF_TITLE_JS):
+                logger.info("Waiting out Cloudflare JS challenge…")
                 try:
                     await page.wait_for_function(f"!({CF_TITLE_JS})", timeout=60_000)
                 except PwTimeout:
-                    pass
+                    logger.warning("CF title never cleared (60 s)")
+
+            await wait_for_cf_clearance(ctx, urlparse(url).hostname)
             await solve_any_captcha(page, url, captcha_key)
+
+        # Lazy scroll and click "Show more" buttons
+        last_height = None
+        await asyncio.sleep(15)
+        for _ in range(6):
+            await page.mouse.wheel(0, 300)
+            await asyncio.sleep(3)
+            height = await page.evaluate("document.body.scrollHeight")
+            if height == last_height:
+                break
+            last_height = height
+        for btn in (await page.query_selector_all("text='Show more'"))[:3]:
+            try:
+                await btn.click()
+                await asyncio.sleep(1)
+            except Exception:
+                pass
+
+        logger.info("✓ Done  Title: %s", await page.title())
         wait_time = 30 if os.getenv("HEADLESS", "true").lower() == "false" else 5
         await asyncio.sleep(wait_time)
         return await page.content()
@@ -207,13 +263,31 @@ async def fetch_html(
     url: str, proxy_url: Optional[str] = None, captcha_key: Optional[str] = None
 ) -> str:
     if not proxy_url:
+        logger.info("\ud83d\udd17 No proxy available, fetching directly")
         return await _do_fetch(url, None, captcha_key)
+
     try:
+        logger.info("\ud83d\udd17 First attempting without proxy")
         html = await _do_fetch(url, None, captcha_key)
-        if not any(m in html.lower() for m in CHALLENGE_INDICATORS):
+        html_lower = html.lower()
+
+        if (
+            "linkedin.com/in/" in html_lower
+            or "linkedin.com/company" in html_lower
+            or ("<a" in html_lower and 'target="_blank"' in html_lower)
+        ):
+            logger.info("\u2713 LinkedIn or target=_blank: returning direct content")
             return html
-    except Exception:
-        pass
+
+        if not any(marker in html_lower for marker in CHALLENGE_INDICATORS):
+            logger.info("\u2713 Successful fetch without proxy")
+            return html
+
+        logger.info("\ud83d\udd33 Challenge detected, retrying with proxy")
+    except Exception as exc:
+        logger.warning("Initial fetch without proxy failed: %s", exc)
+
+    logger.info("\ud83c\df10 Using proxy for fetch")
     return await _do_fetch(url, proxy_url, captcha_key)
 
 
