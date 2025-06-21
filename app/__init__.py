@@ -982,15 +982,10 @@ def run_utility():
     )
 
 
-@app.route("/settings", methods=["GET", "POST"])
+@app.route("/settings")
 def settings():
+    """Display environment variables without allowing edits."""
     env_vars = load_env()
-    if request.method == "POST":
-        for key in env_vars:
-            value = request.form.get(key, "")
-            set_key(ENV_FILE, key, value)
-        flash("Settings saved.")
-        return redirect(url_for("settings"))
     return render_template("settings.html", env_vars=env_vars)
 
 
