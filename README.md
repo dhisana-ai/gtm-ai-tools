@@ -266,6 +266,7 @@ download link will be displayed. Plain text output is shown in the page.
 ## Scrape Content Hacks
 
 - [Scrape LinkedIn Commenters](docs/scrape_linkedin_commenters.md) – grab profile URLs from anyone commenting on a post.
+- [Scrape any page with ChatGPT](docs/scrape_links_with_chatgpt.md) – generate a quick console script to collect links from a website.
 
 ## Next Workitems in Roadmap:
 
