@@ -391,11 +391,13 @@ the `OPENAI_API_KEY` in the environment variables.
 task run:command -- get_website_information http://example.com/ "what is the main color of the website?"
 ```
 
-## Extract Leads From Website
+## scrape and extract leads from website
 
-`extract_from_webpage.py` scrapes a page with Playwright and uses an LLM to
-parse leads or organizations from the text. Provide the starting URL and use
-`--lead` or `--leads` to control how many leads are returned. You can run custom
+`extract_from_webpage.py` scrapes any webpage with Playwright and pulls out
+companies or leads mentioned on the page. Set your Brightdata proxy URL in
+`PROXY_URL` and a 2Captcha key in `TWO_CAPTCHA_API_KEY` to operate in stealth
+mode. Provide the starting URL and use `--lead` or `--leads` to control how many
+leads are returned. You can run custom
 JavaScript on the initial page load, on each page load and for pagination by
 supplying natural language instructions with `--initial_actions`,
 `--page_actions` and `--pagination_actions`. Parsing behaviour can be tweaked
