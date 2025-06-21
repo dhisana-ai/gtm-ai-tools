@@ -34,8 +34,22 @@ Join the discussion on our [Slack community channel](https://join.slack.com/t/dh
 
 ## Quick Start
 
-Follow these steps to spin up the container and run a utility.
-If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio_setup.md).
+You can either host the utilities in the cloud with Fly.io or run them locally
+in Docker.
+
+### Option&nbsp;1: Cloud hosted on Fly.io
+
+1. Sign up at <https://fly.io>.
+2. Add your `OPENAI_API_KEY` as an environment variable in Fly.io.
+3. Connect the repository <https://github.com/dhisana-ai/gtm-ai-tools> in the
+   Fly.io dashboard and launch the app.
+4. Optionally add any other variables from `.env` depending on the tools you
+   want to run, or create your own tool with **Create New GTM Utility** once the
+   app is deployed.
+
+See [Fly.io setup](docs/flyio_setup.md) for more details.
+
+### Option&nbsp;2: Run locally with Docker
 
 1. **Clone the repository**
    ```bash
@@ -62,31 +76,33 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
-   4. **Start the container and open the app**
+4. **Start the container and open the app**
 
-      ```bash
-       # In Git Bash, get the Windows-style path of your current directory:
-       H="$(pwd -W)"
-   
-       # Run the container, bind-mounting your host folders correctly:
-      docker run \
-        --env-file .env \
-        -p 8080:8080 \
-        -v "${H}/data:/data" \
-        -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
-        gtm-ai-tools
-      ```
+   ```bash
+   # In Git Bash, get the Windows-style path of your current directory:
+   H="$(pwd -W)"
 
-      Log in using the username from `APP_USERNAME` (defaults to `user`) and the
-      password set in `APP_PASSWORD`.
-      Mounting your host `data` directory to `/data` lets you access uploads and
-      outputs outside the container. Replace `$(pwd)/data` with any path on your
-      system.
+   # Run the container, bind-mounting your host folders correctly:
+   docker run \
+     --env-file .env \
+     -p 8080:8080 \
+     -v "${H}/data:/data" \
+     -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
+     gtm-ai-tools
+   ```
 
-      To add custom utilities, mount your host `gtm_utility` folder into the
-      container's gtm_utility path:
+   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+   password set in `APP_PASSWORD`.
+   Mounting your host `data` directory to `/data` lets you access uploads and
+   outputs outside the container. Replace `$(pwd)/data` with any path on your
+   system.
 
-         -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
+   To add custom utilities, mount your host `gtm_utility` folder into the
+   container's gtm_utility path:
+
+   ```bash
+   -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
+   ```
 
 ## Repository structure
 
