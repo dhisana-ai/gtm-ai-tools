@@ -396,7 +396,8 @@ task run:command -- get_website_information http://example.com/ "what is the mai
 `extract_from_webpage.py` scrapes any webpage with Playwright and pulls out
 companies or leads mentioned on the page. Set your Brightdata proxy URL in
 `PROXY_URL` and a 2Captcha key in `TWO_CAPTCHA_API_KEY` to operate in stealth
-mode. Provide the starting URL and use `--lead` or `--leads` to control how many
+mode. The helper uses `playwright_stealth` 2.0's `Stealth` class to reduce
+detection. Provide the starting URL and use `--lead` or `--leads` to control how many
 leads are returned. You can run custom
 JavaScript on the initial page load, on each page load and for pagination by
 supplying natural language instructions with `--initial_actions`,
