@@ -4,6 +4,8 @@
 
 <a href="https://www.loom.com/share/748524a3696a4873b8047c7c842ee0de" target="_blank">Watch project introduction</a>
 
+![Run utility example](docs/assets/images/dhisana_run_utility_ex.gif)
+
 ## How Does GTM Builder Agent Work?
 
 We’ve seeded the repository with few-shot examples of essential tools and workflows commonly used in GTM operations. When a GTM engineer describes a new workflow in natural language, the agent selects relevant examples, applies the user’s instructions along with a meta prompt, and generates a new tool or workflow. It then runs tests and outputs a ready-to-use tool.
@@ -32,8 +34,22 @@ Join the discussion on our [Slack community channel](https://join.slack.com/t/dh
 
 ## Quick Start
 
-Follow these steps to spin up the container and run a utility.
-If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio_setup.md).
+You can either host the utilities in the cloud with Fly.io or run them locally
+in Docker.
+
+### Option&nbsp;1: Cloud hosted on Fly.io
+
+1. Sign up at <https://fly.io>.
+2. Add your `OPENAI_API_KEY` as an environment variable in Fly.io.
+3. Connect the repository <https://github.com/dhisana-ai/gtm-ai-tools> in the
+   Fly.io dashboard and launch the app.
+4. Optionally add any other variables from `.env` depending on the tools you
+   want to run, or create your own tool with **Create New GTM Utility** once the
+   app is deployed.
+
+See [Fly.io setup](docs/flyio_setup.md) for more details.
+
+### Option&nbsp;2: Run locally with Docker
 
 1. **Clone the repository**
    ```bash
@@ -44,7 +60,9 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    ```bash
    docker build -t gtm-ai-tools .
    ```
-3. **Add your API keys** to `.env` (see [API key setup](docs/api_keys.md))
+3. **Add your environment variables** to `.env` (see
+   [Environment variables](docs/environment_variables.md) and
+   [API key setup](docs/api_keys.md))
    ```bash
    OPENAI_API_KEY=...
    OPENAI_MODEL_NAME=gpt-4.1
@@ -58,31 +76,33 @@ If you prefer to test in the cloud without Docker, see [Fly.io setup](docs/flyio
    At a minimum set `OPENAI_API_KEY`, `SERPER_API_KEY`, `DHISANA_API_KEY` and
    `APP_PASSWORD`. Other variables are optional based on which tools you plan to
    use.
-   4. **Start the container and open the app**
+4. **Start the container and open the app**
 
-      ```bash
-       # In Git Bash, get the Windows-style path of your current directory:
-       H="$(pwd -W)"
-   
-       # Run the container, bind-mounting your host folders correctly:
-      docker run \
-        --env-file .env \
-        -p 8080:8080 \
-        -v "${H}/data:/data" \
-        -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
-        gtm-ai-tools
-      ```
+   ```bash
+   # In Git Bash, get the Windows-style path of your current directory:
+   H="$(pwd -W)"
 
-      Log in using the username from `APP_USERNAME` (defaults to `user`) and the
-      password set in `APP_PASSWORD`.
-      Mounting your host `data` directory to `/data` lets you access uploads and
-      outputs outside the container. Replace `$(pwd)/data` with any path on your
-      system.
+   # Run the container, bind-mounting your host folders correctly:
+   docker run \
+     --env-file .env \
+     -p 8080:8080 \
+     -v "${H}/data:/data" \
+     -v "${H}/gtm_utility:/home/site/wwwroot/gtm_utility" \
+     gtm-ai-tools
+   ```
 
-      To add custom utilities, mount your host `gtm_utility` folder into the
-      container's gtm_utility path:
+   Log in using the username from `APP_USERNAME` (defaults to `user`) and the
+   password set in `APP_PASSWORD`.
+   Mounting your host `data` directory to `/data` lets you access uploads and
+   outputs outside the container. Replace `$(pwd)/data` with any path on your
+   system.
 
-         -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
+   To add custom utilities, mount your host `gtm_utility` folder into the
+   container's gtm_utility path:
+
+   ```bash
+   -v $(pwd)/gtm_utility:/home/site/wwwroot/gtm_utility
+   ```
 
 ## Repository structure
 
@@ -239,11 +259,16 @@ download link will be displayed. Plain text output is shown in the page.
 - [Update Salesforce Contact](docs/utils_usage.md#update-salesforce-contact) – modify contact fields.
 - [Add Salesforce Note](docs/utils_usage.md#add-salesforce-note) – attach a note to a contact.
 - [Scrape Website HTML (Playwright)](utils/fetch_html_playwright.py) – scrape page HTML for lead extraction.
-- [Extract Leads From Website](utils/extract_from_webpage.py) – pull leads and companies from any website. You can provide natural language actions for page navigation and parsing with options like `--initial_actions` and `--pagination_actions`. Use `--show_ux` to run Playwright with a visible browser.
+- [scrape and extract leads from website](utils/extract_from_webpage.py) – scrape any web page with Playwright and extract companies or leads listed. Provide Brightdata proxy and 2captcha API keys for stealth mode.
 - [Push Leads to Dhisana](docs/push_leads_to_dhisana.md) – send scraped LinkedIn URLs to Dhisana for enrichment and outreach.
 - [Create Dhisana Webhook](docs/create_dhisana_webhook.md) – configure your webhook and API key.
 
-## Next Workitems
+## Scrape Content Hacks
+
+- [Scrape LinkedIn Commenters](docs/scrape_linkedin_commenters.md) – grab profile URLs from anyone commenting on a post.
+- [Scrape any page with ChatGPT](docs/scrape_links_with_chatgpt.md) – generate a quick console script to collect links from a website.
+
+## Next Workitems in Roadmap:
 
 Playbooks to train and test the AI agent:
 - [Common playbooks](docs/playbooks.md)
