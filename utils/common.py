@@ -5,8 +5,10 @@ import re
 import aiohttp
 from typing import List, Optional
 from urllib.parse import urlparse, urlunparse
-
 from openai import AsyncOpenAI, AsyncAzureOpenAI, AzureOpenAI, OpenAI
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def search_google_serper(
@@ -191,7 +193,7 @@ async def call_openai_async(
         model: str = None,
         response_format: dict = None,
         chat_history: list = None,
-        temperature: float = 0.1
+        client: AsyncOpenAI | AsyncAzureOpenAI | None = None,
 ) -> str:
     """
     Make an asynchronous call to OpenAI's API with the given prompt.
@@ -201,7 +203,7 @@ async def call_openai_async(
         model (str, optional): The OpenAI model to use. Defaults to environment variable OPENAI_MODEL_NAME
         response_format (dict, optional): Format specification for the response
         chat_history (list, optional): Previous conversation history
-        temperature (float, optional): Controls randomness in the response. Defaults to 0.1
+        client (AsyncOpenAI | AsyncAzureOpenAI, optional): OpenAI client instance to use. If not provided, a new one is created.
 
     Returns:
         str: The model's response content
@@ -209,7 +211,8 @@ async def call_openai_async(
     Raises:
         RuntimeError: If the API call fails
     """
-    client = openai_client()
+    if not client:
+        client = openai_client()
     chat_history = chat_history or []
     chat_history.append({"role": "user", "content": prompt})
 
@@ -223,7 +226,19 @@ async def call_openai_async(
         return response.choices[0].message.content or ""
 
     except Exception as e:
-        raise RuntimeError(f"OpenAI API call failed: {e}") from None
+        logger.error(str(e))
+        if "context_length_exceeded" in str(e):
+            try:
+                response = await client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=chat_history,
+                    response_format=response_format or {"type": "json_object"},
+                )
+                chat_history.append({"role": "assistant", "content": response.choices[0].message.content})
+                return response.choices[0].message.content or ""
+            except Exception as e:
+                logger.error(f"OpenAI API call failed: {e}")
+                raise RuntimeError(f"OpenAI API call failed: {e}") from None
 
 
 def call_openai_sync(
@@ -231,7 +246,7 @@ def call_openai_sync(
         model: str = None,
         response_format: dict = None,
         chat_history: list = None,
-        temperature: float = 0.1
+        client: OpenAI | AzureOpenAI | None = None,
 ) -> str:
     """
     Make a synchronous call to OpenAI's API with the given prompt.
@@ -241,7 +256,6 @@ def call_openai_sync(
         model (str, optional): The OpenAI model to use. Defaults to environment variable OPENAI_MODEL_NAME
         response_format (dict, optional): Format specification for the response
         chat_history (list, optional): Previous conversation history
-        temperature (float, optional): Controls randomness in the response. Defaults to 0.1
 
     Returns:
         str: The model's response content
@@ -249,32 +263,14 @@ def call_openai_sync(
     Raises:
         RuntimeError: If the API call fails or required environment variables are missing
     """
-    # Get Azure OpenAI credentials
-    api_key = os.getenv("AZURE_OPENAI_API_KEY1")
-    if not api_key:
-        raise RuntimeError("AZURE_OPENAI_API_KEY environment variable is not set")
-
-    endpoint = os.getenv("AZURE_OPENAI_BASE_URL1")
-    if not endpoint:
-        raise RuntimeError("AZURE_OPENAI_ENDPOINT environment variable is not set")
-
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION")
-    if not api_version:
-        raise RuntimeError("AZURE_OPENAI_API_VERSION environment variable is not set")
-
-    # Initialize Azure OpenAI client
-    client = AzureOpenAI(
-        api_version=api_version,
-        azure_endpoint=endpoint,
-        api_key=api_key,
-    )
 
     # Prepare chat history
+    if not client:
+        client = openai_client_sync()
     chat_history = chat_history or []
     chat_history.append({"role": "user", "content": prompt})
 
     try:
-
         response = client.chat.completions.create(
             model=model or get_openai_model(),
             messages=chat_history,
@@ -284,6 +280,7 @@ def call_openai_sync(
         return response.choices[0].message.content or ""
 
     except Exception as e:
+        logger.warning(f"OpenAI token rate limit exceeded for Exception: {e}")
         if "exceeded token rate limit" in str(e):
             response = client.chat.completions.create(
                 model="o4-mini",
@@ -292,4 +289,5 @@ def call_openai_sync(
             )
             chat_history.append({"role": "assistant", "content": response.choices[0].message.content})
             return response.choices[0].message.content or ""
-        raise RuntimeError(f"OpenAI API call failed: {e}") from None
+        logger.error(f"OpenAI API call failed: {e}")
+        raise RuntimeError(f"OpenAI API call failed: {e}")
