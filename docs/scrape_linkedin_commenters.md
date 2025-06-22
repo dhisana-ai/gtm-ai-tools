@@ -16,90 +16,88 @@ This guide shows how to quickly gather profile URLs for everyone who commented o
 
 ```javascript
 /**
- * Scrape all commenter profile URLs on a LinkedIn post.
- * – Clicks "Load more comments" (if present) up to 30 times,
- *   waiting 30 s between clicks so new comments can render.
- * – Collects every anchor that contains "/in/" in its href,
- *   normalises them to https://www.linkedin.com/in/<id>,
- *   deduplicates, and finally downloads a CSV.
+ * Scrape all **commenter** profile URLs on a LinkedIn post – now with a
+ * `lead_summary` column.
+ *
+ * • Clicks “Load more comments” (if present) up to 30 ×, waiting 30 s
+ *   between clicks so new comments render.
+ * • For every <a> whose href contains “/in/”, captures:
+ *     – `user_linkedin_url`  → canonical https://www.linkedin.com/in/<id>
+ *     – `lead_summary`       → the anchor’s full innerText (trimmed)
+ * • De-duplicates by URL and downloads **linkedin_commenters.csv**
  *
  * How to use:
- * 1. Open the LinkedIn post in Chrome.
- * 2. Open DevTools (F12) ▸ Console.
- * 3. Paste this whole script and press Enter.
- *    A file named **linkedin_commenters.csv** will be downloaded when done.
+ *   1. Open the LinkedIn post in Chrome.
+ *   2. Open DevTools ▸ Console (F12) and paste this whole script.
  */
 
 (async () => {
-  /* ---------- helpers ---------- */
+  /* ---------------- helpers ---------------- */
   const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-  const normaliseUrl = href => {
+  /** canonicalise any LinkedIn /in/ URL */
+  const normalise = href => {
     try {
-      // Accept absolute or relative links
       const u = new URL(href, location.href);
       const m = u.pathname.match(/^\/in\/([^/?#]+)/i);
-      if (!m) return null;
-      return `https://www.linkedin.com/in/${m[1]}`;
-    } catch (_) {
-      return null;
-    }
+      return m ? `https://www.linkedin.com/in/${m[1]}` : null;
+    } catch { return null; }
   };
 
-  const collectUrls = () => {
-    const anchors = Array.from(document.querySelectorAll('a[href*="/in/"]'));
-    return anchors
-      .map(a => normaliseUrl(a.getAttribute('href') || ''))
-      .filter(Boolean);
-  };
+  /** harvest (url, summary) pairs currently visible */
+  const collectLeads = () =>
+    Array.from(document.querySelectorAll('a[href*="/in/"]'))
+      .map(a => ({
+        url: normalise(a.getAttribute('href') || ''),
+        summary: a.innerText.trim().replace(/\s+/g, ' ')
+      }))
+      .filter(l => l.url);
 
+  /** click “Load more comments” if it exists */
   const clickLoadMore = () => {
-    const btn = Array.from(document.querySelectorAll('button, a')).find(el =>
-      /load more comments/i.test(el.innerText.trim())
-    );
+    const btn = [...document.querySelectorAll('button, a')]
+      .find(el => /load more comments/i.test(el.innerText.trim()));
     if (btn) btn.click();
     return !!btn;
   };
 
-  /* ---------- main loop ---------- */
-  const MAX_ITER = 30;       // how many times to click
-  const WAIT_MS  = 30_000;   // wait after each click (30 s)
+  /* ---------------- main loop ---------------- */
+  const MAX_ITER = 30;      // how many “load more” clicks max
+  const WAIT_MS  = 30_000;  // wait 30 s after each click
 
-  const urls = new Set();
+  const leads = new Map();  // Map<url, summary>
 
   for (let i = 0; i < MAX_ITER; i++) {
-    // Step 1: harvest current links
-    collectUrls().forEach(u => urls.add(u));
-    console.log(`Iteration ${i + 1}: ${urls.size} unique URLs so far`);
+    collectLeads().forEach(({ url, summary }) => leads.set(url, summary));
+    console.log(`Iteration ${i + 1}: ${leads.size} unique URLs so far`);
 
-    // Step 2: attempt to load more comments
-    const clicked = clickLoadMore();
-    if (!clicked) {
+    if (!clickLoadMore()) {
       console.log('No “Load more comments” button found — finishing early.');
       break;
     }
 
-    // Step 3: wait for new comments to load
-    console.log('Clicked “Load more comments”. Waiting 30 s…');
+    console.log('Clicked. Waiting 30 s for new comments…');
     await sleep(WAIT_MS);
   }
 
-  // One final sweep just in case
-  collectUrls().forEach(u => urls.add(u));
-  console.log(`Finished. Total unique commenter profiles: ${urls.size}`);
+  // final sweep
+  collectLeads().forEach(({ url, summary }) => leads.set(url, summary));
+  console.log(`Finished. Total unique commenters: ${leads.size}`);
 
-  /* ---------- download CSV ---------- */
-  const csv = Array.from(urls).join('\n');
+  /* ---------------- download CSV ---------------- */
+  const escape = s => `"${s.replace(/"/g, '""')}"`;
+  const rows   = Array.from(leads, ([url, summary]) =>
+                   `${escape(url)},${escape(summary)}`);
+  const csv    = ['user_linkedin_url,lead_summary', ...rows].join('\n');
+
   const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'linkedin_commenters.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  const link = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: 'linkedin_commenters.csv'
+  });
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
 
   console.log('CSV download triggered ✔️');
 })();
