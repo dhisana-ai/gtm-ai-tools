@@ -12,20 +12,17 @@
   {% endwith %}
 
   <h2>Settings</h2>
-  <form method="post">
-    {% for key, value in env_vars.items() %}
-      <div class="mb-3">
-        <label class="form-label" for="{{ key }}">{{ key }}</label>
-        <div class="input-group">
-          <input class="form-control" type="password" id="{{ key }}" name="{{ key }}" value="{{ value }}">
-          <button class="btn btn-outline-secondary toggle-password" type="button" data-target="{{ key }}">
-            <i class="bi bi-eye"></i>
-          </button>
-        </div>
+  {% for key, value in env_vars.items() %}
+    <div class="mb-3">
+      <label class="form-label" for="{{ key }}">{{ key }}</label>
+      <div class="input-group">
+        <input class="form-control" type="password" id="{{ key }}" value="{{ value }}" readonly>
+        <button class="btn btn-outline-secondary toggle-password" type="button" data-target="{{ key }}">
+          <i class="bi bi-eye"></i>
+        </button>
       </div>
-    {% endfor %}
-    <button class="btn btn-primary" type="submit">Save</button>
-  </form>
+    </div>
+  {% endfor %}
 
   <script>
     document.querySelectorAll('.toggle-password').forEach(function(btn) {

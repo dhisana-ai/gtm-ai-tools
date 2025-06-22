@@ -1,71 +1,42 @@
 import os
+import random
+import re
 import shlex
 import shutil
 import subprocess
 import tempfile
-import csv
-import re
+from pathlib import Path
 from typing import List
 import asyncio
 import json
 import base64
 import random
 import datetime
-from utils import (
-    push_lead_to_dhisana_webhook,
-    linkedin_search_to_csv,
-    apollo_info,
-    check_email_zero_bounce,
-    find_users_by_name_and_keywords,
-    find_user_by_job_title,
-    find_company_info,
-    find_contact_with_findymail,
-    call_openai_llm,
-    score_lead,
-    generate_email,
-    extract_from_webpage,
-    common,
-    codegen_barbarika_web_parsing,
-)
-from pathlib import Path
+from utils import (apollo_info, call_openai_llm, check_email_zero_bounce,
+                   common, extract_from_webpage, find_company_info,
+                   find_contact_with_findymail, find_user_by_job_title,
+                   find_users_by_name_and_keywords, generate_email,
+                   linkedin_search_to_csv, push_lead_to_dhisana_webhook,
+                   score_lead, codegen_barbarika_web_parsing)
 
 from utils.common import openai_client_sync
 
 try:
-    from flask import (
-        Flask,
-        render_template,
-        request,
-        redirect,
-        url_for,
-        flash,
-        send_from_directory,
-        session,
-        jsonify,
-        Response,
-        stream_with_context,
-    )
+    from flask import (Flask, flash, jsonify, redirect, render_template,
+                       request, send_from_directory, session, url_for, Response, stream_with_context)
 except Exception:  # pragma: no cover - fallback for test stubs
-    from flask import (
-        Flask,
-        render_template,
-        request,
-        redirect,
-        url_for,
-        flash,
-        send_from_directory,
-        jsonify,
-        Response,
-    )
+    from flask import (Flask, flash, jsonify, redirect, render_template,
+                       request, send_from_directory, url_for, Response)
 
     session = {}
+import openai
 from dotenv import dotenv_values, set_key
-
 try:
     import numpy as np
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+
 import faiss
 import threading
 import queue
@@ -80,18 +51,18 @@ UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
 # Cache paths for utility embeddings index and codes
 # Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
 # Directory for user-generated utilities (create gtm_utility at repo root)
-USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+USER_UTIL_DIR = Path(__file__).resolve().parents[1] / "gtm_utility"
 USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
 
 # Data directory for persistent files and FAISS cache; prefer mounted /data in container
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path('/data') if Path('/data').is_dir() else ROOT / 'data'
+DATA_DIR = Path("/data") if Path("/data").is_dir() else ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cache paths for utility embeddings index and codes under the data folder
-FAISS_CACHE_DIR = DATA_DIR / 'faiss'
-EMBED_INDEX_PATH = FAISS_CACHE_DIR / 'utility_embeddings.index'
-EMBED_CODES_PATH = FAISS_CACHE_DIR / 'utility_embeddings.json'
+FAISS_CACHE_DIR = DATA_DIR / "faiss"
+EMBED_INDEX_PATH = FAISS_CACHE_DIR / "utility_embeddings.index"
+EMBED_CODES_PATH = FAISS_CACHE_DIR / "utility_embeddings.json"
 
 UTILITY_INDEX: faiss.IndexFlatIP | None = None
 UTILITY_CODES: list[str] = []
@@ -115,7 +86,7 @@ UTILITY_TITLES = {
     "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
-    "extract_from_webpage": "Extract Leads From Website",
+    "extract_from_webpage": "scrape and extract leads from website",
     "generate_image": "Generate Image",
     "get_website_information": "Get website information",
     "score_lead": "Score Leads",
@@ -148,7 +119,6 @@ UTILITY_TAGS = {
     "fetch_html_playwright": ["find"],
     "extract_companies_from_image": ["find"],
     "extract_from_webpage": ["find"],
-
     # Enrich leads
     "apollo_info": ["enrich"],
     "check_email_zero_bounce": ["enrich"],
@@ -157,10 +127,8 @@ UTILITY_TAGS = {
     "call_openai_llm": ["enrich"],
     "generate_email": ["route"],
     "generate_image": ["enrich"],
-
     # Score leads
     "score_lead": ["score"],
-
     # Route leads
     "push_lead_to_dhisana_webhook": ["route"],
     "push_company_to_dhisana_webhook": ["route"],
@@ -352,13 +320,30 @@ UTILITY_PARAMETERS = {
         {"name": "--lead", "label": "Extract One Lead", "type": "boolean"},
         {"name": "--leads", "label": "Extract Multiple Leads", "type": "boolean"},
         {"name": "--company", "label": "Extract One Company", "type": "boolean"},
-        {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
-        {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
+        {
+            "name": "--companies",
+            "label": "Extract Multiple Companies",
+            "type": "boolean",
+        },
+        {
+            "name": "--initial_actions",
+            "label": "Actions to do on Website Load, first time. Like select filters",
+        },
         {"name": "--page_actions", "label": "Actions to do When each page loads."},
-        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
-        {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
+        {
+            "name": "--parse_instructions",
+            "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded",
+        },
+        {
+            "name": "--pagination_actions",
+            "label": "Instructions on how to move to next page and extract more leads",
+        },
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
-        {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
+        {
+            "name": "--show_ux",
+            "label": "Show website UX during parsing",
+            "type": "boolean",
+        },
     ],
     "generate_email": [
         {
@@ -665,7 +650,9 @@ def run_utility():
 
         def build_cmd(values: dict[str, str]) -> list[str]:
             module_prefix = (
-                "gtm_utility" if (USER_UTIL_DIR / f"{util_name}.py").exists() else "utils"
+                "gtm_utility"
+                if (USER_UTIL_DIR / f"{util_name}.py").exists()
+                else "utils"
             )
             cmd = ["python", "-m", f"{module_prefix}.{util_name}"]
             if is_custom and not uploaded:
@@ -703,8 +690,7 @@ def run_utility():
             elif util_name == "extract_from_webpage":
                 out_path = common.make_temp_csv_filename(util_name)
                 if not any(
-                    f in cmd
-                    for f in ("--lead", "--leads", "--company", "--companies")
+                    f in cmd for f in ("--lead", "--leads", "--company", "--companies")
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
@@ -998,15 +984,10 @@ def run_utility():
     )
 
 
-@app.route("/settings", methods=["GET", "POST"])
+@app.route("/settings")
 def settings():
+    """Display environment variables without allowing edits."""
     env_vars = load_env()
-    if request.method == "POST":
-        for key in env_vars:
-            value = request.form.get(key, "")
-            set_key(ENV_FILE, key, value)
-        flash("Settings saved.")
-        return redirect(url_for("settings"))
     return render_template("settings.html", env_vars=env_vars)
 
 
@@ -1144,7 +1125,7 @@ def build_utility_embeddings() -> None:
     if EMBED_INDEX_PATH.exists() and EMBED_CODES_PATH.exists():
         try:
             UTILITY_INDEX = faiss.read_index(str(EMBED_INDEX_PATH))
-            with open(EMBED_CODES_PATH, 'r', encoding='utf-8') as f:
+            with open(EMBED_CODES_PATH, "r", encoding="utf-8") as f:
                 UTILITY_CODES = json.load(f)
             return
         except Exception:
@@ -1154,18 +1135,18 @@ def build_utility_embeddings() -> None:
     codes: list[str] = []
     embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if not fname.endswith('.py') or fname in ['common.py', "codegen_barbarika_web_parsing.py"]:
+        if not fname.endswith(".py") or fname in ['common.py', "codegen_barbarika_web_parsing.py"]:
             continue
         path = os.path.join(UTILS_DIR, fname)
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             code = f.read()
         embeds.append(embed_text(code[:2000]).astype(np.float32))
         codes.append(code)
     # Also scan user-generated utilities on Desktop
     if USER_UTIL_DIR.is_dir():
-        for user_path in USER_UTIL_DIR.glob('*.py'):
+        for user_path in USER_UTIL_DIR.glob("*.py"):
             try:
-                code = user_path.read_text(encoding='utf-8')
+                code = user_path.read_text(encoding="utf-8")
             except Exception:
                 continue
             embeds.append(embed_text(code[:2000]).astype(np.float32))
@@ -1186,13 +1167,15 @@ def build_utility_embeddings() -> None:
     try:
         EMBED_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
         faiss.write_index(UTILITY_INDEX, str(EMBED_INDEX_PATH))
-        with open(EMBED_CODES_PATH, 'w', encoding='utf-8') as f:
+        with open(EMBED_CODES_PATH, "w", encoding="utf-8") as f:
             json.dump(UTILITY_CODES, f)
     except Exception:
         pass
 
+
 build_utility_embeddings()
 load_custom_parameters()
+
 
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
@@ -1207,7 +1190,9 @@ def generate_utility():
     user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=5)
     prompt_lines = []
-    prompt_lines.append("# User wants to build a new GTM utility with the following details:")
+    prompt_lines.append(
+        "# User wants to build a new GTM utility with the following details:"
+    )
     prompt_lines.append(f"# {user_prompt}")
     prompt_lines.append(
         "# The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file."
@@ -1238,8 +1223,8 @@ def generate_utility():
         "httpx\n"
         "openai\n"
         "pydantic>=2.0\n"
-        "playwright==1.42.0\n"
-        "playwright-stealth\n"
+        "playwright==1.52.0\n"
+        "playwright-stealth>=2.0.0\n"
         "aiohttp\n"
         "beautifulsoup4\n"
         "aiosmtplib\n"
@@ -1252,10 +1237,10 @@ def generate_utility():
     prompt_lines.append(
         "# arguments to mail will be like in example below, output_file is always a parameter. input arguments like --person_title etc are custom parameters that can be passed as input the to script\n"
         "def main() -> None:\n"
-        "    parser = argparse.ArgumentParser(description=\"Search people in Apollo.io\")\n"
-        "    parser.add_argument(\"output_file\", help=\"CSV file to create\")\n"
-        "    parser.add_argument(\"--person_titles\", default=\"\", help=\"Comma separated job titles\")\n"
-        "    parser.add_argument(\"--person_locations\", default=\"\", help=\"Comma separated locations\")"
+        '    parser = argparse.ArgumentParser(description="Search people in Apollo.io")\n'
+        '    parser.add_argument("output_file", help="CSV file to create")\n'
+        '    parser.add_argument("--person_titles", default="", help="Comma separated job titles")\n'
+        '    parser.add_argument("--person_locations", default="", help="Comma separated locations")'
     )
     prompt_lines.append(
         "# Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization"
@@ -1264,7 +1249,7 @@ def generate_utility():
         "# Use user_linkedin_url property to represent ursers linked in url"
     )
     prompt_lines.append(
-        "# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open(\"w\", newline=\"\", encoding=\"utf-8\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n"
+        '# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open("w", newline="", encoding="utf-8") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n'
     )
     prompt_lines.append(
         "# The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value."
@@ -1285,11 +1270,8 @@ def generate_utility():
     try:
         client = openai_client_sync()
         model_name = os.getenv("MODEL_TO_GENERATE_UTILITY", "o3")
-        response = client.responses.create(
-            model=model_name,
-            input=codex_prompt
-        )
-        prev_response_id = getattr(response, 'id', None)
+        response = client.responses.create(model=model_name, input=codex_prompt)
+        prev_response_id = getattr(response, "id", None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
@@ -1319,11 +1301,14 @@ def generate_utility():
     # ask the LLM to correct up to 10 retries.
     for attempt in range(10):
         try:
-            compile(code, '<generated>', 'exec')
+            compile(code, "<generated>", "exec")
             break
         except Exception as compile_err:
-            logging.warning("Generated code failed to compile (attempt %d): %s",
-                            attempt + 1, compile_err)
+            logging.warning(
+                "Generated code failed to compile (attempt %d): %s",
+                attempt + 1,
+                compile_err,
+            )
             commented_code = "\n".join(f"# {line}" for line in code.splitlines())
             correction_prompt = (
                 codex_prompt
@@ -1336,14 +1321,18 @@ def generate_utility():
                 input=correction_prompt,
                 previous_response_id=prev_response_id,
             )
-            prev_response_id = getattr(response, 'id', prev_response_id)
+            prev_response_id = getattr(response, "id", prev_response_id)
             # Extract corrected code same as before
             new_code = None
             if hasattr(response, "output") and isinstance(response.output, list):
                 for msg in response.output:
                     if hasattr(msg, "content") and isinstance(msg.content, list):
                         for c in msg.content:
-                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                            if (
+                                hasattr(c, "text")
+                                and isinstance(c.text, str)
+                                and c.text.strip()
+                            ):
                                 new_code = c.text.strip()
                                 break
                         if new_code:
@@ -1357,13 +1346,10 @@ def generate_utility():
         logging.error(err_msg)
         return jsonify({"success": False, "error": err_msg}), 500
 
-    return jsonify({
-        "success": True,
-        "code": code
-    })
+    return jsonify({"success": True, "code": code})
 
 
-@app.route('/save_utility', methods=['POST'])
+@app.route("/save_utility", methods=["POST"])
 def save_utility():
     try:
         data = request.get_json(force=True)
@@ -1394,7 +1380,14 @@ def save_utility():
         param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
         help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
         params: list[dict[str, str]] = []
-        skip_args = {"output_file", "--output_file", "input_file", "--input_file", "csv_file", "--csv_file"}
+        skip_args = {
+            "output_file",
+            "--output_file",
+            "input_file",
+            "--input_file",
+            "csv_file",
+            "--csv_file",
+        }
         for match in param_pattern.finditer(code):
             arg_name = match.group(1)
             if arg_name in skip_args:
@@ -1419,8 +1412,8 @@ def save_utility():
         logging.info("save_utility: wrote file %s", file_path)
         return jsonify({"success": True, "file_path": str(file_path)})
     except Exception as e:
-        logging.error('Error saving utility to file: %s', e)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logging.error("Error saving utility to file: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 @app.route('/web_parse_utility', methods=['GET', 'POST'])
@@ -1676,11 +1669,11 @@ def download_web_parse_csv():
     if not csv_file or not os.path.exists(csv_file):
         flash("No CSV file found from web parsing session.")
         return redirect(url_for("run_utility"))
-    
+
     filename = os.path.basename(csv_file)
     return send_from_directory(
-        os.path.dirname(csv_file), 
-        filename, 
+        os.path.dirname(csv_file),
+        filename,
         as_attachment=True,
         download_name='extracted_data.csv'
     )

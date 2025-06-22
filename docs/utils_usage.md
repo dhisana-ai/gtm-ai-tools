@@ -77,14 +77,14 @@ task run:command -- find_a_user_by_name_and_keywords \
 
 The script prints the resulting JSON to stdout.
 
-## Find User by Job Title and Company
+## Find User by Job Title and Organization
 
 `find_user_by_job_title.py` searches Google via Serper.dev for a LinkedIn profile
-matching a specific job title at a company. Provide the job title, the company
-name and optional extra keywords. The returned profile URL is normalized to the
+matching a specific job title at an organization. Provide the job title, the
+organization name and optional extra keywords. The returned profile URL is normalized to the
 `https://www.linkedin.com/in/<id>` format.
 
-Run it with a title, company and keywords:
+Run it with a title, organization and keywords:
 
 ```bash
 task run:command -- find_user_by_job_title \
@@ -391,11 +391,14 @@ the `OPENAI_API_KEY` in the environment variables.
 task run:command -- get_website_information http://example.com/ "what is the main color of the website?"
 ```
 
-## Extract Leads From Website
+## scrape and extract leads from website
 
-`extract_from_webpage.py` scrapes a page with Playwright and uses an LLM to
-parse leads or organizations from the text. Provide the starting URL and use
-`--lead` or `--leads` to control how many leads are returned. You can run custom
+`extract_from_webpage.py` scrapes any webpage with Playwright and pulls out
+companies or leads mentioned on the page. Set your Brightdata proxy URL in
+`PROXY_URL` and a 2Captcha key in `TWO_CAPTCHA_API_KEY` to operate in stealth
+mode. The helper uses `playwright_stealth` 2.0's `Stealth` class to reduce
+detection. Provide the starting URL and use `--lead` or `--leads` to control how many
+leads are returned. You can run custom
 JavaScript on the initial page load, on each page load and for pagination by
 supplying natural language instructions with `--initial_actions`,
 `--page_actions` and `--pagination_actions`. Parsing behaviour can be tweaked
