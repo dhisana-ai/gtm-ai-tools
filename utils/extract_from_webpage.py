@@ -13,6 +13,7 @@ import json
 import sys
 import typing
 from typing import List, Optional, Tuple, Type, TextIO
+from dataclasses import dataclass
 from urllib.parse import urljoin
 from pathlib import Path
 
@@ -58,6 +59,12 @@ class Lead(BaseModel):
 
 class LeadList(BaseModel):
     leads: List[Lead]
+
+
+@dataclass
+class PageData:
+    html: str
+    js_output: Optional[str] = None
 
 
 async def _get_structured_data_internal(
@@ -109,36 +116,76 @@ def _extract_linkedin_links(html: str) -> tuple[str, str]:
 
 
 async def _fetch_pages_by_selector(
-    url: str, next_page_selector: str | None, max_next_pages: int
-) -> List[str]:
-    """Return HTML from ``url`` and any following pages."""
+    url: str,
+    next_page_selector: str | None,
+    max_next_pages: int,
+    run_js_on_page: str = "",
+) -> List[PageData]:
+    """Return HTML (and optional JS output) from ``url`` and following pages."""
 
-    pages: List[str] = []
-    current = url
-    visited: set[str] = set()
-    for i in range(max_next_pages + 1):
-        logger.info("Fetching page %s", current)
-        if current in visited:
-            break
-        visited.add(current)
-        html = await _fetch_and_clean(current)
-        if not html:
-            break
-        pages.append(html)
-        if not next_page_selector:
-            break
-        soup = BeautifulSoup(html, "html.parser")
-        next_link = soup.select_one(next_page_selector)
-        if not next_link:
-            logger.debug("No next link found with selector %s", next_page_selector)
-            break
-        href = next_link.get("href")
-        if not href:
-            logger.debug("Next link missing href attribute")
-            break
-        logger.info("Navigating to next page: %s", href)
-        current = urljoin(current, href)
+    if not run_js_on_page.strip():
+        pages: List[PageData] = []
+        current = url
+        visited: set[str] = set()
+        for _ in range(max_next_pages + 1):
+            logger.info("Fetching page %s", current)
+            if current in visited:
+                break
+            visited.add(current)
+            html = await _fetch_and_clean(current)
+            if not html:
+                break
+            pages.append(PageData(html))
+            if not next_page_selector:
+                break
+            soup = BeautifulSoup(html, "html.parser")
+            next_link = soup.select_one(next_page_selector)
+            if not next_link:
+                logger.debug("No next link found with selector %s", next_page_selector)
+                break
+            href = next_link.get("href")
+            if not href:
+                logger.debug("Next link missing href attribute")
+                break
+            logger.info("Navigating to next page: %s", href)
+            current = urljoin(current, href)
+        return pages
 
+    pages: List[PageData] = []
+    proxy = os.getenv("PROXY_URL")
+    async with fetch_html_playwright.browser_ctx(proxy) as ctx:
+        page = await ctx.new_page()
+        await fetch_html_playwright.apply_stealth(page)
+        current = url
+        visited: set[str] = set()
+        for _ in range(max_next_pages + 1):
+            logger.info("Navigating to %s", current)
+            if current in visited:
+                break
+            visited.add(current)
+            await page.goto(current, timeout=120_000, wait_until="domcontentloaded")
+            html = await page.content()
+            soup = BeautifulSoup(html or "", "html.parser")
+            for tag in soup(["script", "style", "meta", "code", "svg"]):
+                tag.decompose()
+            js_out: Optional[str] = None
+            try:
+                js_out = await page.evaluate(run_js_on_page)
+            except Exception:
+                logger.exception("Failed to run provided JavaScript")
+            pages.append(PageData(str(soup), js_out))
+            if not next_page_selector:
+                break
+            next_link = soup.select_one(next_page_selector)
+            if not next_link:
+                logger.debug("No next link found with selector %s", next_page_selector)
+                break
+            href = next_link.get("href")
+            if not href:
+                logger.debug("Next link missing href attribute")
+                break
+            logger.info("Navigating to next page: %s", href)
+            current = urljoin(current, href)
     return pages
 
 
@@ -182,8 +229,9 @@ async def _fetch_pages_with_actions(
     page_actions: str,
     pagination_actions: str,
     max_pages: int,
-) -> List[str]:
-    pages: List[str] = []
+    run_js_on_page: str = "",
+) -> List[PageData]:
+    pages: List[PageData] = []
     proxy = os.getenv("PROXY_URL")
     async with fetch_html_playwright.browser_ctx(proxy) as ctx:
         page = await ctx.new_page()
@@ -196,7 +244,13 @@ async def _fetch_pages_with_actions(
             logger.info("Processing page %s", i + 1)
             await _apply_actions(page, page_actions)
             html = await page.content()
-            pages.append(html)
+            js_out: Optional[str] = None
+            if run_js_on_page.strip():
+                try:
+                    js_out = await page.evaluate(run_js_on_page)
+                except Exception:
+                    logger.exception("Failed to run provided JavaScript")
+            pages.append(PageData(html, js_out))
             if i == max_pages - 1:
                 break
             logger.info("Applying pagination actions")
@@ -216,14 +270,22 @@ async def _fetch_pages(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
-) -> List[str]:
+    run_js_on_page: str = "",
+) -> List[PageData]:
     if any([initial_actions, page_actions, pagination_actions]) or max_pages > 1:
         logger.info("Using action-based navigation")
         return await _fetch_pages_with_actions(
-            url, initial_actions, page_actions, pagination_actions, max_pages
+            url,
+            initial_actions,
+            page_actions,
+            pagination_actions,
+            max_pages,
+            run_js_on_page,
         )
     logger.info("Using selector-based pagination")
-    return await _fetch_pages_by_selector(url, next_page_selector, max_next_pages)
+    return await _fetch_pages_by_selector(
+        url, next_page_selector, max_next_pages, run_js_on_page
+    )
 
 
 async def extract_multiple_companies_from_webpage(
@@ -236,6 +298,7 @@ async def extract_multiple_companies_from_webpage(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
+    run_js_on_page: str = "",
 ) -> List[Company]:
     pages = await _fetch_pages(
         url,
@@ -245,12 +308,18 @@ async def extract_multiple_companies_from_webpage(
         page_actions,
         pagination_actions,
         max_pages,
+        run_js_on_page,
     )
     aggregated: list[Company] = []
-    for html in pages:
+    for page in pages:
+        html = page.html
+        js_text = page.js_output
         logger.debug("Parsing page for companies")
         _user_link, org_link = _extract_linkedin_links(html)
-        text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
+        if js_text is not None:
+            text = str(js_text)
+        else:
+            text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
             "Extract all companies mentioned in the text below.\n"
             f"{parse_instructions}\n"
@@ -279,6 +348,7 @@ async def extract_comapy_from_webpage(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
+    run_js_on_page: str = "",
 ) -> Optional[Company]:
     companies = await extract_multiple_companies_from_webpage(
         url,
@@ -289,6 +359,7 @@ async def extract_comapy_from_webpage(
         page_actions=page_actions,
         pagination_actions=pagination_actions,
         max_pages=max_pages,
+        run_js_on_page=run_js_on_page,
     )
     return companies[0] if companies else None
 
@@ -303,6 +374,7 @@ async def extract_multiple_leads_from_webpage(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
+    run_js_on_page: str = "",
 ) -> List[Lead]:
     pages = await _fetch_pages(
         url,
@@ -312,12 +384,18 @@ async def extract_multiple_leads_from_webpage(
         page_actions,
         pagination_actions,
         max_pages,
+        run_js_on_page,
     )
     aggregated: list[Lead] = []
-    for html in pages:
+    for page in pages:
+        html = page.html
+        js_text = page.js_output
         logger.debug("Parsing page for leads")
         user_link, org_link = _extract_linkedin_links(html)
-        text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
+        if js_text is not None:
+            text = str(js_text)
+        else:
+            text = BeautifulSoup(html, "html.parser").get_text("\n", strip=True)
         prompt = (
             "Extract all leads mentioned in the text below.\n"
             f"{parse_instructions}\n"
@@ -350,6 +428,7 @@ def extract_from_webpage_from_csv(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
+    run_js_on_page: str = "",
     mode: str = "leads",
 ) -> None:
     """Process ``input_file`` and aggregate results to ``output_file``."""
@@ -384,6 +463,7 @@ def extract_from_webpage_from_csv(
                     page_actions=page_actions,
                     pagination_actions=pagination_actions,
                     max_pages=max_pages,
+                    run_js_on_page=run_js_on_page,
                 )
             )
             if result:
@@ -399,6 +479,7 @@ def extract_from_webpage_from_csv(
                     page_actions=page_actions,
                     pagination_actions=pagination_actions,
                     max_pages=max_pages,
+                    run_js_on_page=run_js_on_page,
                 )
             )
             agg_leads.extend(results)
@@ -413,6 +494,7 @@ def extract_from_webpage_from_csv(
                     page_actions=page_actions,
                     pagination_actions=pagination_actions,
                     max_pages=max_pages,
+                    run_js_on_page=run_js_on_page,
                 )
             )
             if result:
@@ -428,6 +510,7 @@ def extract_from_webpage_from_csv(
                     page_actions=page_actions,
                     pagination_actions=pagination_actions,
                     max_pages=max_pages,
+                    run_js_on_page=run_js_on_page,
                 )
             )
             agg_companies.extend(results)
@@ -474,6 +557,7 @@ async def extract_lead_from_webpage(
     page_actions: str = "",
     pagination_actions: str = "",
     max_pages: int = 1,
+    run_js_on_page: str = "",
 ) -> Optional[Lead]:
     leads = await extract_multiple_leads_from_webpage(
         url,
@@ -484,6 +568,7 @@ async def extract_lead_from_webpage(
         page_actions=page_actions,
         pagination_actions=pagination_actions,
         max_pages=max_pages,
+        run_js_on_page=run_js_on_page,
     )
     return leads[0] if leads else None
 
@@ -552,6 +637,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
     page_actions = args.page_actions or ""
     pagination_actions = args.pagination_actions or ""
     max_pages = args.max_pages
+    run_js = args.run_js_on_page or ""
     if args.lead:
         result = await extract_lead_from_webpage(
             url,
@@ -562,6 +648,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             page_actions=page_actions,
             pagination_actions=pagination_actions,
             max_pages=max_pages,
+            run_js_on_page=run_js,
         )
         if result:
             dest = args.output_csv or sys.stdout
@@ -577,6 +664,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             page_actions=page_actions,
             pagination_actions=pagination_actions,
             max_pages=max_pages,
+            run_js_on_page=run_js,
         )
         dest = args.output_csv or sys.stdout
         _write_leads_csv(result, dest)
@@ -591,6 +679,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             page_actions=page_actions,
             pagination_actions=pagination_actions,
             max_pages=max_pages,
+            run_js_on_page=run_js,
         )
         if result:
             dest = args.output_csv or sys.stdout
@@ -606,6 +695,7 @@ async def _run_cli(url: str, args: argparse.Namespace) -> None:
             page_actions=page_actions,
             pagination_actions=pagination_actions,
             max_pages=max_pages,
+            run_js_on_page=run_js,
         )
         dest = args.output_csv or sys.stdout
         _write_companies_csv(result, dest)
@@ -633,6 +723,7 @@ def main() -> None:
     )
     parser.add_argument("--initial_actions", help="Actions on initial load")
     parser.add_argument("--page_actions", help="Actions on each page load")
+    parser.add_argument("--run_js_on_page", help="JavaScript to run on each page")
     parser.add_argument(
         "--parse_instructions",
         help="Instructions for parsing leads",
@@ -678,6 +769,7 @@ def main() -> None:
             page_actions=args.page_actions or "",
             pagination_actions=args.pagination_actions or "",
             max_pages=args.max_pages,
+            run_js_on_page=args.run_js_on_page or "",
             mode=mode,
         )
     else:

@@ -308,9 +308,15 @@
         } else {
           div.className = 'mb-3';
           label.className = 'form-label';
-          input = document.createElement('input');
-          input.type = 'text';
-          input.className = 'form-control';
+          if (['--initial_actions','--page_actions','--pagination_actions','--parse_instructions','--run_js_on_page'].includes(p.name)) {
+            input = document.createElement('textarea');
+            input.className = 'form-control';
+            input.rows = 3;
+          } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'form-control';
+          }
         }
         input.name = p.name;
         if (util === 'linkedin_search_to_csv' && p.name === '--num') {

@@ -328,6 +328,7 @@ UTILITY_PARAMETERS = {
             "label": "Actions to do on Website Load, first time. Like select filters",
         },
         {"name": "--page_actions", "label": "Actions to do When each page loads."},
+        {"name": "--run_js_on_page", "label": "JavaScript to run on each page"},
         {
             "name": "--parse_instructions",
             "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded",
@@ -814,6 +815,7 @@ def run_utility():
                         parse_instructions=request.form.get("--parse_instructions", ""),
                         initial_actions=request.form.get("--initial_actions", ""),
                         page_actions=request.form.get("--page_actions", ""),
+                        run_js_on_page=request.form.get("--run_js_on_page", ""),
                         pagination_actions=request.form.get("--pagination_actions", ""),
                         max_pages=int(request.form.get("--max_pages") or 1),
                         mode=mode,
