@@ -149,3 +149,21 @@ def test_extract_from_webpage_from_csv_dedup_companies(tmp_path, monkeypatch):
     assert len(rows) == 2
     assert {r["organization_name"] for r in rows} == {"Acme", "Beta"}
 
+
+def test_run_js_on_page(monkeypatch):
+    captured = {}
+
+    async def fake_fetch(*a, **k):
+        return [mod.PageData("<html></html>", "hello world")]
+
+    monkeypatch.setattr(mod, "_fetch_pages", fake_fetch)
+
+    async def fake_get(prompt: str, model):
+        captured["prompt"] = prompt
+        return mod.LeadList(leads=[mod.Lead(first_name="x")]), "SUCCESS"
+
+    monkeypatch.setattr(mod, "_get_structured_data_internal", fake_get)
+
+    asyncio.run(mod.extract_lead_from_webpage("http://x.com", run_js_on_page="js"))
+    assert "hello world" in captured["prompt"]
+

@@ -401,8 +401,10 @@ detection. Provide the starting URL and use `--lead` or `--leads` to control how
 leads are returned. You can run custom
 JavaScript on the initial page load, on each page load and for pagination by
 supplying natural language instructions with `--initial_actions`,
-`--page_actions` and `--pagination_actions`. Parsing behaviour can be tweaked
-with `--parse_instructions`. Use `--max_pages` to limit how many pages are
+`--page_actions` and `--pagination_actions`. You can also run custom
+JavaScript directly on each page with `--run_js_on_page` and pass the result to
+the LLM instead of the raw HTML. Parsing behaviour can be tweaked with
+`--parse_instructions`. Use `--max_pages` to limit how many pages are
 navigated. The previous `--next_page_selector` and `--max_next_pages` options
 still work as a fallback.
 Pass `--show_ux` to launch a visible browser window and wait 30 seconds on each page.
