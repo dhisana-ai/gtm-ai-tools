@@ -52,6 +52,11 @@ logger = logging.getLogger(__name__)
 stealth = Stealth()
 
 
+async def apply_stealth(page_or_context) -> None:
+    """Compatibility wrapper to apply stealth evasions."""
+    await stealth.apply_stealth_async(page_or_context)
+
+
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
     u = urlparse(proxy_url)
     return {
@@ -163,7 +168,7 @@ async def browser_ctx(proxy_url: Optional[str]):
             ],
         }
         if proxy_url:
-            logger.info("Using proxy %s", proxy_url)
+            logger.info("Using proxy")
             launch["proxy"] = parse_proxy(proxy_url)
         browser = await p.chromium.launch(**launch)
         try:
