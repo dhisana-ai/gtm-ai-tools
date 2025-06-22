@@ -2,6 +2,7 @@ import asyncio
 import csv
 import pytest
 from utils import extract_from_webpage as mod
+from utils import fetch_html_playwright as fhp
 
 
 async def fake_fetch_lead(url: str):
@@ -166,4 +167,83 @@ def test_run_js_on_page(monkeypatch):
 
     asyncio.run(mod.extract_lead_from_webpage("http://x.com", run_js_on_page="js"))
     assert "hello world" in captured["prompt"]
+
+
+def test_run_js_logs_output(monkeypatch):
+    class DummyLogger:
+        def __init__(self):
+            self.messages = []
+
+        def info(self, msg, *args, **kwargs):
+            self.messages.append(msg % args)
+
+        def exception(self, *a, **kw):
+            pass
+
+        def debug(self, *a, **kw):
+            pass
+
+    dummy_logger = DummyLogger()
+    monkeypatch.setattr(mod, "logger", dummy_logger)
+
+    class DummyPage:
+        async def goto(self, *a, **kw):
+            pass
+
+        async def content(self):
+            return "<html></html>"
+
+        async def evaluate(self, script):
+            return "js result"
+
+    class DummyContext:
+        async def new_page(self):
+            return DummyPage()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    class DummyCtxMgr:
+        async def __aenter__(self):
+            return DummyContext()
+
+        async def __aexit__(self, exc_type, exc, tb):
+            pass
+
+    monkeypatch.setattr(fhp, "browser_ctx", lambda proxy=None: DummyCtxMgr())
+
+    async def noop(*a, **kw):
+        return None
+
+    monkeypatch.setattr(fhp, "apply_stealth", noop)
+
+    class BasicSoup:
+        def __init__(self, text="", *a, **kw):
+            self.text = text
+
+        def __call__(self, *args, **kw):
+            return []
+
+        def find_all(self, *a, **kw):
+            return []
+
+        def select_one(self, *a, **kw):
+            return None
+
+        def get_text(self, *a, **kw):
+            return self.text
+
+    monkeypatch.setattr(mod, "BeautifulSoup", BasicSoup)
+
+    async def fake_get(prompt: str, model):
+        return mod.LeadList(leads=[mod.Lead(first_name="z")]), "SUCCESS"
+
+    monkeypatch.setattr(mod, "_get_structured_data_internal", fake_get)
+
+    asyncio.run(mod.extract_lead_from_webpage("http://x.com", run_js_on_page="js"))
+
+    assert any("js result" in m for m in dummy_logger.messages)
 

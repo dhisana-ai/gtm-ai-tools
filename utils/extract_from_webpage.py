@@ -171,6 +171,7 @@ async def _fetch_pages_by_selector(
             js_out: Optional[str] = None
             try:
                 js_out = await page.evaluate(run_js_on_page)
+                logger.info("JavaScript output: %s", js_out)
             except Exception:
                 logger.exception("Failed to run provided JavaScript")
             pages.append(PageData(str(soup), js_out))
@@ -248,6 +249,7 @@ async def _fetch_pages_with_actions(
             if run_js_on_page.strip():
                 try:
                     js_out = await page.evaluate(run_js_on_page)
+                    logger.info("JavaScript output: %s", js_out)
                 except Exception:
                     logger.exception("Failed to run provided JavaScript")
             pages.append(PageData(html, js_out))
