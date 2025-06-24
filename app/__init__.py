@@ -1418,187 +1418,74 @@ def save_utility():
 
 @app.route('/web_parse_utility', methods=['GET', 'POST'])
 def web_parse_utility():
-    if request.method == 'GET':
-        # If it's a GET request with parameters, treat it as a POST
-        if request.args:
-            def generate():
-                # Set up logging at the start
-                logging.basicConfig(level=logging.INFO)
-                logger = logging.getLogger(__name__)
-                try:
-                    url = request.args.get('url')
-                    fields = request.args.get('fields', '').split(',')
-                    max_depth = int(request.args.get('max_depth', 3))
-                    pagination = request.args.get('pagination', 'false').lower() == 'true'
-                    instructions = request.args.get('instructions', '')
-                    if not url:
-                        return json.dumps({'error': 'URL is required'})
-                    requirement = codegen_barbarika_web_parsing.UserRequirement(
-                        target_url=url,
-                        data_to_extract=fields,
-                        max_depth=max_depth,
-                        pagination=pagination,
-                        additional_instructions=instructions
-                    )
-
-                    def tree_update_callback(tree_json):
-                        tree_update_queue.put({'type': 'tree_update', 'tree': tree_json})
-
-                    def log_update_callback(msg):
-                        tree_update_queue.put({'type': 'log', 'message': f"{datetime.datetime.now().strftime('%H:%M:%S')}:{msg}"})
-                    parser = codegen_barbarika_web_parsing.WebParser(requirement,
-                                                                     log_update_callback,
-                                                                     tree_update_callback)
-                    tree_update_queue = queue.Queue()
-
-
-
-                    def run_crawl():
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        try:
-                            tree_update_queue.put({'type': 'log', 'message': 'Analyzing requirements...'})
-                            plan = loop.run_until_complete(parser.analyze_requirement())
-                            tree_update_queue.put({'type': 'plan', 'plan': plan})
-                            parser.plan = plan
-                            loop.run_until_complete(parser.build_page_tree(tree_update_callback=tree_update_callback, log_update_callback=log_update_callback))
-                            tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
-                            loop.run_until_complete(parser.generate_extraction_code())
-                            tree_update_queue.put({'type': 'log', 'message': 'Executing generated code...'})
-                            result = loop.run_until_complete(parser.execute_generated_code(url))
-                            # Defensive assignment and logging
-                            if not parser.generated_code and 'code' in result:
-                                parser.generated_code = result['code']
-                            if (not result.get('extracted_data') or len(result.get('extracted_data', [])) == 0) and 'data' in result:
-                                result['extracted_data'] = result['data']
-                            logger.info(f"[web_parse_utility] Final generated_code length: {len(parser.generated_code) if parser.generated_code else 0}")
-                            logger.info(f"[web_parse_utility] Final extracted_data length: {len(result.get('extracted_data', [])) if result.get('extracted_data') else 0}")
-                            completion_data = {
-                                'type': 'complete',
-                                'code': parser.generated_code,
-                                'result': result,
-                                'extracted_data': result.get('extracted_data', []),
-                                'total_items': result.get('total_items', 0),
-                                'execution_success': result.get('execution_success', False),
-                                'csv_file': result.get('csv_file', ''),
-                                'message': result.get('message', ''),
-                                'extra_info': getattr(parser, 'extra_info', {}),
-                                'plan': getattr(parser, 'plan', None)
-                            }
-                            tree_update_queue.put(completion_data)
-                        except Exception as e:
-                            error_msg = f"Error: {str(e)}"
-                            logger.error(error_msg)
-                            tree_update_queue.put({'type': 'error', 'error': error_msg})
-                        finally:
-                            loop.close()
-
-                    crawl_thread = threading.Thread(target=run_crawl, daemon=True)
-                    crawl_thread.start()
-                    while True:
-                        try:
-                            update = tree_update_queue.get(timeout=0.2)
-                            if isinstance(update, dict) and update.get('type') == 'complete':
-                                yield f"data: {json.dumps(update)}\n\n"
-                                break
-                            elif isinstance(update, dict) and update.get('type') == 'error':
-                                yield f"data: {json.dumps(update)}\n\n"
-                                break
-                            elif isinstance(update, dict) and update.get('type') == 'log':
-                                yield f"data: {json.dumps(update)}\n\n"
-                            elif isinstance(update, dict) and update.get('type') == 'plan':
-                                yield f"data: {json.dumps(update)}\n\n"
-                            elif isinstance(update, dict) and update.get('type') == 'tree_update':
-                                yield f"data: {json.dumps(update)}\n\n"
-                            else:
-                                # fallback for any other dict
-                                yield f"data: {json.dumps({'type': 'tree_update', 'tree': update})}\n\n"
-                        except queue.Empty:
-                            if not crawl_thread.is_alive():
-                                break
-                            continue
-                except Exception as e:
-                    error_msg = f"Error: {str(e)}"
-                    logger.error(error_msg)
-                    yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-            return Response(
-                stream_with_context(generate()),
-                mimetype='text/event-stream',
-                headers={
-                    'Cache-Control': 'no-cache',
-                    'Connection': 'keep-alive',
-                    'X-Accel-Buffering': 'no',
-                    'Content-Type': 'text/event-stream'
-                }
-            )
-        # If it's a GET request without parameters, render the template
-        return render_template('web_parse_utility.html')
-    # Handle POST request
-    def generate():
-        # Set up logging at the start
+    def run_generate(url, fields, max_depth, pagination, instructions):
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
-        try:
-            data = request.get_json()
-            url = data.get('url')
-            fields = data.get('fields', '').split(',')
-            max_depth = int(data.get('max_depth', 3))
-            pagination = data.get('pagination', 'false').lower() == 'true'
-            instructions = data.get('instructions', '')
-            if not url:
-                return json.dumps({'error': 'URL is required'})
-            requirement = codegen_barbarika_web_parsing.UserRequirement(
-                target_url=url,
-                data_to_extract=fields,
-                max_depth=max_depth,
-                pagination=pagination,
-                additional_instructions=instructions
-            )
-            parser = codegen_barbarika_web_parsing.WebParser(requirement)
-            tree_update_queue = queue.Queue()
+        if not url:
+            return json.dumps({'error': 'URL is required'})
+        tree_update_queue = queue.Queue()
 
-            def tree_update_callback(tree_json):
-                tree_update_queue.put({'type': 'tree_update', 'tree': tree_json})
+        def tree_update_callback(tree_json):
+            tree_update_queue.put({'type': 'tree_update', 'tree': tree_json})
 
-            def run_crawl():
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    tree_update_queue.put({'type': 'log', 'message': 'Analyzing requirements...'})
-                    plan = loop.run_until_complete(parser.analyze_requirement())
-                    tree_update_queue.put({'type': 'plan', 'plan': plan})
-                    parser.plan = plan
-                    loop.run_until_complete(parser.build_page_tree(tree_update_callback=tree_update_callback))
-                    tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
-                    loop.run_until_complete(parser.generate_extraction_code())
-                    tree_update_queue.put({'type': 'log', 'message': 'Executing generated code...'})
-                    result = loop.run_until_complete(parser.execute_generated_code(url))
-                    # Defensive assignment and logging
-                    if not parser.generated_code and 'code' in result:
-                        parser.generated_code = result['code']
-                    if (not result.get('extracted_data') or len(result.get('extracted_data', [])) == 0) and 'data' in result:
-                        result['extracted_data'] = result['data']
-                    logger.info(f"[web_parse_utility] Final generated_code length: {len(parser.generated_code) if parser.generated_code else 0}")
-                    logger.info(f"[web_parse_utility] Final extracted_data length: {len(result.get('extracted_data', [])) if result.get('extracted_data') else 0}")
-                    completion_data = {
-                        'type': 'complete',
-                        'code': parser.generated_code,
-                        'result': result,
-                        'extracted_data': result.get('extracted_data', []),
-                        'total_items': result.get('total_items', 0),
-                        'execution_success': result.get('execution_success', False),
-                        'csv_file': result.get('csv_file', ''),
-                        'message': result.get('message', ''),
-                        'extra_info': getattr(parser, 'extra_info', {}),
-                        'plan': getattr(parser, 'plan', None)
-                    }
-                    tree_update_queue.put(completion_data)
-                except Exception as e:
-                    error_msg = f"Error: {str(e)}"
-                    logger.error(error_msg)
-                    tree_update_queue.put({'type': 'error', 'error': error_msg})
-                finally:
-                    loop.close()
+        def log_update_callback(msg):
+            logger.info(msg)
+            tree_update_queue.put({'type': 'log', 'message': f"{datetime.datetime.now().strftime('%H:%M:%S')}:{msg}"})
+
+        requirement = codegen_barbarika_web_parsing.UserRequirement(
+            target_url=url,
+            data_to_extract=fields,
+            max_depth=max_depth,
+            pagination=pagination,
+            additional_instructions=instructions
+        )
+        parser = codegen_barbarika_web_parsing.WebParser(
+            requirement,
+            log_update_callback=log_update_callback,
+            tree_update_callback=tree_update_callback
+        )
+
+        def run_crawl():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                tree_update_queue.put({'type': 'log', 'message': 'Analyzing requirements...'})
+                plan = loop.run_until_complete(parser.analyze_requirement())
+                tree_update_queue.put({'type': 'plan', 'plan': plan})
+                parser.plan = plan
+                loop.run_until_complete(parser.build_page_tree())
+                tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
+                loop.run_until_complete(parser.generate_extraction_code())
+                tree_update_queue.put({'type': 'log', 'message': 'Executing generated code...'})
+                result = loop.run_until_complete(parser.execute_generated_code(url))
+                # Defensive assignment and logging
+                if not parser.generated_code and 'code' in result:
+                    parser.generated_code = result['code']
+                if (not result.get('extracted_data') or len(result.get('extracted_data', [])) == 0) and 'data' in result:
+                    result['extracted_data'] = result['data']
+                logger.info(f"[web_parse_utility] Final generated_code length: {len(parser.generated_code) if parser.generated_code else 0}")
+                logger.info(f"[web_parse_utility] Final extracted_data length: {len(result.get('extracted_data', [])) if result.get('extracted_data') else 0}")
+                completion_data = {
+                    'type': 'complete',
+                    'code': parser.generated_code,
+                    'result': result,
+                    'extracted_data': result.get('extracted_data', []),
+                    'total_items': result.get('total_items', 0),
+                    'execution_success': result.get('execution_success', False),
+                    'csv_file': result.get('csv_file', ''),
+                    'message': result.get('message', ''),
+                    'extra_info': getattr(parser, 'extra_info', {}),
+                    'plan': getattr(parser, 'plan', None)
+                }
+                tree_update_queue.put(completion_data)
+            except Exception as e:
+                error_msg = f"Error: {str(e)}"
+                logger.error(error_msg)
+                tree_update_queue.put({'type': 'error', 'error': error_msg})
+            finally:
+                loop.close()
+
+        def event_stream():
             crawl_thread = threading.Thread(target=run_crawl, daemon=True)
             crawl_thread.start()
             while True:
@@ -1622,20 +1509,34 @@ def web_parse_utility():
                     if not crawl_thread.is_alive():
                         break
                     continue
-        except Exception as e:
-            error_msg = f"Error: {str(e)}"
-            logger.error(error_msg)
-            yield f"data: {json.dumps({'type': 'error', 'error': error_msg})}\n\n"
-    return Response(
-        stream_with_context(generate()),
-        mimetype='text/event-stream',
-        headers={
-            'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no',
-            'Content-Type': 'text/event-stream'
-        }
-    )
+        return Response(
+            stream_with_context(event_stream()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+                'Content-Type': 'text/event-stream'
+            }
+        )
+
+    if request.method == 'GET':
+        if request.args:
+            url = request.args.get('url')
+            fields = request.args.get('fields', '').split(',')
+            max_depth = int(request.args.get('max_depth', 3))
+            pagination = request.args.get('pagination', 'false').lower() == 'true'
+            instructions = request.args.get('instructions', '')
+            return run_generate(url, fields, max_depth, pagination, instructions)
+        return render_template('web_parse_utility.html')
+    else:
+        data = request.get_json()
+        url = data.get('url')
+        fields = data.get('fields', '').split(',')
+        max_depth = int(data.get('max_depth', 3))
+        pagination = data.get('pagination', 'false').lower() == 'true'
+        instructions = data.get('instructions', '')
+        return run_generate(url, fields, max_depth, pagination, instructions)
 
 
 @app.route('/save_web_parse_utility', methods=['POST'])

@@ -196,6 +196,304 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentCsvFile = null;
     let currentPlan = null;
 
+    // Optimized tree update system
+    let currentTreeData = null;
+    let updateTimeout = null;
+    let treeNodeCache = new Map(); // Cache for node elements by URL
+    
+    // Debounced tree update function
+    function updateTreeIncrementally(treeData) {
+        currentTreeData = treeData;
+        
+        // Debug: Log when updates are received
+        console.log('🌳 Tree update received:', {
+            url: treeData?.url,
+            status: treeData?.status,
+            progress: treeData?.progress,
+            hasPythonCode: !!(treeData?.python_code),
+            hasExecutionResult: !!(treeData?.code_execution_result),
+            hasAnalysisData: !!(treeData?.analysis_data),
+            hasSummary: !!(treeData?.summery),
+            timestamp: new Date().toISOString()
+        });
+        
+        // Clear existing timeout
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+        }
+        
+        // Debounce updates to 50ms (reduced from 100ms for more responsive updates)
+        updateTimeout = setTimeout(() => {
+            console.log('🌳 Processing tree update after debounce');
+            performTreeUpdate(treeData);
+        }, 50);
+    }
+    
+    // Perform the actual tree update
+    function performTreeUpdate(treeData) {
+        if (!treeData) return;
+        
+        try {
+            if (!treeView.querySelector('ul')) {
+                // Initial render
+                treeView.innerHTML = `<ul>${renderTree(treeData)}</ul>`;
+                cacheTreeNodes(treeData);
+            } else {
+                // Incremental update
+                updateTreeNodes(treeData);
+            }
+        } catch (error) {
+            console.error('Tree update error:', error);
+            // Fallback to full re-render
+            treeView.innerHTML = `<ul>${renderTree(treeData)}</ul>`;
+            cacheTreeNodes(treeData);
+        }
+    }
+    
+    // Cache tree nodes for quick access
+    function cacheTreeNodes(node, parentElement = null) {
+        if (!node) return;
+        
+        const nodeElement = parentElement || treeView.querySelector(`[data-url="${node.url}"]`);
+        if (nodeElement) {
+            treeNodeCache.set(node.url, nodeElement);
+            
+            // Preserve toggle panel states
+            const toggleStates = {};
+            const toggles = nodeElement.querySelectorAll('[class*="-toggle"]');
+            toggles.forEach(toggle => {
+                const panelId = toggle.getAttribute('data-node-id');
+                if (panelId) {
+                    const panel = document.getElementById(panelId);
+                    if (panel) {
+                        toggleStates[panelId] = panel.style.display !== 'none';
+                    }
+                }
+            });
+            
+            // Store toggle states in the cache
+            if (Object.keys(toggleStates).length > 0) {
+                nodeElement.toggleStates = toggleStates;
+            }
+        }
+        
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+                const childElement = nodeElement ? 
+                    nodeElement.querySelector(`[data-url="${child.url}"]`) : null;
+                cacheTreeNodes(child, childElement);
+            });
+        }
+    }
+    
+    // Update individual tree nodes
+    function updateTreeNodes(node, parentElement = null) {
+        if (!node) return;
+        
+        let nodeElement = treeNodeCache.get(node.url);
+        
+        if (!nodeElement) {
+            // Node doesn't exist, create it
+            const newNodeHtml = renderTree(node);
+            if (parentElement) {
+                const parentUl = parentElement.querySelector('ul') || 
+                    parentElement.appendChild(document.createElement('ul'));
+                parentUl.insertAdjacentHTML('beforeend', newNodeHtml);
+                nodeElement = parentUl.lastElementChild;
+            } else {
+                // Root node
+                treeView.innerHTML = `<ul>${newNodeHtml}</ul>`;
+                nodeElement = treeView.querySelector('li');
+            }
+            treeNodeCache.set(node.url, nodeElement);
+        } else {
+            // Update existing node - but only update content, not structure
+            updateNodeContent(nodeElement, node);
+        }
+        
+        // Update children recursively
+        if (node.children && node.children.length > 0) {
+            const childrenContainer = nodeElement.querySelector('ul');
+            if (!childrenContainer) {
+                nodeElement.appendChild(document.createElement('ul'));
+            }
+            
+            node.children.forEach(child => {
+                updateTreeNodes(child, nodeElement);
+            });
+        }
+    }
+    
+    // Update content of a specific node (without affecting structure)
+    function updateNodeContent(nodeElement, nodeData) {
+        if (!nodeElement || !nodeData) return;
+
+        // Save previous toggle state
+        const prevToggles = {
+            summery: !!nodeElement.querySelector('.tree-summery-toggle'),
+            python_code: !!nodeElement.querySelector('.tree-code-toggle'),
+            code_execution_result: !!nodeElement.querySelector('.tree-result-toggle'),
+            code_execution_error: !!nodeElement.querySelector('.tree-error-toggle'),
+            analysis_data: !!nodeElement.querySelector('.tree-analysis-toggle'),
+        };
+        const newToggles = {
+            summery: !!(nodeData.summery && nodeData.summery.length > 0),
+            python_code: !!(nodeData.python_code && nodeData.python_code.length > 0),
+            code_execution_result: !!(nodeData.code_execution_result && JSON.stringify(nodeData.code_execution_result).length > 2),
+            code_execution_error: !!(nodeData.code_execution_error && nodeData.code_execution_error.length > 0),
+            analysis_data: !!(nodeData.analysis_data && Object.keys(nodeData.analysis_data).length > 0),
+        };
+        // If any new toggle should appear, re-render the node
+        let shouldRerender = false;
+        for (const key of Object.keys(newToggles)) {
+            if (newToggles[key] && !prevToggles[key]) {
+                shouldRerender = true;
+                break;
+            }
+        }
+        if (shouldRerender) {
+            // Re-render the node's HTML
+            const parent = nodeElement.parentElement;
+            const newNodeHtml = renderTree(nodeData);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = newNodeHtml;
+            const newNodeElement = tempDiv.firstElementChild;
+            parent.replaceChild(newNodeElement, nodeElement);
+            treeNodeCache.set(nodeData.url, newNodeElement);
+            // Restore toggle states if possible
+            restoreToggleStates(newNodeElement);
+            return;
+        }
+
+        // Update CSS classes for status
+        nodeElement.className = `tree-node ${nodeData.status || 'pending'}`;
+
+        // Update status color
+        const statusColor = getStatusColor(nodeData.status);
+        const titleElement = nodeElement.querySelector('.node-title');
+        if (titleElement) {
+            titleElement.style.color = statusColor;
+        }
+
+        // Update progress
+        const progressElement = nodeElement.querySelector('.node-progress');
+        if (progressElement && nodeData.progress !== undefined) {
+            progressElement.style.width = `${nodeData.progress}%`;
+            progressElement.setAttribute('aria-valuenow', nodeData.progress);
+        }
+
+        // Update status message
+        const statusElement = nodeElement.querySelector('.node-status');
+        if (statusElement && nodeData.status_message) {
+            statusElement.textContent = nodeData.status_message;
+        }
+
+        // Update relevance score
+        const scoreElement = nodeElement.querySelector('.node-score');
+        if (scoreElement && nodeData.relevance_score !== undefined) {
+            scoreElement.textContent = `(score: ${nodeData.relevance_score.toFixed(2)})`;
+        }
+
+        // Update page type
+        const typeElement = nodeElement.querySelector('.node-type');
+        if (typeElement && nodeData.page_type) {
+            typeElement.textContent = `[${nodeData.page_type}]`;
+        }
+
+        // Update exclusive fields
+        const exclusiveFieldsElement = nodeElement.querySelector('.exclusive-fields');
+        if (exclusiveFieldsElement && nodeData.exclusive_fields) {
+            const spanElement = exclusiveFieldsElement.querySelector('span');
+            if (spanElement) {
+                spanElement.textContent = nodeData.exclusive_fields.join(', ');
+            }
+        }
+
+        // Add loading animation for processing nodes
+        if (nodeData.status === 'processing') {
+            const titleElement = nodeElement.querySelector('.node-title');
+            if (titleElement && !titleElement.querySelector('.loading-dots')) {
+                titleElement.innerHTML += '<span class="loading-dots"></span>';
+            }
+        } else {
+            const loadingDots = nodeElement.querySelector('.loading-dots');
+            if (loadingDots) {
+                loadingDots.remove();
+            }
+        }
+
+        // Update toggle panels if they exist
+        updateTogglePanels(nodeElement, nodeData);
+
+        // Restore toggle states after update
+        restoreToggleStates(nodeElement);
+    }
+    
+    // Update toggle panels for a node
+    function updateTogglePanels(nodeElement, nodeData) {
+        if (!nodeElement || !nodeData) return;
+        
+        // Update summary panel
+        if (nodeData.summery) {
+            const summeryPanel = nodeElement.querySelector('.tree-summery-panel');
+            if (summeryPanel) {
+                const contentDiv = summeryPanel.querySelector('div:last-child');
+                if (contentDiv) {
+                    contentDiv.textContent = nodeData.summery;
+                }
+            }
+        }
+        
+        // Update Python code panel
+        if (nodeData.python_code) {
+            const codePanel = nodeElement.querySelector('.tree-code-panel');
+            if (codePanel) {
+                const preElement = codePanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = nodeData.python_code;
+                }
+            }
+        }
+        
+        // Update execution result panel
+        if (nodeData.code_execution_result) {
+            const resultPanel = nodeElement.querySelector('.tree-result-panel');
+            if (resultPanel) {
+                const preElement = resultPanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = JSON.stringify(nodeData.code_execution_result, null, 2);
+                }
+            }
+        }
+        
+        // Update analysis data panel
+        if (nodeData.analysis_data) {
+            const analysisPanel = nodeElement.querySelector('.tree-analysis-panel');
+            if (analysisPanel) {
+                const preElement = analysisPanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = JSON.stringify(nodeData.analysis_data, null, 2);
+                }
+            }
+        }
+    }
+
+    // Get status color
+    function getStatusColor(status) {
+        switch (status) {
+            case 'completed':
+            case 'done':
+                return '#28a745';
+            case 'processing':
+                return '#007bff';
+            case 'error':
+                return '#dc3545';
+            case 'pending':
+            default:
+                return '#ffc107';
+        }
+    }
+
     // Handle form submission
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -324,7 +622,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         case 'tree_update':
                             if (data.tree) {
                                 treeViewContainer.classList.remove('d-none');
-                                treeView.innerHTML = `<ul>${renderTree(data.tree)}</ul>`;
+                                updateTreeIncrementally(data.tree);
                             }
                             break;
                     }
@@ -472,23 +770,41 @@ document.addEventListener('DOMContentLoaded', function() {
     // Helper to render the tree recursively
     function renderTree(node, depth = 0, nodeIdPrefix = 'tree-node-') {
         if (!node) return '';
+        
+        // Generate stable ID based on URL
+        const nodeId = node.url ? node.url.replace(/[^a-zA-Z0-9]/g, '_') : `node_${Math.random().toString(36).substr(2, 6)}`;
+        const stablePrefix = `tree-${nodeId}`;
+        
         let childrenHtml = '';
         if (node.children && node.children.length > 0) {
-            childrenHtml = `<ul style='margin-left: 1em;'>${node.children.map((child, idx) => renderTree(child, depth + 1, nodeIdPrefix + idx + '-')).join('')}</ul>`;
+            childrenHtml = `<ul style='margin-left: 1em;'>${node.children.map((child, idx) => renderTree(child, depth + 1, stablePrefix + '-')).join('')}</ul>`;
         }
-        const statusColor = node.status === 'done' ? '#28a745' : '#ffc107';
+        
+        const statusColor = getStatusColor(node.status);
+        const progressBar = node.progress !== undefined ? 
+            `<div class="progress" style="height: 4px; margin-top: 2px;">
+                <div class="node-progress progress-bar" role="progressbar" style="width: ${node.progress}%; background-color: ${statusColor};" 
+                     aria-valuenow="${node.progress}" aria-valuemin="0" aria-valuemax="100"></div>
+             </div>` : '';
+        
         let exclusiveFieldsHtml = '';
         if (node.exclusive_fields && node.exclusive_fields.length > 0) {
-            exclusiveFieldsHtml = `<div style='font-size:0.85em; color:#888; margin-top:2px;'>Exclusive fields: <span style='color:#555;'>${node.exclusive_fields.join(', ')}</span></div>`;
+            exclusiveFieldsHtml = `<div class="exclusive-fields" style='font-size:0.85em; color:#888; margin-top:2px;'>Exclusive fields: <span style='color:#555;'>${node.exclusive_fields.join(', ')}</span></div>`;
         }
+        
         let urlHtml = '';
         if (node.url) {
             urlHtml = `<div style='font-size:0.85em; color:#888;'><a href='${node.url}' target='_blank' style='color:#888; text-decoration:underline;'>${node.url}</a></div>`;
         }
-        // Summery toggle
+        
+        // Status message
+        const statusMessage = node.status_message ? 
+            `<div class="node-status" style='font-size:0.85em; color:#666; margin-top:2px;'>${escapeHtml(node.status_message)}</div>` : '';
+        
+        // Summery toggle with stable ID
         let summeryToggleHtml = '';
         let summeryPanelHtml = '';
-        const summeryId = nodeIdPrefix + 'summery-' + Math.random().toString(36).substr(2, 6);
+        const summeryId = stablePrefix + '-summery';
         if (node.summery && node.summery.length > 0) {
             summeryToggleHtml = `<a href='#' class='tree-summery-toggle' data-node-id='${summeryId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Summary]</a>`;
             summeryPanelHtml = `<div id='${summeryId}' class='tree-summery-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
@@ -496,13 +812,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:120px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.summery)}</div>
             </div>`;
         }
-        // Separate toggles and panels for python_code and code_execution_result
+        
+        // Code toggle with stable ID
         let codeToggleHtml = '';
         let codePanelHtml = '';
-        let resultToggleHtml = '';
-        let resultPanelHtml = '';
-        const codeId = nodeIdPrefix + 'code-' + Math.random().toString(36).substr(2, 6);
-        const resultId = nodeIdPrefix + 'result-' + Math.random().toString(36).substr(2, 6);
+        const codeId = stablePrefix + '-code';
         if (node.python_code && node.python_code.length > 0) {
             codeToggleHtml = `<a href='#' class='tree-code-toggle' data-node-id='${codeId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Python Code]</a>`;
             codePanelHtml = `<div id='${codeId}' class='tree-code-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
@@ -511,6 +825,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 <pre id='${codeId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.python_code)}</pre>
             </div>`;
         }
+        
+        // Result toggle with stable ID
+        let resultToggleHtml = '';
+        let resultPanelHtml = '';
+        const resultId = stablePrefix + '-result';
         if (node.code_execution_result && JSON.stringify(node.code_execution_result).length > 2) {
             resultToggleHtml = `<a href='#' class='tree-result-toggle' data-node-id='${resultId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Output]</a>`;
             resultPanelHtml = `<div id='${resultId}' class='tree-result-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
@@ -519,10 +838,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 <pre id='${resultId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.code_execution_result, null, 2))}</pre>
             </div>`;
         }
-        // Analysis data toggle
+        
+        // Error toggle with stable ID
+        let errorToggleHtml = '';
+        let errorPanelHtml = '';
+        const errorId = stablePrefix + '-error';
+        if (node.code_execution_error && node.code_execution_error.length > 0) {
+            errorToggleHtml = `<a href='#' class='tree-error-toggle' data-node-id='${errorId}' style='font-size:0.85em; color:#dc3545; margin-left:8px;'>[Show Error]</a>`;
+            errorPanelHtml = `<div id='${errorId}' class='tree-error-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Execution Error:</b></div>
+                <pre style='background:#f8f9fa; color:#dc3545; border:1px solid #eee; border-radius:4px; max-height:120px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.code_execution_error)}</pre>
+            </div>`;
+        }
+        
+        // Analysis toggle with stable ID
         let analysisToggleHtml = '';
         let analysisPanelHtml = '';
-        const analysisId = nodeIdPrefix + 'analysis-' + Math.random().toString(36).substr(2, 6);
+        const analysisId = stablePrefix + '-analysis';
         if (node.analysis_data && Object.keys(node.analysis_data).length > 0) {
             analysisToggleHtml = `<a href='#' class='tree-analysis-toggle' data-node-id='${analysisId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Analysis JSON]</a>`;
             analysisPanelHtml = `<div id='${analysisId}' class='tree-analysis-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
@@ -531,18 +863,23 @@ document.addEventListener('DOMContentLoaded', function() {
                 <pre id='${analysisId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.analysis_data, null, 2))}</pre>
             </div>`;
         }
-        return `<li style='margin-bottom: 0.5em;'>
-            <span style='font-weight:bold; color:${statusColor}'>${node.label || node.url}</span>
-            <span style='color: #888; font-size: 0.9em;'> [${node.page_type || ''}]</span>
-            <span style='color: #aaa; font-size: 0.8em;'> (score: ${node.relevance_score?.toFixed(2)})</span>
+        
+        return `<li data-url="${node.url || ''}" data-node-id="${nodeId}" class="tree-node ${node.status || 'pending'}" style='margin-bottom: 0.5em;'>
+            <span class="node-title" style='font-weight:bold; color:${statusColor}'>${node.label || node.url}</span>
+            <span class="node-type" style='color: #888; font-size: 0.9em;'> [${node.page_type || ''}]</span>
+            <span class="node-score" style='color: #aaa; font-size: 0.8em;'> (score: ${node.relevance_score?.toFixed(2) || '0.00'})</span>
             ${exclusiveFieldsHtml}
             ${urlHtml}
+            ${statusMessage}
+            ${progressBar}
             ${summeryToggleHtml}
             ${summeryPanelHtml}
             ${codeToggleHtml}
             ${codePanelHtml}
             ${resultToggleHtml}
             ${resultPanelHtml}
+            ${errorToggleHtml}
+            ${errorPanelHtml}
             ${analysisToggleHtml}
             ${analysisPanelHtml}
             ${childrenHtml}
@@ -657,6 +994,216 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // Restore toggle states for a node
+    function restoreToggleStates(nodeElement) {
+        if (!nodeElement || !nodeElement.toggleStates) return;
+        
+        Object.entries(nodeElement.toggleStates).forEach(([panelId, isVisible]) => {
+            const panel = document.getElementById(panelId);
+            const toggle = nodeElement.querySelector(`[data-node-id="${panelId}"]`);
+            
+            if (panel && toggle) {
+                if (isVisible) {
+                    panel.style.display = 'block';
+                    // Update toggle text
+                    if (toggle.classList.contains('tree-summery-toggle')) {
+                        toggle.textContent = '[Hide Summary]';
+                    } else if (toggle.classList.contains('tree-code-toggle')) {
+                        toggle.textContent = '[Hide Python Code]';
+                    } else if (toggle.classList.contains('tree-result-toggle')) {
+                        toggle.textContent = '[Hide Output]';
+                    } else if (toggle.classList.contains('tree-error-toggle')) {
+                        toggle.textContent = '[Hide Error]';
+                    } else if (toggle.classList.contains('tree-analysis-toggle')) {
+                        toggle.textContent = '[Hide Analysis JSON]';
+                    }
+                } else {
+                    panel.style.display = 'none';
+                    // Update toggle text
+                    if (toggle.classList.contains('tree-summery-toggle')) {
+                        toggle.textContent = '[Show Summary]';
+                    } else if (toggle.classList.contains('tree-code-toggle')) {
+                        toggle.textContent = '[Show Python Code]';
+                    } else if (toggle.classList.contains('tree-result-toggle')) {
+                        toggle.textContent = '[Show Output]';
+                    } else if (toggle.classList.contains('tree-error-toggle')) {
+                        toggle.textContent = '[Show Error]';
+                    } else if (toggle.classList.contains('tree-analysis-toggle')) {
+                        toggle.textContent = '[Show Analysis JSON]';
+                    }
+                }
+            }
+        });
+    }
 });
 </script>
+
+<style>
+    /* Tree view optimizations */
+    .tree-view {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        background: #fafafa;
+    }
+    
+    .tree-view ul {
+        list-style: none;
+        padding-left: 20px;
+    }
+    
+    .tree-view li {
+        margin-bottom: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        background: white;
+        border: 1px solid #e0e0e0;
+        transition: all 0.2s ease;
+    }
+    
+    .tree-view li:hover {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .tree-view li.processing {
+        border-left: 4px solid #007bff;
+        background: #f8f9ff;
+    }
+    
+    .tree-view li.completed {
+        border-left: 4px solid #28a745;
+        background: #f8fff8;
+    }
+    
+    .tree-view li.error {
+        border-left: 4px solid #dc3545;
+        background: #fff8f8;
+    }
+    
+    .tree-view li.pending {
+        border-left: 4px solid #ffc107;
+        background: #fffef8;
+    }
+    
+    /* Progress bar styling */
+    .progress {
+        height: 4px;
+        margin-top: 4px;
+        background-color: #e9ecef;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        transition: width 0.3s ease;
+    }
+    
+    /* Node content styling */
+    .node-title {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 2px;
+    }
+    
+    .node-type {
+        color: #888;
+        font-size: 0.9em;
+    }
+    
+    .node-score {
+        color: #aaa;
+        font-size: 0.8em;
+    }
+    
+    .node-status {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 2px;
+        font-style: italic;
+    }
+    
+    /* Toggle buttons */
+    .tree-toggle {
+        font-size: 0.85em;
+        color: #007bff;
+        text-decoration: none;
+        margin-left: 8px;
+        cursor: pointer;
+    }
+    
+    .tree-toggle:hover {
+        text-decoration: underline;
+    }
+    
+    /* Code panels */
+    .tree-panel {
+        display: none;
+        margin-top: 4px;
+        margin-bottom: 4px;
+        padding: 8px;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+    }
+    
+    .tree-panel pre {
+        background: #f8f9fa;
+        color: #222;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow: auto;
+        font-size: 0.9em;
+        padding: 6px;
+        margin: 0;
+    }
+    
+    /* Copy button */
+    .tree-copy-btn {
+        float: right;
+        margin-bottom: 4px;
+        font-size: 0.8em;
+    }
+    
+    /* Loading animation */
+    .loading-dots {
+        display: inline-block;
+        animation: loading-dots 1.5s infinite;
+    }
+    
+    @keyframes loading-dots {
+        0%, 20% { content: ""; }
+        40% { content: "."; }
+        60% { content: ".."; }
+        80%, 100% { content: "..."; }
+    }
+    
+    /* Optimize for performance */
+    .tree-view * {
+        will-change: auto;
+    }
+    
+    .tree-view li {
+        contain: layout style;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .tree-view {
+            max-height: 400px;
+        }
+        
+        .tree-view ul {
+            padding-left: 10px;
+        }
+        
+        .tree-view li {
+            padding: 6px;
+            margin-bottom: 6px;
+        }
+    }
+</style>
 {% endblock %} 
