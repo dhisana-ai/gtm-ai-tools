@@ -19,10 +19,6 @@
                             <textarea class="form-control" id="instructions" name="instructions" rows="3" placeholder="Any specific requirements or instructions for data extraction"></textarea>
                         </div>
                         <div class="mb-3">
-                            <label for="fields" class="form-label">Fields to Extract (comma-separated)</label>
-                            <input type="text" class="form-control" id="fields" name="fields" placeholder="e.g. title, price, description">
-                        </div>
-                        <div class="mb-3">
                             <label for="max_depth" class="form-label">Max Depth</label>
                             <input type="number" class="form-control" id="max_depth" name="max_depth" value="3" min="1" max="10">
                         </div>
@@ -517,7 +513,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Get form data
         const formData = {
             url: document.getElementById('url').value,
-            fields: document.getElementById('fields').value.split(',').map(f => f.trim()).filter(f => f),
             max_depth: parseInt(document.getElementById('max_depth').value),
             pagination: document.getElementById('pagination').checked,
             instructions: document.getElementById('instructions').value
@@ -527,7 +522,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Create EventSource for streaming
             const eventSource = new EventSource(`/web_parse_utility?${new URLSearchParams({
                 url: formData.url,
-                fields: formData.fields.join(','),
                 max_depth: formData.max_depth,
                 pagination: formData.pagination,
                 instructions: formData.instructions
@@ -554,6 +548,12 @@ document.addEventListener('DOMContentLoaded', function() {
                                 planPanel.style.display = 'none';
                                 planToggle.textContent = '[Hide]';
                             }
+                            break;
+                        case 'code_generated':
+                            // Update generated code panel immediately after code generation
+                            currentCode = data.code;
+                            generatedCode.textContent = data.code;
+                            resultContainer.classList.remove('d-none');
                             break;
                         case 'complete':
                             currentCode = data.code;
@@ -800,7 +800,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Status message
         const statusMessage = node.status_message ? 
             `<div class="node-status" style='font-size:0.85em; color:#666; margin-top:2px;'>${escapeHtml(node.status_message)}</div>` : '';
-        
+
         // Summery toggle with stable ID
         let summeryToggleHtml = '';
         let summeryPanelHtml = '';
@@ -825,6 +825,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <pre id='${codeId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.python_code)}</pre>
             </div>`;
         }
+
         
         // Result toggle with stable ID
         let resultToggleHtml = '';

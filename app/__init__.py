@@ -1434,7 +1434,6 @@ def web_parse_utility():
 
         requirement = codegen_barbarika_web_parsing.UserRequirement(
             target_url=url,
-            data_to_extract=fields,
             max_depth=max_depth,
             pagination=pagination,
             additional_instructions=instructions
@@ -1456,6 +1455,8 @@ def web_parse_utility():
                 loop.run_until_complete(parser.build_page_tree())
                 tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
                 loop.run_until_complete(parser.generate_extraction_code())
+                # Emit generated code to UI before execution
+                tree_update_queue.put({'type': 'code_generated', 'code': parser.generated_code})
                 tree_update_queue.put({'type': 'log', 'message': 'Executing generated code...'})
                 result = loop.run_until_complete(parser.execute_generated_code(url))
                 # Defensive assignment and logging
@@ -1503,6 +1504,8 @@ def web_parse_utility():
                         yield f"data: {json.dumps(update)}\n\n"
                     elif isinstance(update, dict) and update.get('type') == 'tree_update':
                         yield f"data: {json.dumps(update)}\n\n"
+                    elif isinstance(update, dict) and update.get('type') == 'code_generated':
+                        yield f"data: {json.dumps(update)}\n\n"
                     else:
                         yield f"data: {json.dumps({'type': 'tree_update', 'tree': update})}\n\n"
                 except queue.Empty:
@@ -1523,20 +1526,18 @@ def web_parse_utility():
     if request.method == 'GET':
         if request.args:
             url = request.args.get('url')
-            fields = request.args.get('fields', '').split(',')
             max_depth = int(request.args.get('max_depth', 3))
             pagination = request.args.get('pagination', 'false').lower() == 'true'
             instructions = request.args.get('instructions', '')
-            return run_generate(url, fields, max_depth, pagination, instructions)
+            return run_generate(url, None, max_depth, pagination, instructions)
         return render_template('web_parse_utility.html')
     else:
         data = request.get_json()
         url = data.get('url')
-        fields = data.get('fields', '').split(',')
         max_depth = int(data.get('max_depth', 3))
         pagination = data.get('pagination', 'false').lower() == 'true'
         instructions = data.get('instructions', '')
-        return run_generate(url, fields, max_depth, pagination, instructions)
+        return run_generate(url, None, max_depth, pagination, instructions)
 
 
 @app.route('/save_web_parse_utility', methods=['POST'])

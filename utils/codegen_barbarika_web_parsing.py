@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from utils import common
-from utils.extract_from_webpage import _fetch_and_clean
+from utils.fetch_html_playwright import _fetch_and_clean, fetch_multiple_html_pages
 from utils.common import (
     call_openai_async,
     call_openai_sync,
@@ -49,14 +49,21 @@ load_dotenv(dotenv_path)
 def _load_playwright_sample() -> str:
     """Load sample Playwright usage code for LLM context."""
     try:
+        playwright_sample = ""
+        extract_webpage_sample = ""
+        
+        # Load fetch_html_playwright.py
         sample_path = Path(__file__).parent / "fetch_html_playwright.py"
         if sample_path.exists():
             with open(sample_path, 'r', encoding='utf-8') as f:
                 sample_code = f.read()
-            return f"Here is minimum edge cases for playwright usage: {sample_code}"
+            playwright_sample = f"Here is playwright usage utils/fetch_html_playwright.py : {sample_code}"
         else:
             logger.warning("utils/fetch_html_playwright.py not found")
-            return ""
+        
+
+        
+        return playwright_sample
     except Exception as e:
         logger.warning(f"Failed to load Playwright sample: {e}")
         return ""
@@ -281,6 +288,17 @@ class WebParser:
         """
         logger.info("📊 Analyzing user requirements...")
         
+        pagination_analysis = ""
+        if self.requirement.pagination:
+            pagination_analysis = """
+        PAGINATION ANALYSIS:
+        - Analyze the target URL to determine pagination strategy
+        - Identify potential pagination patterns (URL-based, JavaScript-based, etc.)
+        - Determine appropriate pagination approach (selector-based vs action-based)
+        - Set reasonable pagination limits and error handling
+        - Include pagination-specific extraction steps
+        """
+        
         prompt = f"""
         You are an expert web scraping architect. Your task is to analyze a web scraping requirement and create a comprehensive, actionable extraction plan in JSON format.
         
@@ -306,6 +324,7 @@ class WebParser:
             - Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_title, lead_location, primary_domain_of_organization
             - provide proper required data
             - provide proper extraction_steps
+            {pagination_analysis}
         """
 
         try:
@@ -373,7 +392,7 @@ class WebParser:
         self.log_update_callback("✅ Page analysis complete")
         logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
         logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
-        
+
         # Send real-time update with analysis data (including python_code)
         self._update_tree_with_analysis_data(url, analysis_data, "Page analysis complete")
 
@@ -405,7 +424,8 @@ class WebParser:
             "exclusive_fields": analysis_data.get("exclusive_fields", []),
             "code_execution_result": code_execution_result,
             "code_execution_error": code_execution_error,
-            "summery": analysis_data.get("summery", "")
+            "summery": analysis_data.get("summery", ""),
+            "pagination_info": analysis_data.get("pagination_info", {})
         }
         
         # Send real-time update with execution results
@@ -528,6 +548,38 @@ class WebParser:
         parent_page: Optional[PageData]
     ) -> str:
         """Build the prompt for page analysis."""
+        pagination_instructions = ""
+        if self.requirement.pagination:
+            pagination_instructions = """
+        PAGINATION HANDLING:
+        - If pagination is enabled, look for pagination elements like:
+          * Next/Previous buttons
+          * Page numbers
+          * "Load more" buttons
+          * Infinite scroll indicators
+        - Include pagination URLs in next_pages_to_visit with high relevance scores
+        - Identify pagination patterns and include them in patterns_identified
+        - Add pagination-related fields to available_fields if found
+        - Generate pagination-aware Python code that can handle multiple pages
+        - Populate pagination_info with detailed pagination analysis:
+          * Detect pagination type (url_based, javascript_based, infinite_scroll, load_more, none)
+          * Identify CSS selectors for pagination elements
+          * Extract URL patterns and parameters for URL-based pagination
+          * Determine JavaScript actions needed for dynamic pagination
+          * Estimate total pages and items per page
+          * Identify current page number if possible
+        - **CRITICAL: All pagination_actions must contain valid JavaScript code, NOT natural language descriptions**
+        - **JavaScript examples for pagination_actions:**
+          * click_next: "document.querySelector('.next-button').click()"
+          * scroll_to_load: "window.scrollTo(0, document.body.scrollHeight)"
+          * wait_for_load: "new Promise(resolve => setTimeout(resolve, 2000))"
+        - **DO NOT use natural language like "scroll down to load more companies" - this will cause JavaScript syntax errors**
+        - **CRITICAL: Do NOT use 'await' in JavaScript code - it runs in non-async context in Playwright**
+        - **Use Promise-based waiting instead of await:**
+          * Correct: "new Promise(resolve => setTimeout(resolve, 2000))"
+          * Wrong: "await new Promise(resolve => setTimeout(resolve, 2000))"
+        """
+        
         return f"""
         Analyze this HTML content of a webpage and provide comprehensive analysis in one JSON response.
 
@@ -538,6 +590,7 @@ class WebParser:
         - Main Plan: {json.dumps(self.plan, indent=2)}
         - Already Visited Page Types: {self.visited_page_types}
         - Parent Page Type: {parent_page.page_type if parent_page else 'None'}
+        - Pagination Enabled: {self.requirement.pagination}
 
         HTML Content:
         {html[:500_000]}
@@ -565,7 +618,32 @@ class WebParser:
             "available_fields": ["list of fields available for extraction"],
             "generic_name_of_page": <generic name for this page>,
             "python_code": <Python code to extract data from this page>,
-            "python_code_function_name": <name of the main extraction function>
+            "python_code_function_name": <name of the main extraction function>,
+            "pagination_info": {{
+                "has_pagination": <boolean indicating if pagination is detected>,
+                "pagination_type": <"url_based", "javascript_based", "infinite_scroll", "load_more", "none">,
+                "pagination_selectors": {{
+                    "next_button": <CSS selector for next button>,
+                    "previous_button": <CSS selector for previous button>,
+                    "page_numbers": <CSS selector for page number links>,
+                    "load_more_button": <CSS selector for load more button>,
+                    "pagination_container": <CSS selector for pagination container>
+                }},
+                "pagination_patterns": {{
+                    "url_pattern": <URL pattern for pagination if URL-based>,
+                    "page_param": <URL parameter name for page number>,
+                    "offset_param": <URL parameter name for offset>,
+                    "limit_param": <URL parameter name for limit>
+                }},
+                "pagination_actions": {{
+                    "click_next": <Valid JavaScript code to click next button, e.g., "document.querySelector('.next-button').click()">,
+                    "scroll_to_load": <Valid JavaScript code for infinite scroll, e.g., "window.scrollTo(0, document.body.scrollHeight)">,
+                    "wait_for_load": <Valid JavaScript code to wait for content, e.g., "new Promise(resolve => setTimeout(resolve, 2000))">
+                }},
+                "total_pages_estimate": <estimated total number of pages>,
+                "items_per_page": <estimated number of items per page>,
+                "current_page": <current page number if detectable>
+            }}
         }}
 
         Rules for next_pages_to_visit:
@@ -578,9 +656,10 @@ class WebParser:
            - How unique the page type is
            - How deep the page is in the site structure
         6. DO NOT hallucinate URLs or page types - only use what exists in the HTML
+        {pagination_instructions}
 
         Rules for python_code:
-        1. Always use _fetch_and_clean with url for fetching HTML code: from utils.extract_from_webpage import _fetch_and_clean
+        1. Always use _fetch_and_clean with url for fetching HTML code: from utils.fetch_html_playwright import _fetch_and_clean
            html_code = await _fetch_and_clean(url) # this using Playwright
         2. Write Python code to extract all required information in structured data
         3. The function should be async and take a url parameter
@@ -596,9 +675,41 @@ class WebParser:
         13. Add logging for any assumptions made
         14. Add verification steps for extracted data
         15. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names (e.g., .text-[15px]) as these will cause parse errors. If you need to match such a class, use soup.find or soup.find_all with class_="text-[15px]" instead.
+        16. **CRITICAL DEPENDENCY REQUIREMENTS:**
+            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
+            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
+            - DO NOT use pydantic[email] or any optional Pydantic dependencies
+            - Use str for email fields, not EmailStr
+            - Use str for URL fields, not HttpUrl
+            - Use basic validation with Field() if needed, but avoid complex validators
+            - Only use standard library imports and basic required packages (asyncio, json, os, argparse, logging, typing, bs4, aiohttp, pydantic)
+            - DO NOT import any packages that require additional installation beyond the basic requirements
+            - Avoid any imports that might cause "ImportError: package is not installed" errors
+        17. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - The function MUST return a dictionary (dict), NOT a Pydantic model object
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+            - EXAMPLE: If you create a Pydantic model like:
+              ```python
+              class ExtractedData(BaseModel):
+                  title: str
+                  description: str
+                  url: str
+              
+              # WRONG - returns Pydantic object
+              return ExtractedData(title="test", description="test", url="test")
+              
+              # CORRECT - returns dictionary
+              data = ExtractedData(title="test", description="test", url="test")
+              return data.model_dump()
+              ```
 
-        {'16. Build upon existing code from parent page: ' + parent_page.page_type if parent_page else ''}
-        {'17. Parent page code: ' + parent_page.analysis_data['python_code'] if parent_page and parent_page.analysis_data else ''}
+        {f'18. Build upon existing code from parent page: {parent_page.page_type}' if parent_page else ''}
+        {f'19. Parent page code: {parent_page.analysis_data["python_code"]}' if parent_page and parent_page.analysis_data else ''}
 
         IMPORTANT: 
         1. Your response MUST be valid JSON
@@ -694,7 +805,41 @@ class WebParser:
 
                 if hasattr(module, function_name):
                     result = await getattr(module, function_name)(url)
-                    return result
+                    
+                    # Validate that the result is JSON serializable
+                    try:
+                        json.dumps(result)
+                        return result
+                    except (TypeError, ValueError) as json_error:
+                        logger.warning(f"⚠️ Result is not JSON serializable: {json_error}")
+                        logger.warning(f"⚠️ Result type: {type(result)}")
+                        
+                        # Try to convert Pydantic models to dictionaries
+                        if hasattr(result, 'model_dump'):
+                            try:
+                                converted_result = result.model_dump()
+                                json.dumps(converted_result)  # Test serialization
+                                logger.info("✅ Converted Pydantic model to dictionary")
+                                return converted_result
+                            except Exception as convert_error:
+                                logger.error(f"❌ Failed to convert Pydantic model: {convert_error}")
+                        elif hasattr(result, 'dict'):
+                            try:
+                                converted_result = result.dict()
+                                json.dumps(converted_result)  # Test serialization
+                                logger.info("✅ Converted Pydantic model to dictionary using .dict()")
+                                return converted_result
+                            except Exception as convert_error:
+                                logger.error(f"❌ Failed to convert Pydantic model using .dict(): {convert_error}")
+                        
+                        # If conversion fails, return a basic structure
+                        logger.warning("⚠️ Returning basic structure due to serialization issues")
+                        return {
+                            "error": "Result not JSON serializable",
+                            "original_type": str(type(result)),
+                            "serialization_error": str(json_error),
+                            "data": str(result) if result else None
+                        }
                 else:
                     raise AttributeError(f"Function '{function_name}' not found in generated code")
             finally:
@@ -733,6 +878,27 @@ class WebParser:
         13. DO NOT hallucinate data - only extract what exists in the HTML
         14. Add validation steps for extracted data
         15. Add logging for any assumptions made
+        16. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - The function MUST return a dictionary (dict), NOT a Pydantic model object
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+
+        CRITICAL DEPENDENCY REQUIREMENTS:
+        17. **Pydantic Usage Restrictions:**
+            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
+            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
+            - DO NOT use pydantic[email] or any optional Pydantic dependencies
+            - Use str for email fields, not EmailStr
+            - Use str for URL fields, not HttpUrl
+            - Use basic validation with Field() if needed, but avoid complex validators
+        18. **Import Restrictions:**
+            - Only use standard library imports and basic required packages (asyncio, json, os, argparse, logging, typing, bs4, aiohttp, pydantic)
+            - DO NOT import any packages that require additional installation beyond the basic requirements
+            - Avoid any imports that might cause "ImportError: package is not installed" errors
 
         Return only the fixed Python code without any explanations.
         IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
@@ -777,8 +943,9 @@ class WebParser:
             if (
                 page.get("relevance_score", 0) >= 0.8 and
                 page.get("page_type") not in self.visited_page_types and
-                page_url not in self.visited_urls and
-                page_domain == root_domain
+                page_url not in self.visited_urls
+                #     and
+                # page_domain == root_domain
             ):
                 unvisited_pages.append(page)
                 self.visited_page_types.add(page["page_type"])
@@ -1176,14 +1343,15 @@ class WebParser:
                     'page_type': data.page_type,
                     "children": [child.page_type for child in data.children],
                     'parent': data.parent.page_type if data.parent else None,
-                    'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None
+                    'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None,
+                    'pagination_info': data.analysis_data.get('pagination_info', {}) if data.analysis_data else {}
                 })
 
         # Load sample utility code for reference
         sample_utility_code = self._load_sample_utility_code()
-        
+
         prompt = self._build_code_generation_prompt(working_codes, sample_utility_code)
-        
+
         logger.info(f"prompt len:{len(prompt)}")
         self.log_update_callback(f"llm call final cogen :prompt len:{len(prompt)}")
         
@@ -1249,6 +1417,28 @@ class WebParser:
 
     def _build_code_generation_prompt(self, working_codes: List[Dict], sample_utility_code: str) -> str:
         """Build the prompt for code generation."""
+        pagination_instructions = ""
+        if self.requirement.pagination:
+            pagination_instructions = """
+        PAGINATION HANDLING REQUIREMENTS:
+        - The generated code MUST handle pagination when enabled
+        - Use the pagination_info from the page analysis to implement appropriate pagination strategy
+        - Implement pagination logic to navigate through multiple pages based on pagination_info.pagination_type
+        - Use the existing pagination functions from utils.fetch_html_playwright:
+          * _fetch_pages_by_selector() for selector-based pagination
+          * _fetch_pages_with_actions() for action-based pagination
+          * _fetch_pages() for general pagination handling
+        - Use pagination_info.pagination_selectors for targeting pagination elements
+        - Use pagination_info.pagination_patterns for URL-based pagination
+        - Use pagination_info.pagination_actions for JavaScript-based pagination
+        - Implement proper pagination state management
+        - Add pagination-related CLI arguments if needed
+        - Include pagination progress logging
+        - Handle pagination errors gracefully
+        - Limit pagination to reasonable number of pages (use pagination_info.total_pages_estimate, max 50 by default)
+        - Respect pagination_info.items_per_page for batch processing
+        """
+        
         return f"""
         User wants to build a new GTM utility with the following details:
         
@@ -1293,11 +1483,26 @@ class WebParser:
         Here is python code for multi_pages pages you need to combine the code to achieve user requirement:
         
         {json.dumps(working_codes, indent=2)}
-
+        Here is the Target URL : {self.root_url}
         Here is user requirement: {self.requirement.additional_instructions}
+        Pagination Enabled: {self.requirement.pagination}
 
-        Here is the extraction specification:
-        {json.dumps(self.requirement.extraction_spec, indent=2)}
+        { "required_data: " +json.dumps(self.requirement.extraction_spec.get('required_data'), indent=2) if self.requirement.extraction_spec.get('required_data') else "" }
+        
+        Here is 
+
+        PAGINATION INFORMATION USAGE:
+        Each page in the working_codes above contains pagination_info that should be used for pagination handling:
+        - If pagination_info.has_pagination is true, implement pagination logic
+        - Use pagination_info.pagination_type to determine the pagination strategy:
+          * "url_based": Modify URL parameters to navigate pages
+          * "javascript_based": Use JavaScript actions to navigate
+          * "infinite_scroll": Implement scroll-based loading
+          * "load_more": Click "load more" buttons
+        - Use pagination_info.pagination_selectors for element targeting
+        - Use pagination_info.pagination_patterns for URL construction
+        - Use pagination_info.pagination_actions for JavaScript execution
+        - Respect pagination_info.total_pages_estimate and items_per_page for limits
 
         Python coding instructions:
         1. Extract data according to the extraction specification above
@@ -1305,22 +1510,75 @@ class WebParser:
         3. The target URL is {self.root_url} - use this URL directly in the code, don't take it as a parameter
         4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.root_url}. i mean script start with {self.root_url}
         5. make sure script is executable in cli
-        6. to get html_code for any url use this code: from utils.extract_from_webpage import _fetch_and_clean html_code = await _fetch_and_clean(url) # this is using Playwright
-        7. Make sure there are no demo code, make production ready code
-        8. Make CLI "output_file" as only one mandatory positional args for main().The first "output_file" positional argument followed by optional parameters
-        9. Validate the extracted data according to the validation rules in the specification
-        10. Structure the output according to the data_structure in the specification
-        11. Include proper error handling and logging
-        12. Use type hints for all functions
-        13. Add docstrings for all functions
-        14. Follow PEP 8 style guidelines
-        15. Use async/await consistently throughout the code
-        16. Handle rate limiting and retries for HTTP requests
-        17. Include proper exception handling for network errors
-        18. Add validation for extracted data
-        19. Include progress logging
-        20. Add proper cleanup in case of errors
-        21. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names (e.g., .text-[15px]) as these will cause parse errors. If you need to match such a class, use soup.find or soup.find_all with class_="text-[15px]" instead.
+        6. to get html_code for any url use this code: from utils.fetch_html_playwright import _fetch_and_clean html_code = await _fetch_and_clean(url) # this using Playwright
+        7. For fetching HTML from a list of unrelated URLs, use fetch_multiple_html_pages from utils.fetch_html_playwright.py to efficiently batch-fetch all pages in a single browser session. Do not loop over _fetch_and_clean or fetch_html for each URL separately.
+        8. For pagination or infinite scroll, set the default value of max_pages (or similar limit) to a small number (e.g., 2 or 3) for easier validation and testing. Allow this to be overridden by the user via CLI argument or function parameter.
+        9. Make sure there are no demo code, make production ready code
+        10. Make CLI "output_file" as only one mandatory positional args for main().The first "output_file" positional argument followed by optional parameters
+        11. Validate the extracted data according to the validation rules in the specification
+        12. Structure the output according to the data_structure in the specification
+        13. Include proper error handling and logging
+        14. Use type hints for all functions
+        15. Add docstrings for all functions
+        16. Follow PEP 8 style guidelines
+        17. Use async/await consistently throughout the code
+        18. Handle rate limiting and retries for HTTP requests
+        19. Include proper exception handling for network errors
+        20. Add validation for extracted data
+        21. Include progress logging
+        22. Add proper cleanup in case of errors
+        23. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names (e.g., .text-[15px]) as these will cause parse errors. If you need to match such a class, use soup.find or soup.find_all with class_="text-[15px]" instead.
+        24. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - All functions that return data MUST return dictionaries (dict), NOT Pydantic model objects
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+            - EXAMPLE: If you create a Pydantic model like:
+              ```python
+              class ExtractedData(BaseModel):
+                  title: str
+                  description: str
+                  url: str
+              
+              # WRONG - returns Pydantic object
+              return ExtractedData(title="test", description="test", url="test")
+              
+              # CORRECT - returns dictionary
+              data = ExtractedData(title="test", description="test", url="test")
+              return data.model_dump()
+              ```
+        {pagination_instructions}
+
+        Rules for pagination_actions JavaScript code:
+        1. **CRITICAL: All pagination_actions values MUST be valid JavaScript code, NOT natural language descriptions**
+        2. **click_next**: Must be valid JavaScript to click a button, e.g., "document.querySelector('.next-button').click()"
+        3. **scroll_to_load**: Must be valid JavaScript for scrolling, e.g., "window.scrollTo(0, document.body.scrollHeight)"
+        4. **wait_for_load**: Must be valid JavaScript to wait, e.g., "new Promise(resolve => setTimeout(resolve, 2000))"
+        5. **DO NOT use natural language like "scroll down to load more companies" - this will cause JavaScript syntax errors**
+        6. **CRITICAL: Do NOT use 'await' in JavaScript code - it runs in non-async context in Playwright**
+        7. **Examples of valid JavaScript actions:**
+           - Click: "document.querySelector('.next').click()"
+           - Scroll: "window.scrollTo(0, document.body.scrollHeight)"
+           - Wait: "new Promise(resolve => setTimeout(resolve, 3000))"
+           - Wait for element: "new Promise(resolve => {{ const check = () => {{ if (document.querySelector('.loading')) {{ setTimeout(check, 100); }} else {{ resolve(); }} }}; check(); }})"
+        8. **All JavaScript code must be executable in a browser environment**
+        9. **Use proper JavaScript syntax with quotes, semicolons, and valid function calls**
+
+        CRITICAL DEPENDENCY REQUIREMENTS:
+        23. **Pydantic Usage Restrictions:**
+            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
+            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
+            - DO NOT use pydantic[email] or any optional Pydantic dependencies
+            - Use str for email fields, not EmailStr
+            - Use str for URL fields, not HttpUrl
+            - Use basic validation with Field() if needed, but avoid complex validators
+        24. **Import Restrictions:**
+            - Only use standard library imports and the explicitly listed required imports
+            - DO NOT import any packages that require additional installation beyond the basic requirements
+            - Avoid any imports that might cause "ImportError: package is not installed" errors
 
         Required imports:
         - asyncio
@@ -1331,8 +1589,9 @@ class WebParser:
         - typing
         - bs4
         - aiohttp
-        - pydantic
-        - from utils.extract_from_webpage import _fetch_and_clean
+        - pydantic (basic BaseModel only, no optional dependencies)
+        - from utils.fetch_html_playwright import _fetch_and_clean
+        - from utils.fetch_html_playwright import _fetch_pages, _fetch_pages_by_selector, _fetch_pages_with_actions (for pagination)
 
         Return a JSON object with the following structure:
         {{
@@ -1354,8 +1613,9 @@ class WebParser:
         7. Follow PEP 8 style guidelines
         9. Handle CLI arguments properly
         10. Avoid all deprecated packages and functions
+        11. **CRITICAL:** Avoid any imports or field types that require additional packages beyond the basic requirements
          
-        use following as example for playwright edge cases:
+        Use following below code as example for playwright :
         {sample_of_playwright_usage}
          
         Use following as examples which can help you generate the code required for above GTM utility:
@@ -1410,17 +1670,51 @@ class WebParser:
         6. The main function MUST be named '{self.python_code_function_name}'
 
         CRITICAL REQUIREMENTS TO PREVENT COMMON ISSUES:
-        8. Proper CLI argument handling:
+        7. **Pydantic Usage Restrictions:**
+            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
+            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
+            - DO NOT use pydantic[email] or any optional Pydantic dependencies
+            - Use str for email fields, not EmailStr
+            - Use str for URL fields, not HttpUrl
+            - Use basic validation with Field() if needed, but avoid complex validators
+        8. **Import Restrictions:**
+            - Only use standard library imports and the explicitly listed required imports
+            - DO NOT import any packages that require additional installation beyond the basic requirements
+            - Avoid any imports that might cause "ImportError: package is not installed" errors
+        9. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - All functions that return data MUST return dictionaries (dict), NOT Pydantic model objects
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+            - The main extraction function must return a list of dictionaries, not Pydantic model objects
+            - EXAMPLE: If you create a Pydantic model like:
+              ```python
+              class ExtractedData(BaseModel):
+                  title: str
+                  description: str
+                  url: str
+              
+              # WRONG - returns Pydantic object
+              return ExtractedData(title="test", description="test", url="test")
+              
+              # CORRECT - returns dictionary
+              data = ExtractedData(title="test", description="test", url="test")
+              return data.model_dump()
+              ```
+        10. Proper CLI argument handling:
             - Use argparse.ArgumentParser() correctly
             - Define all expected arguments with proper types
             - Handle the case when no arguments are provided
             - Use parser.parse_args() to parse arguments
             - Add proper help text for all arguments
-        9. Avoid deprecated packages:
+        11. Avoid deprecated packages:
             - DO NOT use pkg_resources (use importlib.metadata instead)
             - DO NOT use any deprecated imports or functions
             - Use modern Python 3.8+ syntax
-        10. Proper script structure:
+        12. Proper script structure:
             - Include if __name__ == "__main__": block
             - Handle both direct execution and import scenarios
             - Use asyncio.run() for async main functions
@@ -1629,6 +1923,28 @@ class WebParser:
         12. DO NOT hallucinate data - only extract what exists in the HTML
         13. Add validation steps for extracted data
         14. Add logging for any assumptions made
+        15. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - All functions that return data MUST return dictionaries (dict), NOT Pydantic model objects
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+            - The main extraction function must return a list of dictionaries, not Pydantic model objects
+
+        CRITICAL DEPENDENCY REQUIREMENTS:
+        16. **Pydantic Usage Restrictions:**
+            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
+            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
+            - DO NOT use pydantic[email] or any optional Pydantic dependencies
+            - Use str for email fields, not EmailStr
+            - Use str for URL fields, not HttpUrl
+            - Use basic validation with Field() if needed, but avoid complex validators
+        17. **Import Restrictions:**
+            - Only use standard library imports and the explicitly listed required imports
+            - DO NOT import any packages that require additional installation beyond the basic requirements
+            - Avoid any imports that might cause "ImportError: package is not installed" errors
 
         CRITICAL: Do NOT use asyncio.run() or any event loop management in the generated code. The main function will be called as a script or awaited by the caller.
 

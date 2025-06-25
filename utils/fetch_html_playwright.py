@@ -10,17 +10,20 @@ import asyncio
 import logging
 import os
 import random
+import traceback
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, Optional, List
+from urllib.parse import urlparse, urljoin
 
 import httpx
+from bs4 import BeautifulSoup
 from openai import OpenAI
 from playwright.async_api import TimeoutError as PwTimeout
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth  # Stealth 2.0 API
 
 from utils import common
+from utils.common import openai_client_sync
 
 COOKIE_FILE = str(common.get_output_dir() / "playwright_state.json")
 CF_TITLE_JS = "document.title.toLowerCase().includes('just a moment')"
@@ -50,6 +53,11 @@ logger = logging.getLogger(__name__)
 
 # Playwright stealth helper
 stealth = Stealth()
+
+
+async def apply_stealth(page_or_context) -> None:
+    """Compatibility wrapper to apply stealth evasions."""
+    await stealth.apply_stealth_async(page_or_context)
 
 
 def parse_proxy(proxy_url: str) -> Dict[str, str]:
@@ -271,6 +279,143 @@ async def _do_fetch(
         await asyncio.sleep(wait_time)
         return await page.content()
 
+async def _fetch_and_clean(url: str, page=None) -> str:
+    """
+    Fetch and clean HTML from a URL.
+    If a Playwright page is provided, reuse it for navigation (session reuse).
+    Otherwise, use the default fetch_html_playwright.fetch_html behavior.
+    """
+    if page is not None:
+        await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
+        html = await page.content()
+    else:
+        html = await fetch_html(url)
+    soup = BeautifulSoup(html or "", "html.parser")
+    for tag in soup(["script", "style", "meta", "code", "svg"]):
+        tag.decompose()
+    return str(soup)
+
+async def _fetch_pages_by_selector(
+    url: str, next_page_selector: str | None, max_next_pages: int
+) -> List[str]:
+    """Return HTML from ``url`` and any following pages."""
+
+    pages: List[str] = []
+    current = url
+    visited: set[str] = set()
+    for i in range(max_next_pages + 1):
+        logger.info("Fetching page %s", current)
+        if current in visited:
+            break
+        visited.add(current)
+        html = await _fetch_and_clean(current)
+        if not html:
+            break
+        pages.append(html)
+        if not next_page_selector:
+            break
+        soup = BeautifulSoup(html, "html.parser")
+        next_link = soup.select_one(next_page_selector)
+        if not next_link:
+            logger.debug("No next link found with selector %s", next_page_selector)
+            break
+        href = next_link.get("href")
+        if not href:
+            logger.debug("Next link missing href attribute")
+            break
+        logger.info("Navigating to next page: %s", href)
+        current = urljoin(current, href)
+
+    return pages
+
+
+async def _apply_actions(page, js) -> None:
+
+    if js.strip():  # pragma: no cover - best effort
+        try:
+            logger.info("Executing JavaScript:\n%s", js)
+            await page.evaluate(js)
+            await asyncio.sleep(2)
+        except Exception as e:
+            traceback.print_exc()
+            logger.exception(f"Failed to run generated JavaScript: {e}")
+    else:
+        logger.debug("No JavaScript generated for actions")
+
+
+async def _fetch_pages_with_actions(
+    url: str,
+    initial_actions: str,
+    page_actions: str,
+    pagination_actions: str,
+    max_pages: int,
+) -> List[str]:
+    pages: List[str] = []
+    proxy = os.getenv("PROXY_URL")
+    async with browser_ctx(proxy) as ctx:
+        page = await ctx.new_page()
+        await apply_stealth(page)
+        logger.info("Navigating to %s", url)
+        await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
+        logger.info("Applying initial actions")
+        await _apply_actions(page, initial_actions)
+
+        # Detect if this is a pure infinite scroll scenario
+        is_infinite_scroll = (
+            initial_actions.strip() == "" and
+            page_actions.strip() == "" and
+            pagination_actions.strip().startswith("window.scrollTo(0, document.body.scrollHeight)")
+        )
+        if is_infinite_scroll:
+            logger.info("Detected infinite scroll pattern. Will scroll until no more content or max_pages is reached.")
+            pages_scrolled = 0
+            last_height = await page.evaluate("document.body.scrollHeight")
+            while pages_scrolled < max_pages:
+                await page.evaluate(pagination_actions)
+                await asyncio.sleep(5)
+                new_height = await page.evaluate("document.body.scrollHeight")
+                logger.info(f"last_height:{new_height} ")
+                if new_height == last_height:
+                    logger.info("No more content loaded, stopping scroll.")
+                    break
+                last_height = new_height
+                pages_scrolled += 1
+            html = await page.content()
+            pages.append(html)
+            return pages
+        # Otherwise, use the original multi-page action-based logic
+        for i in range(max_pages):
+            logger.info("Processing page %s", i + 1)
+            await _apply_actions(page, page_actions)
+            html = await page.content()
+            pages.append(html)
+            if i == max_pages - 1:
+                break
+            logger.info("Applying pagination actions")
+            await _apply_actions(page, pagination_actions)
+            try:
+                await page.wait_for_load_state("domcontentloaded", timeout=30_000)
+            except Exception:  # pragma: no cover - navigation may fail
+                break
+    return pages
+
+
+async def _fetch_pages(
+    url: str,
+    next_page_selector: str | None,
+    max_next_pages: int,
+    initial_actions: str = "",
+    page_actions: str = "",
+    pagination_actions: str = "",
+    max_pages: int = 1,
+) -> List[str]:
+    if any([initial_actions, page_actions, pagination_actions]) or max_pages > 1:
+        logger.info("Using action-based navigation")
+        return await _fetch_pages_with_actions(
+            url, initial_actions, page_actions, pagination_actions, max_pages
+        )
+    logger.info("Using selector-based pagination")
+    return await _fetch_pages_by_selector(url, next_page_selector, max_next_pages)
 
 async def fetch_html(
     url: str, proxy_url: Optional[str] = None, captcha_key: Optional[str] = None
@@ -303,13 +448,42 @@ async def fetch_html(
     logger.info("\U0001f310 Using proxy for fetch")
     return await _do_fetch(url, proxy_url, captcha_key)
 
+async def fetch_multiple_html_pages(urls: List[str], proxy_url: Optional[str] = None) -> List[str]:
+    """
+    Fetch HTML content for a list of URLs in a single Playwright browser context/session.
+    Each page is opened, navigated to, HTML is fetched, and then the page is closed.
+    Adds a random delay between requests and retries failed fetches up to 3 times.
+    Args:
+        urls: List of URLs to fetch.
+        proxy_url: Optional proxy URL to use for the browser context.
+    Returns:
+        List of HTML strings, one for each URL (in order).
+    """
+    results = []
+    async with browser_ctx(proxy_url) as ctx:
+        for url in urls:
+            html = ""
+            for attempt in range(3):
+                try:
+                    page = await ctx.new_page()
+                    await apply_stealth(page)
+                    logger.info(f"Fetching (batch) URL: {url} (attempt {attempt+1}/3)")
+                    await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
+                    html = await page.content()
+                    await page.close()
+                    break  # Success
+                except Exception as e:
+                    logger.warning(f"Error fetching {url} (attempt {attempt+1}/3): {e}")
+                    if attempt == 2:
+                        logger.error(f"Error fetching {url} after 3 attempts: {e}")
+                    await asyncio.sleep(random.uniform(1.5, 3.0))  # Wait before retry
+            results.append(html)
+            await asyncio.sleep(random.uniform(0.8, 2.0))  # Delay between requests
+    return results
 
 def summarize_html(text: str, instructions: str) -> str:
     """Return a summary of ``text`` using the OpenAI Responses API."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-    client = OpenAI(api_key=api_key)
+    client = openai_client_sync()
     response = client.responses.create(
         model=common.get_openai_model(),
         input=f"{instructions}\n\n{text}",
@@ -339,3 +513,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
