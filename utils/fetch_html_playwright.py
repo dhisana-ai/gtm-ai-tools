@@ -332,6 +332,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch HTML using Playwright")
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument("--summarize", action="store_true", help="Summarize content")
+    parser.add_argument("--fetchExternal", action="store_true", help="Fetch other companies listed")
     parser.add_argument(
         "--instructions",
         default="Summarize the following text",
