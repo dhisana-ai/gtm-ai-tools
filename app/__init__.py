@@ -1418,7 +1418,7 @@ def save_utility():
 
 @app.route('/web_parse_utility', methods=['GET', 'POST'])
 def web_parse_utility():
-    def run_generate(url, fields, max_depth, pagination, instructions):
+    def run_generate(url, fields, max_depth, pagination, instructions, llm_input_type='html'):
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
         if not url:
@@ -1452,7 +1452,9 @@ def web_parse_utility():
                 plan = loop.run_until_complete(parser.analyze_requirement())
                 tree_update_queue.put({'type': 'plan', 'plan': plan})
                 parser.plan = plan
-                loop.run_until_complete(parser.build_page_tree())
+                # Pass the llm_input_type to build_page_tree
+                use_markdown_for_llm = llm_input_type == 'markdown'
+                loop.run_until_complete(parser.build_page_tree(use_markdown_for_llm=use_markdown_for_llm))
                 tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
                 loop.run_until_complete(parser.generate_extraction_code())
                 # Emit generated code to UI before execution
@@ -1529,7 +1531,8 @@ def web_parse_utility():
             max_depth = int(request.args.get('max_depth', 3))
             pagination = request.args.get('pagination', 'false').lower() == 'true'
             instructions = request.args.get('instructions', '')
-            return run_generate(url, None, max_depth, pagination, instructions)
+            llm_input_type = request.args.get('llm_input_type', 'html')
+            return run_generate(url, None, max_depth, pagination, instructions, llm_input_type)
         return render_template('web_parse_utility.html')
     else:
         data = request.get_json()
@@ -1537,7 +1540,8 @@ def web_parse_utility():
         max_depth = int(data.get('max_depth', 3))
         pagination = data.get('pagination', 'false').lower() == 'true'
         instructions = data.get('instructions', '')
-        return run_generate(url, None, max_depth, pagination, instructions)
+        llm_input_type = data.get('llm_input_type', 'html')
+        return run_generate(url, None, max_depth, pagination, instructions, llm_input_type)
 
 
 @app.route('/save_web_parse_utility', methods=['POST'])

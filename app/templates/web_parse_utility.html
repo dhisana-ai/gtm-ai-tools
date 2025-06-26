@@ -27,6 +27,22 @@
                             <label class="form-check-label" for="pagination">Enable Pagination</label>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">LLM Input Type</label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="llm_input_type" id="html_input" value="html" checked>
+                                <label class="form-check-label" for="html_input">
+                                    HTML (Default) - Use raw HTML for LLM analysis
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="llm_input_type" id="markdown_input" value="markdown">
+                                <label class="form-check-label" for="markdown_input">
+                                    Markdown - Convert HTML to Markdown for cleaner LLM analysis
+                                </label>
+                            </div>
+                        </div>
+
                         <button type="submit" class="btn btn-primary" id="parse-btn">Start Parsing</button>
                     </form>
 
@@ -515,7 +531,8 @@ document.addEventListener('DOMContentLoaded', function() {
             url: document.getElementById('url').value,
             max_depth: parseInt(document.getElementById('max_depth').value),
             pagination: document.getElementById('pagination').checked,
-            instructions: document.getElementById('instructions').value
+            instructions: document.getElementById('instructions').value,
+            llm_input_type: document.querySelector('input[name="llm_input_type"]:checked').value
         };
 
         try {
@@ -524,7 +541,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 url: formData.url,
                 max_depth: formData.max_depth,
                 pagination: formData.pagination,
-                instructions: formData.instructions
+                instructions: formData.instructions,
+                llm_input_type: formData.llm_input_type
             })}`);
 
             eventSource.onmessage = function(event) {
@@ -865,6 +883,19 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>`;
         }
         
+        // Markdown toggle with stable ID
+        let markdownToggleHtml = '';
+        let markdownPanelHtml = '';
+        const markdownId = stablePrefix + '-markdown';
+        if (node.markdown && node.markdown.length > 0) {
+            markdownToggleHtml = `<a href='#' class='tree-markdown-toggle' data-node-id='${markdownId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Markdown]</a>`;
+            markdownPanelHtml = `<div id='${markdownId}' class='tree-markdown-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${markdownId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Markdown:</b></div>
+                <pre id='${markdownId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.markdown)}</pre>
+            </div>`;
+        }
+        
         return `<li data-url="${node.url || ''}" data-node-id="${nodeId}" class="tree-node ${node.status || 'pending'}" style='margin-bottom: 0.5em;'>
             <span class="node-title" style='font-weight:bold; color:${statusColor}'>${node.label || node.url}</span>
             <span class="node-type" style='color: #888; font-size: 0.9em;'> [${node.page_type || ''}]</span>
@@ -883,6 +914,8 @@ document.addEventListener('DOMContentLoaded', function() {
             ${errorPanelHtml}
             ${analysisToggleHtml}
             ${analysisPanelHtml}
+            ${markdownToggleHtml}
+            ${markdownPanelHtml}
             ${childrenHtml}
         </li>`;
     }
@@ -970,6 +1003,21 @@ document.addEventListener('DOMContentLoaded', function() {
                     e.target.textContent = 'Copied!';
                     setTimeout(() => e.target.textContent = 'Copy', 1500);
                 });
+            }
+        }
+        // Markdown toggle
+        if (e.target && e.target.classList.contains('tree-markdown-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Markdown]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Markdown]';
+                }
             }
         }
     });

@@ -30,7 +30,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from utils import common
-from utils.fetch_html_playwright import _fetch_and_clean, fetch_multiple_html_pages
+from utils.fetch_html_playwright import _fetch_and_clean, fetch_multiple_html_pages, html_to_markdown, _fetch_and_markdown
 from utils.common import (
     call_openai_async,
     call_openai_sync,
@@ -197,6 +197,7 @@ class PageData(BaseModel):
         last_update_time: When status was last updated
         error_details: Detailed error information if any
         progress: Processing progress (0-100)
+        markdown: Optional markdown content of the HTML
     """
     
     url: str
@@ -219,6 +220,7 @@ class PageData(BaseModel):
     last_update_time: Optional[float] = None
     error_details: Optional[Dict[str, Any]] = None
     progress: int = 0  # 0-100
+    markdown: Optional[str] = None
 
 
 class WebParser:
@@ -345,32 +347,35 @@ class WebParser:
     async def analyze_page_directly(
         self, 
         html: str, 
+        markdown: Optional[str],
         url: str, 
-        parent_page: Optional[PageData] = None
+        parent_page: Optional[PageData] = None,
+        use_markdown_for_llm: bool = False
     ) -> Dict[str, Any]:
         """
-        Analyze HTML directly and return comprehensive analysis data.
-        
+        Analyze HTML or Markdown directly and return comprehensive analysis data.
         Args:
             html: Raw HTML content to analyze
+            markdown: Markdown version of the HTML
             url: URL of the page being analyzed
             parent_page: Parent page in the tree (if any)
-            
+            use_markdown_for_llm: If True, use markdown for LLM input, else use HTML
         Returns:
             Dictionary containing analysis results including structured data,
             page type, relevance score, and generated code.
         """
-
-        logger.info(f"🔍 Analyzing page directly: {url}")
-        self.log_update_callback(f"🔍 Analyzing page directly: {url} calling llm")
+        logger.info(f"🔍 Analyzing page directly: {url} (use_markdown_for_llm={use_markdown_for_llm})")
+        self.log_update_callback(f"🔍 Analyzing page directly: {url} calling llm (use_markdown_for_llm={use_markdown_for_llm})")
         self._update_tree(f"Analyzing page structure: {url}", url)
 
-        prompt = self._build_page_analysis_prompt(html, url, parent_page)
+        # TODO: To experiment with markdown, set use_markdown_for_llm=True in fetch_and_process_page
+        content = markdown if use_markdown_for_llm and markdown else html
+        content_type = "markdown" if use_markdown_for_llm and markdown else "html"
+        prompt = self._build_page_analysis_prompt(content, url, parent_page, content_type=content_type)
 
         try:
             # Send update before LLM call
             self._update_tree(f"Calling LLM for analysis: {url}", url)
-            
             analysis = call_openai_sync(
                 prompt=prompt,
                 response_format={"type": "json_object"},
@@ -543,11 +548,21 @@ class WebParser:
 
     def _build_page_analysis_prompt(
         self, 
-        html: str, 
+        content: str, 
         url: str, 
-        parent_page: Optional[PageData]
+        parent_page: Optional[PageData],
+        content_type: str = "html",
     ) -> str:
-        """Build the prompt for page analysis."""
+        """
+        Build the prompt for page analysis, using either HTML or Markdown as input.
+        Args:
+            content: The HTML or Markdown content to analyze
+            url: The page URL
+            parent_page: The parent PageData (if any)
+            content_type: "html" or "markdown" (for prompt labeling)
+        Returns:
+            The prompt string for the LLM
+        """
         pagination_instructions = ""
         if self.requirement.pagination:
             pagination_instructions = """
@@ -580,8 +595,55 @@ class WebParser:
           * Wrong: "await new Promise(resolve => setTimeout(resolve, 2000))"
         """
         
+        label = "Markdown Content:" if content_type == "markdown" else "HTML Content:"
+        
+        # Build content-type specific instructions
+        if content_type == "markdown":
+            fetch_instructions = """
+        1. For MARKDOWN extraction, use the appropriate fetch method:
+           from utils.fetch_html_playwright import _fetch_and_clean, html_to_markdown
+           html_code = await _fetch_and_clean(url)
+           markdown_code = html_to_markdown(html_code)
+        """
+            parsing_instructions = """
+        4. For MARKDOWN parsing:
+           - Use BeautifulSoup for HTML parsing: soup = BeautifulSoup(html_code, 'html.parser')
+           - Convert to markdown for analysis: markdown_code = html_to_markdown(html_code)
+           - Use markdown parsing libraries or regex for markdown content analysis
+           - Focus on markdown structure (headers, links, lists, etc.) rather than HTML tags
+        """
+            selector_instructions = """
+        15. **IMPORTANT for MARKDOWN parsing:** 
+           - Use markdown parsing libraries like 'markdown' or 'mistune' for structured markdown analysis
+           - Use regex patterns for extracting specific markdown elements (headers, links, lists)
+           - Parse markdown headers using patterns like r'^#+\s+(.+)$'
+           - Extract markdown links using patterns like r'\[([^\]]+)\]\(([^)]+)\)'
+           - Handle markdown lists and other structural elements appropriately
+        """
+            content_specific_instructions = """
+        12. For MARKDOWN extraction, use appropriate parsing methods:
+            - Use regex for markdown pattern matching
+            - Use markdown parsing libraries for structured analysis
+            - Handle markdown-specific elements (headers, links, lists, code blocks)
+        """
+        else:
+            fetch_instructions = """
+        1. Always use _fetch_and_clean with url for fetching HTML code: from utils.fetch_html_playwright import _fetch_and_clean
+           html_code = await _fetch_and_clean(url) # this using Playwright
+        """
+            parsing_instructions = """
+        4. Use BeautifulSoup for parsing
+        """
+            selector_instructions = """
+        15. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names as these will cause parse errors. If you need to match such classes, use soup.find or soup.find_all with class_ parameter instead.
+        """
+            content_specific_instructions = """
+        12. To match elements that have ALL specified classes (order doesn't matter): soup.find_all('div', class_=['class1', 'class2'])
+        13. Attribute Selectors: Always quote attribute values in CSS selectors: soup.find('div', class_='example-class')
+        """
+
         return f"""
-        Analyze this HTML content of a webpage and provide comprehensive analysis in one JSON response.
+        Analyze this {content_type.upper()} content of a webpage and provide comprehensive analysis in one JSON response.
 
         Context:
         - Target URL: {url}
@@ -592,12 +654,12 @@ class WebParser:
         - Parent Page Type: {parent_page.page_type if parent_page else 'None'}
         - Pagination Enabled: {self.requirement.pagination}
 
-        HTML Content:
-        {html[:500_000]}
+        {label}
+        {content[:500_000]}
 
         Return a JSON object with the following structure:
         {{
-            "structured_data": "Convert the HTML to structured JSON format, ensuring all links are captured",
+            "structured_data": "Convert the {content_type.upper()} to structured JSON format to achieve main plan",
             "main_content_areas": "List of main content areas found",
             "navigation_elements": "List of navigation elements found", 
             "patterns_identified": "Data patterns identified in the page",
@@ -659,22 +721,21 @@ class WebParser:
         {pagination_instructions}
 
         Rules for python_code:
-        1. Always use _fetch_and_clean with url for fetching HTML code: from utils.fetch_html_playwright import _fetch_and_clean
-           html_code = await _fetch_and_clean(url) # this using Playwright
+        {fetch_instructions}
         2. Write Python code to extract all required information in structured data
         3. The function should be async and take a url parameter
-        4. Use BeautifulSoup for parsing
+        {parsing_instructions}
         5. Include proper error handling and logging
         6. Use type hints for all functions
         7. Add docstrings for all functions
         8. Follow PEP 8 style guidelines
         9. Handle rate limiting and retries
         10. Include proper exception handling
-        11. DO NOT hallucinate data - only extract what exists in the HTML
-        12. Validate extracted data against HTML content
+        11. DO NOT hallucinate data - only extract what exists in the {content_type.upper()}
+        12. Validate extracted data against {content_type.upper()} content
         13. Add logging for any assumptions made
         14. Add verification steps for extracted data
-        15. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names (e.g., .text-[15px]) as these will cause parse errors. If you need to match such a class, use soup.find or soup.find_all with class_="text-[15px]" instead.
+        {selector_instructions}
         16. **CRITICAL DEPENDENCY REQUIREMENTS:**
             - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
             - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
@@ -719,12 +780,11 @@ class WebParser:
         5. Relevance scores must be between 0.0 and 1.0
         6. URLs must be absolute and valid
         7. Python code must be valid and follow all specified rules
-        8. DO NOT hallucinate any data - only use what exists in the HTML
-        9. Verify all extracted data against the HTML content
+        8. DO NOT hallucinate any data - only use what exists in the {content_type.upper()}
+        9. Verify all extracted data against the {content_type.upper()} content
         10. Add validation steps to ensure data accuracy
         11. {sample_of_playwright_usage}
-        12. To match elements that have **ALL specified classes** (order doesn't matter): soup.find_all('div', class_=['class1', 'class2'])  # Correct. Avoid (order-sensitive and brittle) soup.find_all('div', class_='class1 class2')  # Incorrect (exact order required)
-        13. **Attribute Selectors:**  Always quote attribute values in CSS selectors: soup.find('div', class_='text-[15px]')  # Correct. Avoid (order-sensitive and brittle):   soup.find_all('div', class_='class1 class2')  # Incorrect (exact order required)
+        {content_specific_instructions}
         """
 
     async def _execute_generated_code(
@@ -1104,7 +1164,7 @@ class WebParser:
         # Only update tree for this specific page, not parent
         self._update_tree(message, page.url, progress)
 
-    async def fetch_and_process_page(self, url: str, path: Optional[List[str]] = None, parent: PageData|None = None) -> PageData:
+    async def fetch_and_process_page(self, url: str, path: Optional[List[str]] = None, parent: PageData|None = None, use_markdown_for_llm: bool = False) -> PageData:
         """
         Fetch and process a page, returning PageData with analysis results.
         
@@ -1145,11 +1205,14 @@ class WebParser:
             html = await _fetch_and_clean(url)
             logger.info(f"📄 Fetched HTML content ({len(html)} bytes)")
             page_data.html = html
+            # Convert HTML to Markdown for possible LLM use
+            page_data.markdown = html_to_markdown(html)
+            logger.info(f"HTML length: {len(html)} | Markdown length: {len(page_data.markdown) if page_data.markdown else 0}")
             self._update_page_status(page_data, "processing", f"HTML fetched ({len(html)} bytes)", 20)
 
             # Analyze page directly
             self._update_page_status(page_data, "processing", f"Analyzing page structure", 30)
-            analysis = await self.analyze_page_directly(html, url, parent)
+            analysis = await self.analyze_page_directly(html=html, markdown=page_data.markdown, url=url, parent_page=parent, use_markdown_for_llm=use_markdown_for_llm)
             page_data.analysis_data = analysis
             self._update_page_status(page_data, "processing", f"Page analysis complete", 60)
 
@@ -1248,12 +1311,13 @@ class WebParser:
             'code_execution_result': node.code_execution_result if node.code_execution_result else '',
             'code_execution_error': node.code_execution_error if node.code_execution_error else '',
             'analysis_data': node.analysis_data if node.analysis_data else {},
+            'html': node.html,
+            'markdown': node.markdown,
         }
 
     async def build_page_tree(
         self, 
-        tree_update_callback: Optional[Callable[[Dict], None]] = None, 
-        log_update_callback: Optional[Callable[[str], None]] = None
+        use_markdown_for_llm: bool = False
     ) -> None:
         """
         Build tree of pages starting from root URL.
@@ -1262,18 +1326,15 @@ class WebParser:
         each page and building a tree structure of relevant pages.
         
         Args:
-            tree_update_callback: Optional callback for tree updates
             log_update_callback: Optional callback for log updates
         """
-        logger.info("🌳 Building page tree...")
-        if log_update_callback:
-            log_update_callback("🌳 Building page tree...")
+        self.log_update_callback("🌳 Building page tree...")
         
         if not self.plan:
             plan = await self.analyze_requirement()
             self.plan = plan
 
-        root_page = await self.fetch_and_process_page(self.root_url)
+        root_page = await self.fetch_and_process_page(self.root_url, use_markdown_for_llm=use_markdown_for_llm)
         self.tree_root = root_page
         self.visited_urls.add(self.root_url)
 
@@ -1281,8 +1342,8 @@ class WebParser:
             """Recursively process pages in the tree."""
             if depth >= self.requirement.max_depth:
                 logger.info(f"⏹️ Reached max depth {depth}, stopping...")
-                if log_update_callback:
-                    log_update_callback(f"⏹️ Reached max depth {depth}, stopping...")
+                if self.log_update_callback:
+                    self.log_update_callback(f"⏹️ Reached max depth {depth}, stopping...")
                 return
 
             logger.info(f"📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
@@ -1300,7 +1361,8 @@ class WebParser:
                     child_page = await self.fetch_and_process_page(
                         next_page['url'],
                         path=page.path + [next_page['url']],
-                        parent=page
+                        parent=page,
+                        use_markdown_for_llm=use_markdown_for_llm
                     )
                     if child_page.relevance_score >= 0.8:
                         # Send tree update after each child page is processed
@@ -1511,6 +1573,7 @@ class WebParser:
         4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.root_url}. i mean script start with {self.root_url}
         5. make sure script is executable in cli
         6. to get html_code for any url use this code: from utils.fetch_html_playwright import _fetch_and_clean html_code = await _fetch_and_clean(url) # this using Playwright
+        6a. to get markdown_code for any url, first fetch HTML using _fetch_and_clean or fetch_multiple_html_pages, then convert to markdown using html_to_markdown: from utils.fetch_html_playwright import html_to_markdown; markdown_code = html_to_markdown(html_code)
         7. For fetching HTML from a list of unrelated URLs, use fetch_multiple_html_pages from utils.fetch_html_playwright.py to efficiently batch-fetch all pages in a single browser session. Do not loop over _fetch_and_clean or fetch_html for each URL separately.
         8. For pagination or infinite scroll, set the default value of max_pages (or similar limit) to a small number (e.g., 2 or 3) for easier validation and testing. Allow this to be overridden by the user via CLI argument or function parameter.
         9. Make sure there are no demo code, make production ready code
@@ -1527,7 +1590,7 @@ class WebParser:
         20. Add validation for extracted data
         21. Include progress logging
         22. Add proper cleanup in case of errors
-        23. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names (e.g., .text-[15px]) as these will cause parse errors. If you need to match such a class, use soup.find or soup.find_all with class_="text-[15px]" instead.
+        23. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names as these will cause parse errors. If you need to match such classes, use soup.find or soup.find_all with class_ parameter instead.
         24. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
             - All functions that return data MUST return dictionaries (dict), NOT Pydantic model objects
             - If you use Pydantic models for data validation, convert them to dictionaries before returning
@@ -1550,36 +1613,8 @@ class WebParser:
               data = ExtractedData(title="test", description="test", url="test")
               return data.model_dump()
               ```
-        {pagination_instructions}
-
-        Rules for pagination_actions JavaScript code:
-        1. **CRITICAL: All pagination_actions values MUST be valid JavaScript code, NOT natural language descriptions**
-        2. **click_next**: Must be valid JavaScript to click a button, e.g., "document.querySelector('.next-button').click()"
-        3. **scroll_to_load**: Must be valid JavaScript for scrolling, e.g., "window.scrollTo(0, document.body.scrollHeight)"
-        4. **wait_for_load**: Must be valid JavaScript to wait, e.g., "new Promise(resolve => setTimeout(resolve, 2000))"
-        5. **DO NOT use natural language like "scroll down to load more companies" - this will cause JavaScript syntax errors**
-        6. **CRITICAL: Do NOT use 'await' in JavaScript code - it runs in non-async context in Playwright**
-        7. **Examples of valid JavaScript actions:**
-           - Click: "document.querySelector('.next').click()"
-           - Scroll: "window.scrollTo(0, document.body.scrollHeight)"
-           - Wait: "new Promise(resolve => setTimeout(resolve, 3000))"
-           - Wait for element: "new Promise(resolve => {{ const check = () => {{ if (document.querySelector('.loading')) {{ setTimeout(check, 100); }} else {{ resolve(); }} }}; check(); }})"
-        8. **All JavaScript code must be executable in a browser environment**
-        9. **Use proper JavaScript syntax with quotes, semicolons, and valid function calls**
-
-        CRITICAL DEPENDENCY REQUIREMENTS:
-        23. **Pydantic Usage Restrictions:**
-            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
-            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
-            - DO NOT use pydantic[email] or any optional Pydantic dependencies
-            - Use str for email fields, not EmailStr
-            - Use str for URL fields, not HttpUrl
-            - Use basic validation with Field() if needed, but avoid complex validators
-        24. **Import Restrictions:**
-            - Only use standard library imports and the explicitly listed required imports
-            - DO NOT import any packages that require additional installation beyond the basic requirements
-            - Avoid any imports that might cause "ImportError: package is not installed" errors
-
+        
+        # ... existing code ...
         Required imports:
         - asyncio
         - json
@@ -1591,6 +1626,8 @@ class WebParser:
         - aiohttp
         - pydantic (basic BaseModel only, no optional dependencies)
         - from utils.fetch_html_playwright import _fetch_and_clean
+        - from utils.fetch_html_playwright import fetch_multiple_html_pages
+        - from utils.fetch_html_playwright import html_to_markdown
         - from utils.fetch_html_playwright import _fetch_pages, _fetch_pages_by_selector, _fetch_pages_with_actions (for pagination)
 
         Return a JSON object with the following structure:

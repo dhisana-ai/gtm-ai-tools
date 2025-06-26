@@ -10,6 +10,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 import traceback
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional, List
@@ -21,6 +22,7 @@ from openai import OpenAI
 from playwright.async_api import TimeoutError as PwTimeout
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth  # Stealth 2.0 API
+from markdownify import markdownify as md
 
 from utils import common
 from utils.common import openai_client_sync
@@ -279,20 +281,60 @@ async def _do_fetch(
         await asyncio.sleep(wait_time)
         return await page.content()
 
+
 async def _fetch_and_clean(url: str, page=None) -> str:
     """
-    Fetch and clean HTML from a URL.
-    If a Playwright page is provided, reuse it for navigation (session reuse).
-    Otherwise, use the default fetch_html_playwright.fetch_html behavior.
+    Fetch and clean HTML while preserving structure but optimizing for LLM:
+    - Replaces base64 images with placeholder (keeps <img> tags)
+    - Removes scripts/styles/svg/meta
+    - Cleans whitespace but preserves paragraphs
     """
+    # Fetch HTML
     if page is not None:
         await page.goto(url, timeout=120_000, wait_until="domcontentloaded")
         html = await page.content()
     else:
         html = await fetch_html(url)
-    soup = BeautifulSoup(html or "", "html.parser")
-    for tag in soup(["script", "style", "meta", "code", "svg"]):
+
+    if not html:
+        return ""
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove unwanted tags (scripts/styles/etc)
+    for tag in soup(["script", "style", "meta", "svg", "noscript"]):
         tag.decompose()
+
+    # --- BASE64 IMAGE HANDLING ---
+    BASE64_PLACEHOLDER = "[base64-image]"  # Token-saving placeholder
+    for img in soup.find_all("img", src=True):
+        if img["src"].startswith("data:image/"):
+            # Keep the <img> tag but replace src and preserve alt if exists
+            img["src"] = BASE64_PLACEHOLDER
+            if not img.get("alt"):
+                img["alt"] = "embedded image"  # Ensure accessibility
+
+    # --- CSS BACKGROUND IMAGES ---
+    for tag in soup.find_all(style=True):
+        if "data:image/" in tag["style"]:
+            # Replace but keep the style attribute
+            tag["style"] = re.sub(
+                r'url\(data:image/[^)]+\)',
+                f'url({BASE64_PLACEHOLDER})',
+                tag["style"]
+            )
+
+    # --- WHITESPACE OPTIMIZATION ---
+    for element in soup.find_all(string=True):
+        if isinstance(element, str):
+            # Collapse multiple spaces but preserve line breaks
+            element.replace_with(" ".join(element.split()))
+
+    # Remove completely empty tags (that contain nothing)
+    for tag in soup.find_all():
+        if not tag.get_text(strip=True) and not tag.contents:
+            tag.decompose()
+
     return str(soup)
 
 async def _fetch_pages_by_selector(
@@ -490,6 +532,39 @@ def summarize_html(text: str, instructions: str) -> str:
     )
     return getattr(response, "output_text", "")
 
+def html_to_markdown(html: str) -> str:
+    """
+    Convert HTML content to Markdown format using markdownify.
+    Args:
+        html (str): The HTML content to convert.
+    Returns:
+        str: The converted Markdown content.
+    """
+
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Process <a> tags to keep links
+    for a in soup.find_all("a"):
+        href = a.get("href", "")
+        text = a.get_text(strip=True)
+        if href:
+            a.replace_with(f"[{text}]({href})")
+
+    # Get remaining text with newlines
+    markdown = soup.get_text("\n", strip=True)
+    return markdown
+
+async def _fetch_and_markdown(url: str, page=None) -> str:
+    """
+    Fetch HTML from a URL and convert it to Markdown.
+    Args:
+        url (str): The URL to fetch.
+        page: Optional Playwright page for session reuse.
+    Returns:
+        str: The Markdown content of the page.
+    """
+    html = await _fetch_and_clean(url, page)
+    return html_to_markdown(html)
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch HTML using Playwright")
