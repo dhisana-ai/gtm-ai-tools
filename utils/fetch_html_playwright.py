@@ -345,7 +345,7 @@ def main() -> None:
         output = summarize_html(html, args.instructions)
     elif args.fetchExternal:
         output = fetch_external(html)
-    elif:
+    else:
         output = html
     print(output)
 
