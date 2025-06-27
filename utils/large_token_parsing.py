@@ -2,6 +2,7 @@ import tiktoken
 import time
 from openai import OpenAI
 from utils import common
+from openai._exceptions import RateLimitError
 
 MAX_INPUT_TOKENS = 25000
 DELAY_BETWEEN_REQUESTS = 20
@@ -37,7 +38,8 @@ def get_openai_client():
     client = OpenAI(api_key=api_key)
     return client
 
-def send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, previous_outputs):
+def send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, previous_outputs, retry_count):
+    retry_count += 1
     system_prompt = (
         f"You will receive a long input broken into {total_chunks} parts. "
         f"Follow this instruction throughout all parts: '{instructions}'. "
@@ -65,10 +67,12 @@ def send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, prev
             messages=messages
         )
         return response.choices[0].message.content
-    except openai.error.RateLimitError:
-        print("Rate limit hit. Waiting 60 seconds...")
-        time.sleep(60)
-        return send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, previous_outputs)
+    except RateLimitError:
+        # Max retry limit is 3 times
+        if (retry_count < 4):
+            print("Rate limit hit. Waiting 60 seconds...")
+            time.sleep(10)
+            return send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, previous_outputs, retry_count)
 
 def finalize_output(previous_outputs):
     messages = [
@@ -99,7 +103,7 @@ def process_large_text(text: str, instructions: str):
 
     for i, chunk in enumerate(chunks):
         print(f"Processing chunk {i+1}/{len(chunks)}...")
-        output = send_chunk_with_context(chunk, i, len(chunks), instructions, partial_outputs)
+        output = send_chunk_with_context(chunk, i, len(chunks), instructions, partial_outputs, 0)
         partial_outputs.append(output)
         time.sleep(DELAY_BETWEEN_REQUESTS)
 
