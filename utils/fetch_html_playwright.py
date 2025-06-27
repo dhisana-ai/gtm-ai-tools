@@ -21,6 +21,7 @@ from playwright.async_api import async_playwright
 from playwright_stealth import Stealth  # Stealth 2.0 API
 
 from utils import common
+from utils import large_token_parsing
 
 COOKIE_FILE = str(common.get_output_dir() / "playwright_state.json")
 CF_TITLE_JS = "document.title.toLowerCase().includes('just a moment')"
@@ -321,11 +322,17 @@ def summarize_html(text: str, instructions: str) -> str:
     )
     return getattr(response, "output_text", "")
 
+def fetch_external(text: str) -> str:
+    instructions = "Attached is the data from a website link, can you please list all the external links in the data with name and their contacts or link? Don't give any extra details"
+
+    # Handles text either by chunking or directly based on the number of tokens
+    return large_token_parsing.handle_text_with_instruction(text, instructions);
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Fetch HTML using Playwright")
     parser.add_argument("url", help="URL to fetch")
     parser.add_argument("--summarize", action="store_true", help="Summarize content")
+    parser.add_argument("--fetchExternal", action="store_true", help="Fetch other companies listed")
     parser.add_argument(
         "--instructions",
         default="Summarize the following text",
@@ -337,6 +344,8 @@ def main() -> None:
     html = asyncio.run(fetch_html(args.url, proxy_url, captcha))
     if args.summarize:
         output = summarize_html(html, args.instructions)
+    elif args.fetchExternal:
+        output = fetch_external(html)
     else:
         output = html
     print(output)

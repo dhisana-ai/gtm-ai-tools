@@ -17,3 +17,4 @@ numpy
 pandas
 greenlet>=2.0.2
 faiss-cpu
+tiktoken
