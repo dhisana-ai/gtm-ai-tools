@@ -718,6 +718,7 @@ class WebParser:
            - How unique the page type is
            - How deep the page is in the site structure
         6. DO NOT hallucinate URLs or page types - only use what exists in the HTML
+        
         {pagination_instructions}
 
         Rules for python_code:
@@ -1341,9 +1342,12 @@ class WebParser:
         async def process_page(page: PageData, depth: int) -> None:
             """Recursively process pages in the tree."""
             if depth >= self.requirement.max_depth:
-                logger.info(f"⏹️ Reached max depth {depth}, stopping...")
+                msg = f"⏹️ Max Depth Reached: depth={depth} (max_depth={self.requirement.max_depth}). Stopping crawl at {page.url}"
+                logger.info(msg)
                 if self.log_update_callback:
-                    self.log_update_callback(f"⏹️ Reached max depth {depth}, stopping...")
+                    self.log_update_callback(msg)
+                # Also send a tree update with a clear status message
+                self._update_tree(f"⏹️ Max Depth Reached at {page.url} (depth={depth})", page.url)
                 return
 
             logger.info(f"📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
@@ -1357,6 +1361,14 @@ class WebParser:
             if isinstance(next_pages_to_visit, list):
                 logger.info(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
                 for next_page in next_pages_to_visit:
+                    # Prevent fetching child pages if max depth would be exceeded
+                    if depth + 1 >= self.requirement.max_depth:
+                        msg = f"⏹️ Max Depth Reached: would fetch {next_page['url']} at depth {depth+1} (max_depth={self.requirement.max_depth}), skipping fetch."
+                        logger.info(msg)
+                        if self.log_update_callback:
+                            self.log_update_callback(msg)
+                        self._update_tree(msg, page.url)
+                        continue
                     logger.info(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
                     child_page = await self.fetch_and_process_page(
                         next_page['url'],
@@ -1493,6 +1505,8 @@ class WebParser:
         - Use pagination_info.pagination_selectors for targeting pagination elements
         - Use pagination_info.pagination_patterns for URL-based pagination
         - Use pagination_info.pagination_actions for JavaScript-based pagination
+        - Use pagination_actions.wait_for_load for JavaScript-based page_actions if it is JavaScript-based
+        
         - Implement proper pagination state management
         - Add pagination-related CLI arguments if needed
         - Include pagination progress logging

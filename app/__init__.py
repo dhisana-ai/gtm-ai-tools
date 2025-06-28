@@ -906,6 +906,7 @@ def run_utility():
                         fieldnames=fieldnames + [status_field, "command", "output"],
                     )
                     writer.writeheader()
+
                     for row in rows:
                         cmd = build_cmd(row)
                         status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
@@ -1377,7 +1378,10 @@ def save_utility():
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(code)
 
-        param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
+        param_pattern = re.compile(
+            r"add_argument\(\s*['\"]([^'\"]+)['\"](?:,.*?)*?help\s*=\s*['\"]([^'\"]+)['\"]",
+            re.DOTALL
+        )
         help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
         params: list[dict[str, str]] = []
         skip_args = {
@@ -1409,7 +1413,7 @@ def save_utility():
             UTILITY_PARAMETERS[base] = params
             load_custom_parameters()
 
-        logging.info("save_utility: wrote file %s", file_path)
+        logging.info(f"save_utility: wrote file {file_path}, params: {params}, name :{name}")
         return jsonify({"success": True, "file_path": str(file_path)})
     except Exception as e:
         logging.error("Error saving utility to file: %s", e)
@@ -1418,7 +1422,7 @@ def save_utility():
 
 @app.route('/web_parse_utility', methods=['GET', 'POST'])
 def web_parse_utility():
-    def run_generate(url, fields, max_depth, pagination, instructions, llm_input_type='html'):
+    def run_generate(url, fields, max_depth, pagination, instructions, llm_input_type='html', max_pages=10, llm_model='default'):
         logging.basicConfig(level=logging.INFO)
         logger = logging.getLogger(__name__)
         if not url:
@@ -1443,6 +1447,10 @@ def web_parse_utility():
             log_update_callback=log_update_callback,
             tree_update_callback=tree_update_callback
         )
+        parser.extra_info = {
+            'max_pages': max_pages,
+            'llm_model': llm_model
+        }
 
         def run_crawl():
             loop = asyncio.new_event_loop()
@@ -1532,7 +1540,9 @@ def web_parse_utility():
             pagination = request.args.get('pagination', 'false').lower() == 'true'
             instructions = request.args.get('instructions', '')
             llm_input_type = request.args.get('llm_input_type', 'html')
-            return run_generate(url, None, max_depth, pagination, instructions, llm_input_type)
+            max_pages = int(request.args.get('max_pages', 10))
+            llm_model = request.args.get('llm_model', 'default')
+            return run_generate(url, None, max_depth, pagination, instructions, llm_input_type, max_pages, llm_model)
         return render_template('web_parse_utility.html')
     else:
         data = request.get_json()
@@ -1541,7 +1551,9 @@ def web_parse_utility():
         pagination = data.get('pagination', 'false').lower() == 'true'
         instructions = data.get('instructions', '')
         llm_input_type = data.get('llm_input_type', 'html')
-        return run_generate(url, None, max_depth, pagination, instructions, llm_input_type)
+        max_pages = int(data.get('max_pages', 10))
+        llm_model = data.get('llm_model', 'default')
+        return run_generate(url, None, max_depth, pagination, instructions, llm_input_type, max_pages, llm_model)
 
 
 @app.route('/save_web_parse_utility', methods=['POST'])
