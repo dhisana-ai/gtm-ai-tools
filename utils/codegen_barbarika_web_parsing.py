@@ -398,13 +398,45 @@ class WebParser:
         logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
         logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
 
+        # Check page usefulness assessment
+        usefulness_assessment = analysis_data.get('page_usefulness_assessment', {})
+        is_useful_page = usefulness_assessment.get('is_useful_page', True)
+        needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
+        skip_processing = usefulness_assessment.get('skip_processing', False)
+        skip_reason = usefulness_assessment.get('skip_reason', '')
+        
+        # Log page usefulness assessment
+        logger.info(f"📊 Page usefulness assessment:")
+        logger.info(f"   - Is useful page: {is_useful_page}")
+        logger.info(f"   - Needs code generation: {needs_code_generation}")
+        logger.info(f"   - Skip processing: {skip_processing}")
+        if skip_reason:
+            logger.info(f"   - Skip reason: {skip_reason}")
+        
         # Send real-time update with analysis data (including python_code)
         self._update_tree_with_analysis_data(url, analysis_data, "Page analysis complete")
 
-        # Execute and validate generated code
-        code_execution_result, code_execution_error = await self._execute_generated_code(
-            analysis_data, url
-        )
+        # Handle code execution based on page usefulness
+        code_execution_result = None
+        code_execution_error = None
+        
+        if skip_processing:
+            logger.info(f"⏭️ Skipping code generation and execution for {url}: {skip_reason}")
+            self.log_update_callback(f"⏭️ Skipping processing for {url}: {skip_reason}")
+            self._update_tree(f"Skipped processing: {skip_reason}", url)
+            code_execution_error = f"Page skipped: {skip_reason}"
+        elif not needs_code_generation:
+            logger.info(f"📝 No code generation needed for {url} (navigation/intermediate page)")
+            self.log_update_callback(f"📝 No code generation needed for {url}")
+            self._update_tree(f"No code generation needed (navigation page)", url)
+            code_execution_error = "No code generation needed for this page type"
+        else:
+            # Execute and validate generated code only if needed
+            logger.info(f"🔧 Executing generated code for {url}")
+            self.log_update_callback(f"🔧 Executing generated code for {url}")
+            code_execution_result, code_execution_error = await self._execute_generated_code(
+                analysis_data, url
+            )
 
         # Update plan with available fields
         self._update_tree(f"Updating extraction plan: {url}", url)
@@ -430,7 +462,8 @@ class WebParser:
             "code_execution_result": code_execution_result,
             "code_execution_error": code_execution_error,
             "summery": analysis_data.get("summery", ""),
-            "pagination_info": analysis_data.get("pagination_info", {})
+            "pagination_info": analysis_data.get("pagination_info", {}),
+            "page_usefulness_assessment": usefulness_assessment
         }
         
         # Send real-time update with execution results
@@ -455,8 +488,27 @@ class WebParser:
         page_data.generated_code = analysis_data.get("python_code")
         page_data.relevance_score = analysis_data.get("relevance_score", 0)
         
+        # Update status based on page usefulness assessment
+        usefulness_assessment = analysis_data.get('page_usefulness_assessment', {})
+        skip_processing = usefulness_assessment.get('skip_processing', False)
+        needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
+        
+        if skip_processing:
+            skip_reason = usefulness_assessment.get('skip_reason', 'No reason provided')
+            page_data.processing_status = "skipped"
+            page_data.status_message = f"Skipped: {skip_reason}"
+            page_data.progress = 100  # Mark as complete since it's skipped
+        elif not needs_code_generation:
+            page_data.processing_status = "completed"
+            page_data.status_message = "No code generation needed (navigation page)"
+            page_data.progress = 100  # Mark as complete since no code needed
+        else:
+            page_data.processing_status = "processing"
+            page_data.status_message = message or "Analysis complete, generating code..."
+            page_data.progress = 60  # 60% progress after analysis
+        
         # Force immediate update for important data
-        self._force_tree_update_with_data(url, message, 60)  # 60% progress after analysis
+        self._force_tree_update_with_data(url, message, page_data.progress)
 
     def _update_tree_with_execution_results(self, url: str, final_result: Dict[str, Any], message: str) -> None:
         """Send real-time tree update with execution results."""
@@ -676,11 +728,23 @@ class WebParser:
                 }}
             ],
             "page_type": "page type",
-            "relevance_score": <>,
+            "relevance_score": <from 0.0 to 1.0>,
             "available_fields": ["list of fields available for extraction"],
             "generic_name_of_page": <generic name for this page>,
             "python_code": <Python code to extract data from this page>,
             "python_code_function_name": <name of the main extraction function>,
+            
+            "page_usefulness_assessment": {{
+                "is_useful_page": <boolean - true if page contains required data or is essential for extraction>,
+                "needs_code_generation": <boolean - true if page requires Python code to extract meaningful data>,
+                "is_navigation_page": <boolean - true if page is mainly navigation/menu/intermediate>,
+                "is_data_page": <boolean - true if page contains actual data to extract>,
+                "is_landing_page": <boolean - true if page is a landing/home page>,
+                "usefulness_reason": <detailed explanation of why page is useful or not>,
+                "skip_processing": <boolean - true if page should be skipped entirely (no code generation, no further processing)>,
+                "skip_reason": <explanation for why page should be skipped>
+            }},
+            
             "pagination_info": {{
                 "has_pagination": <boolean indicating if pagination is detected>,
                 "pagination_type": <"url_based", "javascript_based", "infinite_scroll", "load_more", "none">,
@@ -707,6 +771,46 @@ class WebParser:
                 "current_page": <current page number if detectable>
             }}
         }}
+
+        **CRITICAL PAGE USEFULNESS ASSESSMENT RULES:**
+        1. **is_useful_page**: Set to true if:
+           - Page contains actual data matching required_data_to_extract
+           - Page is essential for navigation to data pages
+           - Page contains pagination controls for data pages
+           - Page is a landing page that leads to data pages
+           - Page contains search/filter functionality for data
+        
+        2. **needs_code_generation**: Set to true if:
+           - Page contains structured data that needs extraction
+           - Page has forms, lists, tables, or structured content
+           - Page contains the actual target data (not just navigation)
+           - Page requires parsing logic to extract meaningful information
+        
+        3. **is_navigation_page**: Set to true if:
+           - Page is mainly menus, navigation links, breadcrumbs
+           - Page contains only links to other pages
+           - Page is a sitemap or directory listing
+           - Page has no structured data, only navigation elements
+        
+        4. **is_data_page**: Set to true if:
+           - Page contains actual data records, products, articles, etc.
+           - Page has structured content that matches extraction requirements
+           - Page contains lists, tables, cards, or other data containers
+        
+        5. **skip_processing**: Set to true if:
+           - Page is completely irrelevant to extraction goals
+           - Page is an error page, 404, or broken link
+           - Page is a login/authentication page with no public data
+           - Page is a terms of service, privacy policy, or legal page
+           - Page contains only ads, tracking scripts, or non-content elements
+           - Page is a redirect page with no meaningful content
+        
+        6. **relevance_score**: Score from 0.0 to 1.0 based on:
+           - 0.9-1.0: Direct data pages with required information
+           - 0.7-0.8: Important navigation pages leading to data
+           - 0.5-0.6: Intermediate pages with some relevance
+           - 0.3-0.4: Pages with minimal relevance
+           - 0.0-0.2: Pages that should be skipped
 
         Rules for next_pages_to_visit:
         1. Provide one url for each page_type, other urls have same html structure so they can call same html parsing function
@@ -991,7 +1095,7 @@ class WebParser:
         )
 
     def _filter_next_pages(self, analysis_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Filter next pages to visit based on relevance, visited status, and root domain."""
+        """Filter next pages to visit based on relevance, visited status, and page usefulness assessment."""
         next_pages_to_visit = analysis_data.get('next_pages_to_visit', [])
         unvisited_pages = []
 
@@ -1001,6 +1105,8 @@ class WebParser:
         for page in next_pages_to_visit:
             page_url = page.get("url", "")
             page_domain = urlparse(page_url).netloc.lower()
+            
+            # Check if page meets basic criteria
             if (
                 page.get("relevance_score", 0) >= 0.8 and
                 page.get("page_type") not in self.visited_page_types and
@@ -1008,6 +1114,17 @@ class WebParser:
                 #     and
                 # page_domain == root_domain
             ):
+                # Additional check: if this page was already analyzed and marked for skipping,
+                # don't add it to the visit list
+                if page_url in self.page_tree:
+                    existing_page = self.page_tree[page_url]
+                    usefulness_assessment = existing_page.analysis_data.get('page_usefulness_assessment', {}) if existing_page.analysis_data else {}
+                    skip_processing = usefulness_assessment.get('skip_processing', False)
+                    
+                    if skip_processing:
+                        logger.info(f"⏭️ Skipping already analyzed page marked for skipping: {page_url}")
+                        continue
+                
                 unvisited_pages.append(page)
                 self.visited_page_types.add(page["page_type"])
                 self.visited_urls.add(page["url"])
@@ -1314,6 +1431,7 @@ class WebParser:
             'analysis_data': node.analysis_data if node.analysis_data else {},
             'html': node.html,
             'markdown': node.markdown,
+            'page_usefulness_assessment': node.analysis_data.get('page_usefulness_assessment', {}) if node.analysis_data else {},
         }
 
     async def build_page_tree(
@@ -1400,9 +1518,101 @@ class WebParser:
         
         Returns:
             Generated Python code as a string
+            
+        Raises:
+            ValueError: If no useful pages are found for code generation
         """
         logger.info("💻 Generating extraction code...")
         self.log_update_callback("💻 Generating extraction code...")
+
+        # First, validate that we have useful pages for code generation
+        useful_pages = []
+        skipped_pages = []
+        navigation_pages = []
+        
+        for url, data in self.page_tree.items():
+            usefulness_assessment = data.analysis_data.get('page_usefulness_assessment', {}) if data.analysis_data else {}
+            skip_processing = usefulness_assessment.get('skip_processing', False)
+            needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
+            
+            if skip_processing:
+                skipped_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'reason': usefulness_assessment.get('skip_reason', 'No reason provided')
+                })
+            elif not needs_code_generation:
+                navigation_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'reason': 'Navigation/intermediate page - no code generation needed'
+                })
+            else:
+                useful_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'has_generated_code': bool(data.generated_code),
+                    'has_execution_result': bool(data.code_execution_result),
+                    'has_execution_error': bool(data.code_execution_error)
+                })
+        
+        # Log page categorization
+        logger.info(f"📊 Page categorization for code generation:")
+        logger.info(f"   - Useful pages (need code generation): {len(useful_pages)}")
+        logger.info(f"   - Skipped pages: {len(skipped_pages)}")
+        logger.info(f"   - Navigation pages: {len(navigation_pages)}")
+        
+        if useful_pages:
+            logger.info(f"   - Useful pages details:")
+            for page in useful_pages:
+                logger.info(f"     * {page['url']} ({page['page_type']}) - Code: {page['has_generated_code']}, Result: {page['has_execution_result']}, Error: {page['has_execution_error']}")
+        
+        if skipped_pages:
+            logger.info(f"   - Skipped pages details:")
+            for page in skipped_pages:
+                logger.info(f"     * {page['url']} ({page['page_type']}) - Reason: {page['reason']}")
+        
+        # Check if we have any pages that actually need code generation
+        if not useful_pages:
+            error_message = "❌ No useful pages found for code generation. "
+            
+            if skipped_pages and navigation_pages:
+                error_message += f"All {len(skipped_pages) + len(navigation_pages)} pages were either skipped or marked as navigation pages. "
+                error_message += f"Skipped pages: {len(skipped_pages)}, Navigation pages: {len(navigation_pages)}. "
+                error_message += "Please check the target URL and extraction requirements."
+            elif skipped_pages:
+                error_message += f"All {len(skipped_pages)} pages were skipped during processing. "
+                error_message += "Common reasons: pages are irrelevant, error pages, login required, or no public data available. "
+                error_message += "Please verify the target URL and extraction requirements."
+            elif navigation_pages:
+                error_message += f"All {len(navigation_pages)} pages were marked as navigation/intermediate pages. "
+                error_message += "No pages contain actual data that requires code generation. "
+                error_message += "Please check if the target URL leads to data pages or adjust extraction requirements."
+            else:
+                error_message += "No pages were processed. Please check the target URL and extraction requirements."
+            
+            # Add detailed information for debugging
+            error_message += f"\n\nTarget URL: {self.requirement.target_url}"
+            error_message += f"\nRequired data to extract: {self.requirement.data_to_extract}"
+            error_message += f"\nAdditional instructions: {self.requirement.additional_instructions}"
+            
+            if skipped_pages:
+                error_message += f"\n\nSkipped pages:"
+                for page in skipped_pages[:5]:  # Show first 5 skipped pages
+                    error_message += f"\n- {page['url']} ({page['page_type']}): {page['reason']}"
+                if len(skipped_pages) > 5:
+                    error_message += f"\n... and {len(skipped_pages) - 5} more skipped pages"
+            
+            if navigation_pages:
+                error_message += f"\n\nNavigation pages:"
+                for page in navigation_pages[:5]:  # Show first 5 navigation pages
+                    error_message += f"\n- {page['url']} ({page['page_type']}): {page['reason']}"
+                if len(navigation_pages) > 5:
+                    error_message += f"\n... and {len(navigation_pages) - 5} more navigation pages"
+            
+            logger.error(error_message)
+            self.log_update_callback(error_message)
+            raise ValueError(error_message)
 
         # Collect all working code and their results
         working_codes = []
@@ -1420,6 +1630,22 @@ class WebParser:
                     'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None,
                     'pagination_info': data.analysis_data.get('pagination_info', {}) if data.analysis_data else {}
                 })
+
+        # Check if we have any working code
+        if not working_codes:
+            error_message = "❌ No working code found for code generation. "
+            error_message += f"Found {len(useful_pages)} useful pages but none have successfully generated and executed code. "
+            error_message += "This may indicate issues with the page analysis or code generation process. "
+            error_message += "Please check the page analysis results and try again."
+            
+            # Add details about useful pages that failed
+            error_message += f"\n\nUseful pages that failed code generation:"
+            for page in useful_pages:
+                error_message += f"\n- {page['url']} ({page['page_type']}) - Code: {page['has_generated_code']}, Result: {page['has_execution_result']}, Error: {page['has_execution_error']}"
+            
+            logger.error(error_message)
+            self.log_update_callback(error_message)
+            raise ValueError(error_message)
 
         # Load sample utility code for reference
         sample_utility_code = self._load_sample_utility_code()

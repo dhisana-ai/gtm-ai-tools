@@ -35,7 +35,7 @@
                 <input type="url" class="form-control" id="url" name="url" required placeholder="https://example.com">
                         </div>
               <div class="col-md-6">
-                <label for="instructions" class="form-label">Instructions <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Describe what data you want to extract or any special requirements."></i></label>
+                <label for="instructions" class="form-label">Prompt <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Describe what data you want to extract or any special requirements."></i></label>
                 <textarea class="form-control" id="instructions" name="instructions" rows="6" placeholder="e.g. Extract all leads and enrich" style="min-height: 120px; font-size: 1.05em;"></textarea>
                 <div class="form-text">Describe what you want to extract. You can use natural language.</div>
                         </div>
@@ -510,6 +510,77 @@
                   <button type="button" class="btn btn-danger" id="confirm-stop-btn">
                     <i class="bi bi-stop-fill me-2"></i>Yes, Stop Parsing
                   </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Page Usefulness Assessment Error Modal -->
+          <div class="modal fade" id="pageUsefulnessErrorModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                  <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    No Useful Pages Found for Code Generation
+                  </h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="alert alert-warning">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Page Usefulness Assessment:</strong> The system analyzed all crawled pages and determined that none are suitable for data extraction code generation.
+                  </div>
+                  
+                  <div id="page-usefulness-error-content">
+                    <!-- Content will be populated by JavaScript -->
+                  </div>
+                  
+                  <div class="mt-4">
+                    <h6 class="text-primary mb-3">
+                      <i class="bi bi-lightbulb me-2"></i>Suggestions to Fix This Issue:
+                    </h6>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Check the target URL:</strong> Ensure it points to a page with actual data (not a login page, error page, or navigation-only page)
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Review extraction requirements:</strong> Make sure your instructions are clear about what data you want to extract
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Try a different starting point:</strong> If the current URL is a landing page, try navigating to a specific data page first
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Increase crawl depth:</strong> The target data might be deeper in the site structure
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Check site accessibility:</strong> Ensure the site doesn't require authentication or have anti-bot measures
+                      </li>
+                    </ul>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <h6 class="text-primary mb-3">
+                      <i class="bi bi-table me-2"></i>Page Analysis Summary:
+                    </h6>
+                    <div id="page-analysis-summary" class="row">
+                      <!-- Summary will be populated by JavaScript -->
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" id="view-logs-btn">
+                    <i class="bi bi-terminal me-2"></i>View Detailed Logs
+                  </button>
+                  <button type="button" class="btn btn-outline-primary" id="try-different-url-btn">
+                    <i class="bi bi-arrow-repeat me-2"></i>Try Different URL
+                  </button>
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
                 </div>
               </div>
             </div>
@@ -1088,6 +1159,11 @@ document.addEventListener('DOMContentLoaded', function() {
                             setParsingState(false); // Reset parsing state on error
                             currentEventSource = null;
                             eventSource.close();
+                            
+                            // Check if this is a page usefulness assessment error
+                            if (data.error && data.error.includes('No useful pages found for code generation')) {
+                                showPageUsefulnessErrorModal(data.error);
+                            }
                             break;
                         case 'tree_update':
                             if (data.tree) {
@@ -2387,6 +2463,198 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // Page Usefulness Error Modal Functions
+    function showPageUsefulnessErrorModal(errorMessage) {
+        const modal = new bootstrap.Modal(document.getElementById('pageUsefulnessErrorModal'));
+        const errorContent = document.getElementById('page-usefulness-error-content');
+        const pageAnalysisSummary = document.getElementById('page-analysis-summary');
+        
+        // Parse the error message to extract useful information
+        let errorDetails = '';
+        let skippedPages = [];
+        let navigationPages = [];
+        let targetUrl = '';
+        let requiredData = '';
+        let additionalInstructions = '';
+        
+        // Extract information from the error message
+        const lines = errorMessage.split('\n');
+        lines.forEach(line => {
+            if (line.includes('Target URL:')) {
+                targetUrl = line.replace('Target URL:', '').trim();
+            } else if (line.includes('Required data to extract:')) {
+                requiredData = line.replace('Required data to extract:', '').trim();
+            } else if (line.includes('Additional instructions:')) {
+                additionalInstructions = line.replace('Additional instructions:', '').trim();
+            } else if (line.includes('Skipped pages:')) {
+                // Parse skipped pages
+                const skippedStart = lines.indexOf(line);
+                for (let i = skippedStart + 1; i < lines.length; i++) {
+                    const pageLine = lines[i];
+                    if (pageLine.includes('Navigation pages:') || pageLine.includes('... and')) {
+                        break;
+                    }
+                    if (pageLine.trim().startsWith('-')) {
+                        const pageInfo = pageLine.replace('-', '').trim();
+                        const match = pageInfo.match(/(.+) \((.+)\): (.+)/);
+                        if (match) {
+                            skippedPages.push({
+                                url: match[1].trim(),
+                                pageType: match[2].trim(),
+                                reason: match[3].trim()
+                            });
+                        }
+                    }
+                }
+            } else if (line.includes('Navigation pages:')) {
+                // Parse navigation pages
+                const navStart = lines.indexOf(line);
+                for (let i = navStart + 1; i < lines.length; i++) {
+                    const pageLine = lines[i];
+                    if (pageLine.includes('... and')) {
+                        break;
+                    }
+                    if (pageLine.trim().startsWith('-')) {
+                        const pageInfo = pageLine.replace('-', '').trim();
+                        const match = pageInfo.match(/(.+) \((.+)\): (.+)/);
+                        if (match) {
+                            navigationPages.push({
+                                url: match[1].trim(),
+                                pageType: match[2].trim(),
+                                reason: match[3].trim()
+                            });
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Build error content
+        errorDetails = `
+            <div class="alert alert-info">
+                <h6 class="alert-heading">Analysis Details:</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Target URL:</strong><br>
+                        <code>${targetUrl || 'Not specified'}</code>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Required Data:</strong><br>
+                        <code>${requiredData || 'Not specified'}</code>
+                    </div>
+                </div>
+                ${additionalInstructions ? `
+                <div class="mt-2">
+                    <strong>Additional Instructions:</strong><br>
+                    <code>${additionalInstructions}</code>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        // Build page analysis summary
+        let summaryHtml = '';
+        
+        if (skippedPages.length > 0) {
+            summaryHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Skipped Pages (${skippedPages.length})
+                        </div>
+                        <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                            <ul class="list-unstyled mb-0">
+                                ${skippedPages.slice(0, 5).map(page => `
+                                    <li class="mb-2">
+                                        <div class="fw-bold text-danger">${page.pageType}</div>
+                                        <div class="small text-muted">${page.url}</div>
+                                        <div class="small">${page.reason}</div>
+                                    </li>
+                                `).join('')}
+                                ${skippedPages.length > 5 ? `
+                                    <li class="text-muted small">
+                                        ... and ${skippedPages.length - 5} more skipped pages
+                                    </li>
+                                ` : ''}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (navigationPages.length > 0) {
+            summaryHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <i class="bi bi-arrow-right-circle me-2"></i>
+                            Navigation Pages (${navigationPages.length})
+                        </div>
+                        <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                            <ul class="list-unstyled mb-0">
+                                ${navigationPages.slice(0, 5).map(page => `
+                                    <li class="mb-2">
+                                        <div class="fw-bold text-info">${page.pageType}</div>
+                                        <div class="small text-muted">${page.url}</div>
+                                        <div class="small">${page.reason}</div>
+                                    </li>
+                                `).join('')}
+                                ${navigationPages.length > 5 ? `
+                                    <li class="text-muted small">
+                                        ... and ${navigationPages.length - 5} more navigation pages
+                                    </li>
+                                ` : ''}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Update modal content
+        if (errorContent) {
+            errorContent.innerHTML = errorDetails;
+        }
+        
+        if (pageAnalysisSummary) {
+            pageAnalysisSummary.innerHTML = summaryHtml;
+        }
+        
+        // Show the modal
+        modal.show();
+    }
+
+    // Page Usefulness Error Modal Button Event Listeners
+    const viewLogsBtn = document.getElementById('view-logs-btn');
+    if (viewLogsBtn) {
+        viewLogsBtn.addEventListener('click', function() {
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('pageUsefulnessErrorModal')).hide();
+            // Switch to logs tab
+            const logsTab = document.getElementById('logs-tab');
+            if (logsTab) {
+                const tab = new bootstrap.Tab(logsTab);
+                tab.show();
+            }
+        });
+    }
+
+    const tryDifferentUrlBtn = document.getElementById('try-different-url-btn');
+    if (tryDifferentUrlBtn) {
+        tryDifferentUrlBtn.addEventListener('click', function() {
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('pageUsefulnessErrorModal')).hide();
+            // Focus on the URL input
+            const urlInput = document.getElementById('url');
+            if (urlInput) {
+                urlInput.focus();
+                urlInput.select();
+            }
+        });
+    }
 });
 </script>
 
@@ -2574,6 +2842,114 @@ document.addEventListener('DOMContentLoaded', function() {
             padding: 6px;
             margin-bottom: 6px;
         }
+    }
+    
+    /* Page Usefulness Error Modal Styling */
+    #pageUsefulnessErrorModal .modal-dialog {
+        max-width: 800px;
+    }
+    
+    #pageUsefulnessErrorModal .modal-header {
+        border-bottom: 2px solid #ffc107;
+    }
+    
+    #pageUsefulnessErrorModal .alert-info {
+        background-color: #f8f9fa;
+        border-color: #dee2e6;
+        color: #495057;
+    }
+    
+    #pageUsefulnessErrorModal .card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: box-shadow 0.2s ease;
+    }
+    
+    #pageUsefulnessErrorModal .card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    #pageUsefulnessErrorModal .card-header {
+        font-weight: 600;
+        border-bottom: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item {
+        border-left: none;
+        border-right: none;
+        padding: 0.75rem 1rem;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item:first-child {
+        border-top: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item:last-child {
+        border-bottom: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item i {
+        width: 20px;
+        text-align: center;
+    }
+    
+    #pageUsefulnessErrorModal .text-danger {
+        color: #dc3545 !important;
+    }
+    
+    #pageUsefulnessErrorModal .text-info {
+        color: #17a2b8 !important;
+    }
+    
+    #pageUsefulnessErrorModal .text-muted {
+        color: #6c757d !important;
+    }
+    
+    #pageUsefulnessErrorModal .small {
+        font-size: 0.875em;
+    }
+    
+    #pageUsefulnessErrorModal .fw-bold {
+        font-weight: 600 !important;
+    }
+    
+    #pageUsefulnessErrorModal code {
+        background-color: #f8f9fa;
+        color: #e83e8c;
+        padding: 0.2em 0.4em;
+        border-radius: 0.25rem;
+        font-size: 0.875em;
+    }
+    
+    #pageUsefulnessErrorModal .modal-footer {
+        border-top: 1px solid #dee2e6;
+        padding: 1rem;
+    }
+    
+    #pageUsefulnessErrorModal .btn {
+        border-radius: 0.375rem;
+        font-weight: 500;
+    }
+    
+    #pageUsefulnessErrorModal .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+    }
+    
+    #pageUsefulnessErrorModal .btn-outline-primary:hover {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    
+    /* Animation for modal appearance */
+    #pageUsefulnessErrorModal.fade .modal-dialog {
+        transition: transform 0.3s ease-out;
+        transform: translate(0, -50px);
+    }
+    
+    #pageUsefulnessErrorModal.show .modal-dialog {
+        transform: none;
     }
 </style>
 {% endblock %} 
