@@ -1378,11 +1378,11 @@ def save_utility():
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(code)
 
+        # Improved regex to handle help parameter anywhere in add_argument call
         param_pattern = re.compile(
-            r"add_argument\(\s*['\"]([^'\"]+)['\"](?:,.*?)*?help\s*=\s*['\"]([^'\"]+)['\"]",
+            r'add_argument\(\s*["\']([^"\']+)["\'](?:.|\n)*?help\s*=\s*(f?["\'].*?["\'])',
             re.DOTALL
         )
-        help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
         params: list[dict[str, str]] = []
         skip_args = {
             "output_file",
@@ -1396,13 +1396,13 @@ def save_utility():
             arg_name = match.group(1)
             if arg_name in skip_args:
                 continue
-            rest = match.group(2)
-            help_match = help_pattern.search(rest)
-            label = (
-                help_match.group(1)
-                if help_match
-                else arg_name.lstrip("-").replace("_", " ").capitalize()
-            )
+            help_text = match.group(2)
+            # Remove leading f and quotes
+            if help_text.startswith('f'):
+                help_text = help_text[1:]
+            if help_text.startswith('"') or help_text.startswith("'"):
+                help_text = help_text[1:-1]
+            label = help_text if help_text else arg_name.lstrip("-").replace("_", " ").capitalize()
             params.append({"name": arg_name, "label": label})
 
         meta = {"name": name, "description": desc, "prompt": prompt, "params": params}
