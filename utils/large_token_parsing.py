@@ -1,8 +1,8 @@
 import tiktoken
 import time
+import openai
 from openai import OpenAI
 from utils import common
-from openai import RateLimitError
 
 
 MAX_INPUT_TOKENS = 25000
@@ -68,7 +68,7 @@ def send_chunk_with_context(chunk, chunk_index, total_chunks, instructions, prev
             messages=messages
         )
         return response.choices[0].message.content
-    except RateLimitError:
+    except openai.RateLimitError:
         # Max retry limit is 3 times
         if (retry_count < 4):
             print("Rate limit hit. Waiting 60 seconds...")
