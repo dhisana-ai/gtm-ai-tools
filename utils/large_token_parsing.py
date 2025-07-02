@@ -1,6 +1,6 @@
 import tiktoken
 import time
-from openai import OpenAI
+import openai
 from utils import common
 from openai.error import RateLimitError
 
