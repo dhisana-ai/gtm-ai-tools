@@ -6,8 +6,9 @@ from utils import common
 import requests
 
 
-print(requests)
-print(requests.get)
+print(type(requests))
+print(hasattr(requests, '__file__'))
+print(dir(requests))
 
 MAX_INPUT_TOKENS = 25000
 DELAY_BETWEEN_REQUESTS = 20
