@@ -1,8 +1,9 @@
 import tiktoken
 import time
-import openai
+from openai import OpenAI
 from utils import common
-from openai.error import RateLimitError
+from openai._exceptions import RateLimitError
+
 
 MAX_INPUT_TOKENS = 25000
 DELAY_BETWEEN_REQUESTS = 20
