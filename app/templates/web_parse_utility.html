@@ -1,0 +1,2955 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Global Progress Bar -->
+<div id="global-progress-bar" class="progress sticky-top" style="height: 6px; display: none; z-index: 1050;">
+  <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" role="progressbar" style="width: 0%"></div>
+                </div>
+
+<div class="container-fluid py-4" style="font-family: 'Inter', 'Roboto', Arial, sans-serif;">
+  <div class="row justify-content-center">
+    <div class="col-lg-10 col-xl-9">
+      <div class="card shadow-lg border-0 mb-4" style="border-radius: 1.25rem;">
+        <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between" style="border-top-left-radius: 1.25rem; border-top-right-radius: 1.25rem;">
+          <div class="d-flex align-items-center">
+            <h4 class="mb-0">Multi Web Page Parser <span class="badge bg-light text-primary ms-2" style="font-size:0.8em;">AI CodeGen</span></h4>
+            <button class="btn btn-link text-light p-0 ms-2" id="llm-info-btn" title="Smart LLM Code Reuse Info" style="text-decoration: none;">
+              <i class="bi bi-magic"></i>
+            </button>
+          </div>
+          <button class="btn btn-outline-light btn-sm" id="help-btn" title="Show Help"><i class="bi bi-question-circle"></i></button>
+        </div>
+        <div class="card-body p-4">
+          <!-- Preset Buttons -->
+          <div class="mb-3 d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" data-preset="basic">Basic Extraction</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" data-preset="deep">Deep Crawl</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" data-preset="paginated">Paginated List</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm preset-btn" data-preset="custom">Custom</button>
+          </div>
+          <!-- Main Form -->
+                    <form id="web-parse-form" class="mb-4">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="url" class="form-label">Target URL <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="The main page to start crawling from."></i></label>
+                <input type="url" class="form-control" id="url" name="url" required placeholder="https://example.com">
+                        </div>
+              <div class="col-md-6">
+                <label for="instructions" class="form-label">Prompt <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Describe what data you want to extract or any special requirements."></i></label>
+                <textarea class="form-control" id="instructions" name="instructions" rows="6" placeholder="e.g. Extract all leads and enrich" style="min-height: 120px; font-size: 1.05em;"></textarea>
+                <div class="form-text">Describe what you want to extract. You can use natural language.</div>
+                        </div>
+              <div class="col-md-3">
+                <label for="max_depth" class="form-label">Max Depth <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="How many levels deep to crawl from the start page."></i></label>
+                            <input type="number" class="form-control" id="max_depth" name="max_depth" value="3" min="1" max="10">
+                        </div>
+              <div class="col-md-3 d-flex align-items-end">
+                <div class="form-check">
+                            <input type="checkbox" class="form-check-input" id="pagination" name="pagination">
+                  <label class="form-check-label" for="pagination">Enable Pagination <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Try to follow next/previous links or load more buttons."></i></label>
+                        </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">LLM Input Type <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Choose whether to analyze raw HTML or Markdown."></i></label>
+                <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="llm_input_type" id="html_input" value="html" checked>
+                    <label class="form-check-label" for="html_input">HTML (Default)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="llm_input_type" id="markdown_input" value="markdown">
+                    <label class="form-check-label" for="markdown_input">Markdown</label>
+                            </div>
+                        </div>
+                            </div>
+                            </div>
+            <!-- Advanced Options (collapsible) -->
+            <div class="accordion mt-4" id="advancedOptionsAccordion">
+              <div class="accordion-item">
+                <h2 class="accordion-header" id="advancedOptionsHeading">
+                  <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#advancedOptions" aria-expanded="false" aria-controls="advancedOptions">
+                    Advanced Options
+                  </button>
+                </h2>
+                <div id="advancedOptions" class="accordion-collapse collapse" aria-labelledby="advancedOptionsHeading" data-bs-parent="#advancedOptionsAccordion">
+                  <div class="accordion-body">
+                    <div class="row g-3">
+                      <div class="col-md-6">
+                        <label class="form-label">Max Pages <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Limit the number of pages to crawl."></i></label>
+                        <input type="number" class="form-control" id="max_pages" name="max_pages" min="1" max="100" value="10">
+                      </div>
+                      <div class="col-md-6">
+                        <label class="form-label">LLM Model <i class="bi bi-info-circle" data-bs-toggle="tooltip" title="Choose the LLM model (if supported)."></i></label>
+                        <select class="form-select" id="llm_model" name="llm_model">
+                          <option value="default">Default(GPT-4.1)</option>
+                          <option value="o4-mini">O4-Mini</option>
+                          <option value="gpt-4o">GPT-4o</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-primary flex-grow-1" id="parse-btn" style="font-size:1.1em;">
+                <span id="parse-btn-text">Start Parsing</span>
+                <span id="parse-btn-spinner" class="spinner-border spinner-border-sm ms-2 d-none" role="status" aria-hidden="true"></span>
+              </button>
+              <button type="button" class="btn btn-danger flex-grow-0 d-none" id="stop-btn" style="font-size:1.1em;">
+                <i class="bi bi-stop-fill me-2"></i>Stop
+              </button>
+              <button type="reset" class="btn btn-outline-secondary flex-grow-0" id="reset-btn">Reset</button>
+            </div>
+          </form>
+
+          <!-- Tabbed Results/Logs/Plan/Tree/Extra Info -->
+          <ul class="nav nav-tabs mb-3" id="resultTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button class="nav-link active" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-panel" type="button" role="tab" aria-controls="logs-panel" aria-selected="true">
+                <i class="bi bi-terminal me-2"></i>Logs
+                <span class="badge bg-success ms-1" id="logs-badge" style="display: none;">Live</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link disabled" id="plan-tab" data-bs-toggle="tab" data-bs-target="#plan-panel-tab" type="button" role="tab" aria-controls="plan-panel-tab" aria-selected="false" disabled>
+                <i class="bi bi-clipboard-data me-2"></i>Plan
+                <span class="badge bg-secondary ms-1" id="plan-badge" style="display: none;">Ready</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link disabled" id="tree-tab" data-bs-toggle="tab" data-bs-target="#tree-panel" type="button" role="tab" aria-controls="tree-panel" aria-selected="false" disabled>
+                <i class="bi bi-diagram-3 me-2"></i>Tree
+                <span class="badge bg-secondary ms-1" id="tree-badge" style="display: none;">Ready</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link disabled" id="utility-info-tab" data-bs-toggle="tab" data-bs-target="#utility-info-panel" type="button" role="tab" aria-controls="utility-info-panel" aria-selected="false" disabled>
+                <i class="bi bi-code-square me-2"></i>Utility Info
+                <span class="badge bg-secondary ms-1" id="utility-info-badge" style="display: none;">Ready</span>
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button class="nav-link disabled" id="results-tab" data-bs-toggle="tab" data-bs-target="#results" type="button" role="tab" aria-controls="results" aria-selected="false" disabled>
+                <i class="bi bi-table me-2"></i>Results
+                <span class="badge bg-secondary ms-1" id="results-badge" style="display: none;">Ready</span>
+              </button>
+            </li>
+          </ul>
+          <div class="tab-content" id="resultTabsContent">
+            <!-- Results Tab -->
+            <div class="tab-pane fade" id="results" role="tabpanel" aria-labelledby="results-tab">
+                    <div id="result-container" class="d-none">
+                <div class="card mb-4">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                                <h5 class="mb-0">Extracted Data</h5>
+                    <div>
+                      <button class="btn btn-outline-primary btn-sm" id="copy-data-btn"><i class="bi bi-clipboard"></i> Copy</button>
+                      <button class="btn btn-outline-success btn-sm" id="download-data-btn"><i class="bi bi-download"></i> Download</button>
+                      <button class="btn btn-outline-info btn-sm d-none" id="download-csv-btn"><i class="bi bi-file-earmark-spreadsheet"></i> CSV</button>
+                    </div>
+                            </div>
+                            <div class="card-body">
+                                <div id="data-table-container" class="d-none mb-3">
+                                    <div class="table-responsive">
+                                        <table class="table table-striped table-hover" id="data-table">
+                                            <thead class="table-dark">
+                                                <tr id="table-headers"></tr>
+                                            </thead>
+                                            <tbody id="table-body"></tbody>
+                                        </table>
+                        <nav><ul class="pagination justify-content-end" id="data-table-pagination"></ul></nav>
+                                    </div>
+                                </div>
+                                <pre id="extracted-data" class="bg-light p-3 rounded"></pre>
+                                </div>
+                            </div>
+                        </div>
+            </div>
+            <!-- Logs Tab -->
+            <div class="tab-pane fade show active" id="logs-panel" role="tabpanel" aria-labelledby="logs-tab">
+              <div id="logs-container" class="d-none">
+                <div class="card mb-4">
+                            <div class="card-header">
+                    <h5 class="mb-0">Processing Logs</h5>
+                            </div>
+                  <div class="card-body">
+                    <pre id="logs" class="bg-dark text-light p-3 rounded" style="max-height: 400px; overflow-y: auto;"></pre>
+                        </div>
+                    </div>
+              </div>
+            </div>
+            <!-- Plan Tab -->
+            <div class="tab-pane fade" id="plan-panel-tab" role="tabpanel" aria-labelledby="plan-tab">
+                    <div id="plan-container" class="card mb-4 d-none">
+                <div class="card-header d-flex align-items-center justify-content-between">
+                  <h5 class="mb-0">📋 Extraction Plan</h5>
+                  <div>
+                    <button class="btn btn-sm btn-outline-primary me-2" id="view-json-btn">View JSON</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="copy-plan-btn">Copy</button>
+                  </div>
+                        </div>
+                <div class="card-body" id="plan-panel" style="display:block;">
+                  <!-- Structured Plan View -->
+                  <div id="plan-structured-view">
+                    <!-- Extraction Steps -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-list-ol me-2"></i>Extraction Steps
+                      </h6>
+                      <div id="extraction-steps" class="list-group list-group-flush"></div>
+                    </div>
+
+                    <!-- Required Pages -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-globe me-2"></i>Required Pages
+                      </h6>
+                      <div id="required-pages" class="list-group list-group-flush"></div>
+                    </div>
+
+                    <!-- Data Patterns -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-diagram-3 me-2"></i>Data Patterns
+                      </h6>
+                      <div id="data-patterns" class="list-group list-group-flush"></div>
+                    </div>
+
+                    <!-- Pagination Strategy -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-arrow-repeat me-2"></i>Pagination Strategy
+                      </h6>
+                      <div class="alert alert-info" id="pagination-strategy"></div>
+                    </div>
+
+                    <!-- Validation Rules -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-shield-check me-2"></i>Validation Rules
+                      </h6>
+                      <div id="validation-rules" class="list-group list-group-flush"></div>
+                    </div>
+
+                    <!-- Fields to Extract -->
+                    <div class="row">
+                      <div class="col-md-6">
+                        <h6 class="text-primary mb-3">
+                          <i class="bi bi-check-circle me-2"></i>Already Extracted Fields
+                        </h6>
+                        <div id="already-extracted-fields" class="list-group list-group-flush"></div>
+                      </div>
+                      <div class="col-md-6">
+                        <h6 class="text-primary mb-3">
+                          <i class="bi bi-clock me-2"></i>To Be Extracted Fields
+                        </h6>
+                        <div id="to-be-extracted-fields" class="list-group list-group-flush"></div>
+                      </div>
+                    </div>
+
+                    <!-- Required Data -->
+                    <div class="mb-4">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-database me-2"></i>Required Data
+                      </h6>
+                      <div id="required-data" class="list-group list-group-flush"></div>
+                    </div>
+                  </div>
+
+                  <!-- JSON View (Hidden by default) -->
+                  <div id="plan-json-view" class="d-none">
+                    <pre id="plan-json" style="background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:500px; overflow:auto; font-size:0.9em; padding:12px;"></pre>
+                  </div>
+                        </div>
+                    </div>
+                </div>
+            <!-- Tree Tab -->
+            <div class="tab-pane fade" id="tree-panel" role="tabpanel" aria-labelledby="tree-tab">
+              <div id="tree-view-container" class="d-none mb-4">
+                <div class="card">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                    <h5 class="mb-0">Crawl Tree Visualization</h5>
+                    <div>
+                      <button class="btn btn-outline-secondary btn-sm" id="expand-all-btn"><i class="bi bi-arrows-angle-expand"></i> Expand All</button>
+                      <button class="btn btn-outline-secondary btn-sm" id="collapse-all-btn"><i class="bi bi-arrows-angle-contract"></i> Collapse All</button>
+                      <button class="btn btn-outline-secondary btn-sm" id="zoom-in-btn"><i class="bi bi-zoom-in"></i></button>
+                      <button class="btn btn-outline-secondary btn-sm" id="zoom-out-btn"><i class="bi bi-zoom-out"></i></button>
+            </div>
+                  </div>
+                  <div class="card-body">
+                    <div id="tree-view" class="tree-view"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <!-- Utility Info Tab -->
+            <div class="tab-pane fade" id="utility-info-panel" role="tabpanel" aria-labelledby="utility-info-tab">
+              <div id="utility-info-container" class="d-none">
+                <!-- Generated Code Section -->
+                <div class="card mb-4">
+                  <div class="card-header d-flex align-items-center justify-content-between">
+                                <h5 class="mb-0">Generated Code</h5>
+                    <div>
+                      <button class="btn btn-outline-primary btn-sm" id="copy-code-btn"><i class="bi bi-clipboard"></i> Copy</button>
+                      <button class="btn btn-outline-success btn-sm" id="download-code-btn"><i class="bi bi-download"></i> Download</button>
+                      <button class="btn btn-outline-info btn-sm" id="save-utility-btn"><i class="bi bi-save"></i> Save as Utility</button>
+                    </div>
+                            </div>
+                            <div class="card-body">
+                    <pre id="generated-code" class="bg-light p-3 rounded" style="font-size:0.95em;"></pre>
+                                </div>
+                            </div>
+                <!-- Extra Info Section -->
+                <div class="card mb-4">
+                  <div class="card-header">
+                    <h5 class="mb-0">Utility Information</h5>
+                  </div>
+                  <div class="card-body" id="extra-info"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Save Utility Modal -->
+          <div class="modal fade" id="saveUtilityModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">Save as New Utility</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <form id="save-utility-form">
+                    <div class="mb-3">
+                      <label for="utility-name" class="form-label">Utility Name</label>
+                      <input type="text" class="form-control" id="utility-name" required>
+                    </div>
+                    <div class="mb-3">
+                      <label for="utility-description" class="form-label">Description</label>
+                      <textarea class="form-control" id="utility-description" rows="3"></textarea>
+                    </div>
+                    <div class="mb-3">
+                      <label for="utility-prompt" class="form-label">Prompt</label>
+                      <textarea class="form-control" id="utility-prompt" rows="3"></textarea>
+                    </div>
+                  </form>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="button" class="btn btn-primary" id="save-utility-submit">Save as Utility</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fullscreen Results Modal -->
+          <div class="modal fade" id="fullscreenResultsModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog modal-fullscreen">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">🎉 Web Parsing Results</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <!-- Extracted Data Section -->
+                  <div class="card h-100">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                      <h6 class="mb-0">
+                        <i class="bi bi-table me-2"></i>Extracted Data
+                        <span id="results-count-badge" class="badge bg-primary ms-2"></span>
+                      </h6>
+                      <div>
+                        <button class="btn btn-outline-primary btn-sm" id="copy-results-btn">
+                          <i class="bi bi-clipboard"></i> Copy
+                        </button>
+                        <button class="btn btn-outline-success btn-sm" id="download-results-btn">
+                          <i class="bi bi-download"></i> Download
+                        </button>
+                      </div>
+                    </div>
+                    <div class="card-body">
+                      <div id="fullscreen-results-table" class="table-responsive" style="max-height: 80vh; overflow-y: auto;">
+                        <!-- Table will be populated by JavaScript -->
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- LLM Info Modal -->
+          <div class="modal fade" id="llmInfoModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">Smart LLM Code Reuse</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="alert alert-info">
+                    <i class="bi bi-lightbulb-fill me-2"></i>
+                    <strong>Optimization:</strong> This tool detects pages with the same structure and generates extraction code only once per page type.
+                  </div>
+                  <p><strong>How it works:</strong></p>
+                  <ul>
+                    <li>Analyzes each page type (e.g., product listings, product details)</li>
+                    <li>Generates extraction code once per page type using LLM</li>
+                    <li>Reuses the same code for all similar pages</li>
+                    <li>Instead of generating code for every page, it generates code once per page type</li>
+                    <li>Finally aggregates all page types and generates a comprehensive utility for the entire website</li>
+                  </ul>
+                  <p><strong>Benefits:</strong></p>
+                  <ul>
+                    <li>⚡ Faster processing</li>
+                    <li>💰 Lower costs</li>
+                    <li>🔄 Consistent extraction</li>
+                    <li>🎯 More reliable results</li>
+                  </ul>
+                  <hr>
+                  <div class="alert alert-success">
+                    <i class="bi bi-save me-2"></i>
+                    <strong>Save as Utility:</strong> After extraction, you can save the generated Python code as a reusable utility for future use. This allows you to quickly apply the same extraction logic to similar websites without regenerating the code.
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it!</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Results Notification Modal -->
+          <div class="modal fade" id="resultsNotificationModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">🎉 Results Ready!</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="text-center mb-3">
+                    <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+                  </div>
+                  <div id="results-notification-content">
+                    <p><strong>Web parsing completed successfully!</strong></p>
+                    <div id="results-summary"></div>
+                    
+                    <!-- Results Preview Section -->
+                    <div id="results-preview-section" class="mt-4" style="display: none;">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-table me-2"></i>Extracted Data Preview
+                      </h6>
+                      <div id="results-preview-table" class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <!-- Table will be populated by JavaScript -->
+                      </div>
+                      <div class="mt-3">
+                        <small class="text-muted">
+                          <i class="bi bi-info-circle me-1"></i>
+                          Showing first 5 items. View full results in the Results tab.
+                        </small>
+                      </div>
+                    </div>
+                    
+                    <!-- Generated Code Preview -->
+                    <div id="code-preview-section" class="mt-4" style="display: none;">
+                      <h6 class="text-primary mb-3">
+                        <i class="bi bi-code-square me-2"></i>Generated Python Code
+                      </h6>
+                      <div class="bg-light p-3 rounded" style="max-height: 200px; overflow-y: auto;">
+                        <pre id="code-preview" style="font-size: 0.85em; margin: 0;"></pre>
+                      </div>
+                      <div class="mt-2">
+                        <small class="text-muted">
+                          <i class="bi bi-info-circle me-1"></i>
+                          This code can be saved as a reusable utility.
+                        </small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" id="save-utility-from-modal-btn">
+                    <i class="bi bi-save me-2"></i>Save as Utility
+                  </button>
+                  <button type="button" class="btn btn-outline-primary" id="view-full-results-btn">
+                    <i class="bi bi-table me-2"></i>View Full Results
+                  </button>
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Stop Confirmation Modal -->
+          <div class="modal fade" id="stopConfirmationModal" tabindex="-1">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">⚠️ Stop Web Parsing?</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="text-center mb-3">
+                    <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 3rem;"></i>
+                  </div>
+                  <p><strong>Are you sure you want to stop the web parsing process?</strong></p>
+                  <ul>
+                    <li>Current progress will be lost</li>
+                    <li>Any partially extracted data will not be saved</li>
+                    <li>The process cannot be resumed</li>
+                  </ul>
+                  <p>This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                  <button type="button" class="btn btn-danger" id="confirm-stop-btn">
+                    <i class="bi bi-stop-fill me-2"></i>Yes, Stop Parsing
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Page Usefulness Assessment Error Modal -->
+          <div class="modal fade" id="pageUsefulnessErrorModal" tabindex="-1" style="z-index: 3000;">
+            <div class="modal-dialog modal-lg">
+              <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                  <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    No Useful Pages Found for Code Generation
+                  </h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <div class="alert alert-warning">
+                    <i class="bi bi-info-circle me-2"></i>
+                    <strong>Page Usefulness Assessment:</strong> The system analyzed all crawled pages and determined that none are suitable for data extraction code generation.
+                  </div>
+                  
+                  <div id="page-usefulness-error-content">
+                    <!-- Content will be populated by JavaScript -->
+                  </div>
+                  
+                  <div class="mt-4">
+                    <h6 class="text-primary mb-3">
+                      <i class="bi bi-lightbulb me-2"></i>Suggestions to Fix This Issue:
+                    </h6>
+                    <ul class="list-group list-group-flush">
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Check the target URL:</strong> Ensure it points to a page with actual data (not a login page, error page, or navigation-only page)
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Review extraction requirements:</strong> Make sure your instructions are clear about what data you want to extract
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Try a different starting point:</strong> If the current URL is a landing page, try navigating to a specific data page first
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Increase crawl depth:</strong> The target data might be deeper in the site structure
+                      </li>
+                      <li class="list-group-item">
+                        <i class="bi bi-check-circle text-success me-2"></i>
+                        <strong>Check site accessibility:</strong> Ensure the site doesn't require authentication or have anti-bot measures
+                      </li>
+                    </ul>
+                  </div>
+                  
+                  <div class="mt-4">
+                    <h6 class="text-primary mb-3">
+                      <i class="bi bi-table me-2"></i>Page Analysis Summary:
+                    </h6>
+                    <div id="page-analysis-summary" class="row">
+                      <!-- Summary will be populated by JavaScript -->
+                    </div>
+                  </div>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-outline-secondary" id="view-logs-btn">
+                    <i class="bi bi-terminal me-2"></i>View Detailed Logs
+                  </button>
+                  <button type="button" class="btn btn-outline-primary" id="try-different-url-btn">
+                    <i class="bi bi-arrow-repeat me-2"></i>Try Different URL
+                  </button>
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floating Help Button/Sidebar -->
+          <div id="floating-help" class="d-none">
+            <div class="card shadow-lg" style="position:fixed; top:24px; right:24px; z-index:2000; width:340px; max-width:90vw; max-height:calc(100vh - 48px); overflow:hidden;">
+              <div class="card-header bg-primary text-white d-flex align-items-center justify-content-between" style="position:sticky; top:0; z-index:1;">
+                <span><i class="bi bi-info-circle"></i> Web Parse Utility Help</span>
+                <button class="btn btn-sm btn-light" id="close-help-btn"><i class="bi bi-x"></i></button>
+              </div>
+              <div class="card-body" style="font-size:0.98em; max-height:calc(100vh - 120px); overflow-y:auto;">
+                <p><b>How to use:</b></p>
+                <ol>
+                  <li>Enter the <b>Target URL</b> and (optionally) <b>Instructions</b> for what to extract.</li>
+                  <li>Adjust <b>Max Depth</b>, <b>Pagination</b>, and <b>LLM Input Type</b> as needed.</li>
+                  <li>Expand <b>Advanced Options</b> for more control (max pages, LLM model).</li>
+                  <li>Click <b>Start Parsing</b> to begin. Progress and results will appear in the tabs below.</li>
+                  <li><b>Save as Utility:</b> After successful extraction, use the "Save as Utility" button to store the generated Python code for future reuse.</li>
+                </ol>
+                <p><b>Presets:</b> Use the preset buttons for common scenarios.</p>
+                <hr>
+                <b>Key Features:</b>
+                <ul>
+                  <li><i class="bi bi-magic me-1"></i><b>Smart LLM Code Reuse:</b> Generates code once per page type for efficiency</li>
+                  <li><i class="bi bi-save me-1"></i><b>Save as Utility:</b> Store successful extractions as reusable utilities</li>
+                  <li><i class="bi bi-diagram-3 me-1"></i><b>Tree Visualization:</b> See the crawl structure and page relationships</li>
+                </ul>
+                <hr>
+                <b>Example Templates:</b>
+                <ul>
+                  <li><a href="#" class="example-template" data-url="https://news.ycombinator.com/" data-instructions="Extract all post titles and URLs">Hacker News Posts</a></li>
+                  <li><a href="#" class="example-template" data-url="https://producthunt.com/" data-instructions="Extract all product names and makers">Product Hunt Products</a></li>
+                  <li><a href="#" class="example-template" data-url="https://github.com/trending" data-instructions="Extract trending repo names and stars">GitHub Trending</a></li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <!-- Floating View Results Button -->
+          <div id="floating-view-results" class="d-none">
+            <div class="card shadow-lg" style="position:fixed; bottom:24px; left:24px; z-index:2000; width:auto;">
+              <div class="card-body p-2">
+                <button class="btn btn-primary btn-sm" id="floating-view-results-btn">
+                  <i class="bi bi-table me-2"></i>View Results
+                </button>
+                <button class="btn btn-outline-secondary btn-sm ms-2" id="floating-save-utility-btn">
+                  <i class="bi bi-save me-2"></i>Save as Utility
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Modern UI/UX Scripts for Tabs, Presets, Help, Tooltips, Pagination, Tree Controls, Progress Bar -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Request notification permission for browser notifications
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
+    // Get all the new UI elements
+    const form = document.getElementById('web-parse-form');
+    const globalProgressBar = document.getElementById('global-progress-bar');
+    const globalProgress = globalProgressBar ? globalProgressBar.querySelector('.progress-bar') : null;
+    const helpBtn = document.getElementById('help-btn');
+    const floatingHelp = document.getElementById('floating-help');
+    const closeHelpBtn = document.getElementById('close-help-btn');
+    const presetBtns = document.querySelectorAll('.preset-btn');
+    const exampleTemplates = document.querySelectorAll('.example-template');
+    const resetBtn = document.querySelector('button[type="reset"]');
+    const expandAllBtn = document.getElementById('expand-all-btn');
+    const collapseAllBtn = document.getElementById('collapse-all-btn');
+    const zoomInBtn = document.getElementById('zoom-in-btn');
+    const zoomOutBtn = document.getElementById('zoom-out-btn');
+    
+    // Get all the existing elements with updated selectors
+    const status = document.getElementById('status');
+    const error = document.getElementById('error');
+    const logsContainer = document.getElementById('logs-container');
+    const logs = document.getElementById('logs');
+    const resultContainer = document.getElementById('result-container');
+    const generatedCode = document.getElementById('generated-code');
+    const extractedData = document.getElementById('extracted-data');
+    const dataTableContainer = document.getElementById('data-table-container');
+    const dataTable = document.getElementById('data-table');
+    const tableHeaders = document.getElementById('table-headers');
+    const tableBody = document.getElementById('table-body');
+    const downloadCsvBtn = document.getElementById('download-csv-btn');
+    const treeViewContainer = document.getElementById('tree-view-container');
+    const treeView = document.getElementById('tree-view');
+    const planContainer = document.getElementById('plan-container');
+    const planPanel = document.getElementById('plan-panel');
+    const planJson = document.getElementById('plan-json');
+    const copyPlanBtn = document.getElementById('copy-plan-btn');
+    
+    let currentCode = '';
+    let currentData = null;
+    let currentCsvFile = null;
+    let currentPlan = null;
+    let currentTreeData = null;
+    let updateTimeout = null;
+    let treeNodeCache = new Map();
+    let currentPage = 1;
+    const itemsPerPage = 10;
+    let allData = [];
+    let currentEventSource = null; // Track the current EventSource for stopping
+
+    // Enable Bootstrap tooltips
+    if (window.bootstrap) {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
+
+    // Help button logic
+    if (helpBtn && floatingHelp) {
+        helpBtn.addEventListener('click', function() {
+            floatingHelp.classList.remove('d-none');
+        });
+    }
+    if (closeHelpBtn && floatingHelp) {
+        closeHelpBtn.addEventListener('click', function() {
+            floatingHelp.classList.add('d-none');
+        });
+    }
+
+    // LLM Info button logic
+    const llmInfoBtn = document.getElementById('llm-info-btn');
+    if (llmInfoBtn) {
+        llmInfoBtn.addEventListener('click', function() {
+            const modal = new bootstrap.Modal(document.getElementById('llmInfoModal'));
+            modal.show();
+        });
+    }
+
+    // Preset buttons logic
+    presetBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const preset = btn.getAttribute('data-preset');
+            if (preset === 'basic') {
+                document.getElementById('url').value = 'https://news.ycombinator.com/';
+                document.getElementById('instructions').value = 'Extract all post titles and URLs';
+                document.getElementById('max_depth').value = 1;
+                document.getElementById('pagination').checked = false;
+                document.getElementById('html_input').checked = true;
+            } else if (preset === 'deep') {
+                document.getElementById('url').value = 'https://www.ycombinator.com';
+                document.getElementById('instructions').value = 'YCombinator Startup Lead Generation: parse a list of startups from YCombinatrpage, Check if they have Soc2 certification or not, find the founders of the companies that dont have Soc2 certification'
+                document.getElementById('max_depth').value = 6;
+                document.getElementById('pagination').checked = true;
+            } else if (preset === 'paginated') {
+                document.getElementById('url').value = 'https://appsource.microsoft.com/en-us/marketplace/partner-dir?filter=sort%3D0%3BpageSize%3D18%3BpageOffset%3D54%3BonlyThisCountry%3Dtrue%3Bcountry%3Dus%3Bradius%3D100%3Blocname%3DUnited%2520States%3BlocationNotRequired%3Dtrue';
+                document.getElementById('instructions').value = 'Get the list of partners listed as leads';
+                document.getElementById('max_depth').value = 2;
+                document.getElementById('pagination').checked = true;
+            } else if (preset === 'custom') {
+                document.getElementById('url').value = '';
+                document.getElementById('instructions').value = '';
+                document.getElementById('max_depth').value = 10;
+                document.getElementById('pagination').checked = false;
+            }
+        });
+    });
+
+    // Example template logic
+    exampleTemplates.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('url').value = link.getAttribute('data-url');
+            document.getElementById('instructions').value = link.getAttribute('data-instructions');
+            floatingHelp.classList.add('d-none');
+        });
+    });
+
+    // Reset button logic
+    if (resetBtn) {
+        resetBtn.addEventListener('click', function() {
+            document.getElementById('web-parse-form').reset();
+            // Clear results
+            resultContainer.classList.add('d-none');
+            logsContainer.classList.add('d-none');
+            treeViewContainer.classList.add('d-none');
+            planContainer.classList.add('d-none');
+            if (globalProgressBar) globalProgressBar.style.display = 'none';
+        });
+    }
+
+    // Progress bar update logic
+    function setGlobalProgress(percent, show) {
+        if (globalProgressBar && globalProgress) {
+            globalProgress.style.width = percent + '%';
+            globalProgressBar.style.display = show ? 'block' : 'none';
+        }
+    }
+
+    // Tree controls
+    if (expandAllBtn) {
+        expandAllBtn.addEventListener('click', function() {
+            const allPanels = treeView.querySelectorAll('[id*="-panel"]');
+            allPanels.forEach(panel => {
+                panel.style.display = 'block';
+            });
+        });
+    }
+    
+    if (collapseAllBtn) {
+        collapseAllBtn.addEventListener('click', function() {
+            const allPanels = treeView.querySelectorAll('[id*="-panel"]');
+            allPanels.forEach(panel => {
+                panel.style.display = 'none';
+            });
+        });
+    }
+
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', function() {
+            const currentSize = parseFloat(treeView.style.fontSize) || 1;
+            treeView.style.fontSize = (currentSize + 0.1) + 'em';
+        });
+    }
+
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', function() {
+            const currentSize = parseFloat(treeView.style.fontSize) || 1;
+            treeView.style.fontSize = Math.max(0.5, currentSize - 0.1) + 'em';
+        });
+    }
+
+    // Data table pagination
+    function renderDataTable(data, page = 1) {
+        if (!data || data.length === 0) return;
+        
+        allData = data;
+        currentPage = page;
+        
+        // Clear existing table
+        tableHeaders.innerHTML = '';
+        tableBody.innerHTML = '';
+        
+        // Get all unique keys from the data
+        const allKeys = new Set();
+        data.forEach(item => {
+            Object.keys(item).forEach(key => allKeys.add(key));
+        });
+        const keys = Array.from(allKeys);
+        
+        // Create headers
+        keys.forEach(key => {
+            const th = document.createElement('th');
+            th.textContent = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+            tableHeaders.appendChild(th);
+        });
+        
+        // Paginate data
+        const startIndex = (page - 1) * itemsPerPage;
+        const endIndex = startIndex + itemsPerPage;
+        const pageData = data.slice(startIndex, endIndex);
+        
+        // Create rows
+        pageData.forEach(item => {
+            const row = document.createElement('tr');
+            keys.forEach(key => {
+                const td = document.createElement('td');
+                td.textContent = item[key] || '';
+                row.appendChild(td);
+            });
+            tableBody.appendChild(row);
+        });
+        
+        // Create pagination
+        const totalPages = Math.ceil(data.length / itemsPerPage);
+        const pagination = document.getElementById('data-table-pagination');
+        pagination.innerHTML = '';
+        
+        if (totalPages > 1) {
+            for (let i = 1; i <= totalPages; i++) {
+                const li = document.createElement('li');
+                li.className = `page-item ${i === page ? 'active' : ''}`;
+                const a = document.createElement('a');
+                a.className = 'page-link';
+                a.href = '#';
+                a.textContent = i;
+                a.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    renderDataTable(data, i);
+                });
+                li.appendChild(a);
+                pagination.appendChild(li);
+            }
+        }
+    }
+
+    // Handle form submission
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Set parsing state to disable form and show stop button
+        setParsingState(true);
+        
+        // Initialize tab states
+        showLiveBadge('logs-tab');
+        disableTab('plan-tab');
+        disableTab('tree-tab');
+        disableTab('utility-info-tab');
+        disableTab('results-tab');
+        
+        // Reset UI
+        if (status) status.classList.remove('d-none');
+        if (error) error.classList.add('d-none');
+        resultContainer.classList.add('d-none');
+        logsContainer.classList.remove('d-none');
+        if (logs) logs.textContent = '';
+        dataTableContainer.classList.add('d-none');
+        if (downloadCsvBtn) downloadCsvBtn.classList.add('d-none');
+        treeViewContainer.classList.add('d-none');
+        if (treeView) treeView.innerHTML = '';
+        planContainer.classList.add('d-none');
+        if (planPanel) planPanel.style.display = 'none';
+        if (planJson) planJson.textContent = '';
+        if (status) status.textContent = 'Starting web parsing...';
+        
+        // Show progress bar
+        setGlobalProgress(0, true);
+        
+        // Get form data including advanced options
+        const formData = {
+            url: document.getElementById('url').value,
+            max_depth: parseInt(document.getElementById('max_depth').value),
+            pagination: document.getElementById('pagination').checked,
+            instructions: document.getElementById('instructions').value,
+            llm_input_type: document.querySelector('input[name="llm_input_type"]:checked').value,
+            max_pages: parseInt(document.getElementById('max_pages').value),
+            llm_model: document.getElementById('llm_model').value
+        };
+
+        try {
+            // Create EventSource for streaming
+            const eventSource = new EventSource(`/web_parse_utility?${new URLSearchParams(formData)}`);
+            currentEventSource = eventSource; // Track for stopping
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log("eventSource:onmessage: ", data);
+                    
+                    switch(data.type) {
+                        case 'status':
+                            if (status) status.textContent = data.message;
+                            break;
+                        case 'log':
+                            if (logs) {
+                                logs.textContent += data.message + '\n';
+                                logs.scrollTop = logs.scrollHeight;
+                            }
+                            break;
+                        case 'plan':
+                            if (data.plan) {
+                                planContainer.classList.remove('d-none');
+                                if (planJson) planJson.textContent = JSON.stringify(data.plan, null, 2);
+                                currentPlan = data.plan;
+                                if (planPanel) planPanel.style.display = 'block';
+                                
+                                // Populate structured plan view
+                                renderStructuredPlan(data.plan);
+                                
+                                // Enable plan tab
+                                enableTab('plan-tab', 'Ready', 'bg-success');
+                                
+                                // Show notification that plan is ready
+                                showPlanNotification();
+                            }
+                            break;
+                        case 'code_generated':
+                            currentCode = data.code;
+                            if (generatedCode) generatedCode.textContent = data.code;
+                            resultContainer.classList.remove('d-none');
+                            // Show utility info container when code is generated
+                            const utilityInfoContainer = document.getElementById('utility-info-container');
+                            if (utilityInfoContainer) utilityInfoContainer.classList.remove('d-none');
+                            
+                            // Enable utility info tab
+                            enableTab('utility-info-tab', 'Ready', 'bg-success');
+                            
+                            setGlobalProgress(75, true);
+                            break;
+                        case 'complete':
+                            currentCode = data.code;
+                            currentData = data.extracted_data || data.result;
+                            currentCsvFile = data.csv_file;
+                            
+                            // Display the generated code
+                            if (generatedCode) generatedCode.textContent = data.code;
+                            
+                            // Display extracted data
+                            if (data.extracted_data && data.extracted_data.length > 0) {
+                                // Populate data table
+                                renderDataTable(data.extracted_data);
+                                dataTableContainer.classList.remove('d-none');
+                                
+                                // Show CSV download button if CSV file exists
+                                if (data.csv_file && downloadCsvBtn) {
+                                    downloadCsvBtn.classList.remove('d-none');
+                                }
+                            } else if (data.message) {
+                                if (extractedData) extractedData.textContent = data.message;
+                                dataTableContainer.classList.add('d-none');
+                                if (downloadCsvBtn) downloadCsvBtn.classList.add('d-none');
+                            } else {
+                                if (extractedData) extractedData.textContent = JSON.stringify(data.result, null, 2);
+                                dataTableContainer.classList.add('d-none');
+                                if (downloadCsvBtn) downloadCsvBtn.classList.add('d-none');
+                            }
+                            
+                            // Show extra info if present
+                            if (data.extra_info && Object.keys(data.extra_info).length > 0) {
+                                const extraInfo = document.getElementById('extra-info');
+                                if (extraInfo) {
+                                    let infoHtml = '';
+                                    for (const [key, value] of Object.entries(data.extra_info)) {
+                                        infoHtml += `<div><strong>${key}:</strong> <pre>${typeof value === 'object' ? JSON.stringify(value, null, 2) : value}</pre></div>`;
+                                    }
+                                    extraInfo.innerHTML = infoHtml;
+                                }
+                                const utilityInfoContainer = document.getElementById('utility-info-container');
+                                if (utilityInfoContainer) utilityInfoContainer.classList.remove('d-none');
+                            } else {
+                                const utilityInfoContainer = document.getElementById('utility-info-container');
+                                if (utilityInfoContainer) utilityInfoContainer.classList.add('d-none');
+                            }
+                            
+                            // Show success/error message
+                            if (data.execution_success) {
+                                if (data.total_items > 0) {
+                                    if (status) {
+                                        status.textContent = `✅ Successfully extracted ${data.total_items} items`;
+                                        status.className = 'alert alert-success';
+                                    }
+                                } else {
+                                    if (status) {
+                                        status.textContent = data.message || '✅ Execution completed but no data was extracted';
+                                        status.className = 'alert alert-warning';
+                                    }
+                                }
+                            } else {
+                                if (status) {
+                                    status.textContent = `❌ Execution failed: ${data.error || 'Unknown error'}`;
+                                    status.className = 'alert alert-danger';
+                                }
+                            }
+                            
+                            resultContainer.classList.remove('d-none');
+                            if (status) status.classList.remove('d-none');
+                            setGlobalProgress(100, false);
+                            
+                            // Enable results tab
+                            enableTab('results-tab', 'Ready', 'bg-success');
+                            
+                            // Reset parsing state
+                            setParsingState(false);
+                            currentEventSource = null;
+                            
+                            // Show results notification modal
+                            const resultsSummary = document.getElementById('results-summary');
+                            if (resultsSummary) {
+                                let summaryHtml = '';
+                                if (data.execution_success) {
+                                    if (data.total_items > 0) {
+                                        summaryHtml = `
+                                            <div class="alert alert-success">
+                                                <i class="bi bi-check-circle me-2"></i>
+                                                Successfully extracted <strong>${data.total_items}</strong> items
+                                            </div>
+                                            <p><strong>What's available:</strong></p>
+                                            <ul>
+                                                <li>💻 <strong>Utility Info tab:</strong> Generated Python code</li>
+                                              </ul>
+                                        `;
+                                    } else {
+                                        summaryHtml = `
+                                            <div class="alert alert-warning">
+                                                <i class="bi bi-exclamation-triangle me-2"></i>
+                                                Execution completed but no data was extracted
+                                            </div>
+                                            <p>Check the <strong>Logs tab</strong> for more details.</p>
+                                        `;
+                                    }
+                                } else {
+                                    summaryHtml = `
+                                        <div class="alert alert-danger">
+                                            <i class="bi bi-x-circle me-2"></i>
+                                            Execution failed: ${data.error || 'Unknown error'}
+                                        </div>
+                                        <p>Check the <strong>Logs tab</strong> for error details.</p>
+                                    `;
+                                }
+                                resultsSummary.innerHTML = summaryHtml;
+                            }
+                            
+                            // Populate results preview in modal
+                            if (data.extracted_data && data.extracted_data.length > 0) {
+                                const resultsPreviewSection = document.getElementById('results-preview-section');
+                                const resultsPreviewTable = document.getElementById('results-preview-table');
+                                if (resultsPreviewSection && resultsPreviewTable) {
+                                    resultsPreviewSection.style.display = 'block';
+                                    
+                                    // Show first 5 items
+                                    const previewData = data.extracted_data.slice(0, 5);
+                                    const allKeys = new Set();
+                                    previewData.forEach(item => {
+                                        Object.keys(item).forEach(key => allKeys.add(key));
+                                    });
+                                    const keys = Array.from(allKeys);
+                                    
+                                    let tableHtml = '<table class="table table-sm table-striped">';
+                                    // Headers
+                                    tableHtml += '<thead class="table-dark"><tr>';
+                                    keys.forEach(key => {
+                                        tableHtml += `<th>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>`;
+                                    });
+                                    tableHtml += '</tr></thead>';
+                                    // Rows
+                                    tableHtml += '<tbody>';
+                                    previewData.forEach(item => {
+                                        tableHtml += '<tr>';
+                                        keys.forEach(key => {
+                                            tableHtml += `<td>${item[key] || ''}</td>`;
+                                        });
+                                        tableHtml += '</tr>';
+                                    });
+                                    tableHtml += '</tbody></table>';
+                                    
+                                    resultsPreviewTable.innerHTML = tableHtml;
+                                }
+                            }
+                            
+                            // Populate code preview in modal
+                            if (data.code) {
+                                const codePreviewSection = document.getElementById('code-preview-section');
+                                const codePreview = document.getElementById('code-preview');
+                                if (codePreviewSection && codePreview) {
+                                    codePreviewSection.style.display = 'block';
+                                    codePreview.textContent = data.code;
+                                }
+                            }
+                            
+                            // Show the notification modal
+                            const notificationModal = new bootstrap.Modal(document.getElementById('resultsNotificationModal'));
+                            notificationModal.show();
+                            
+                            // Show floating results button after modal is closed
+                            notificationModal._element.addEventListener('hidden.bs.modal', function() {
+                                const floatingViewResults = document.getElementById('floating-view-results');
+                                if (floatingViewResults) {
+                                    floatingViewResults.classList.remove('d-none');
+                                    updateFloatingResultsCount();
+                                }
+                            });
+                            
+                            eventSource.close();
+                            break;
+                        case 'error':
+                            if (error) error.textContent = data.error;
+                            if (error) error.classList.remove('d-none');
+                            if (status) status.classList.add('d-none');
+                            setGlobalProgress(0, false);
+                            setParsingState(false); // Reset parsing state on error
+                            currentEventSource = null;
+                            eventSource.close();
+                            
+                            // Check if this is a page usefulness assessment error
+                            if (data.error && data.error.includes('No useful pages found for code generation')) {
+                                showPageUsefulnessErrorModal(data.error);
+                            }
+                            break;
+                        case 'tree_update':
+                            if (data.tree) {
+                                treeViewContainer.classList.remove('d-none');
+                                updateTreeIncrementally(data.tree);
+                                
+                                // Enable tree tab
+                                enableTab('tree-tab', 'Live', 'bg-success');
+                            }
+                            break;
+                    }
+                } catch (err) {
+                    console.error('Error parsing event data:', err);
+                    if (error) error.textContent = 'Error processing server response';
+                    if (error) error.classList.remove('d-none');
+                    if (status) status.classList.add('d-none');
+                    setGlobalProgress(0, false);
+                    eventSource.close();
+                }
+            };
+
+            eventSource.onerror = function(err) {
+                console.error('EventSource error:', err);
+                if (error) error.textContent = 'Connection error occurred';
+                if (error) error.classList.remove('d-none');
+                if (status) status.classList.add('d-none');
+                setGlobalProgress(0, false);
+                setParsingState(false); // Reset parsing state on error
+                currentEventSource = null;
+                eventSource.close();
+            };
+
+        } catch (err) {
+            console.error('Error:', err);
+            if (error) error.textContent = err.message;
+            if (error) error.classList.remove('d-none');
+            if (status) status.classList.add('d-none');
+            setGlobalProgress(0, false);
+            setParsingState(false); // Reset parsing state on error
+            currentEventSource = null;
+        }
+    });
+
+    // Copy code button
+    document.getElementById('copy-code-btn').addEventListener('click', function() {
+        navigator.clipboard.writeText(currentCode).then(() => {
+            this.textContent = 'Copied!';
+            setTimeout(() => this.textContent = 'Copy', 2000);
+        });
+    });
+
+    // Download code button
+    document.getElementById('download-code-btn').addEventListener('click', function() {
+        const blob = new Blob([currentCode], { type: 'text/plain' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'web_parser.py';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+
+    // Copy data button
+    document.getElementById('copy-data-btn').addEventListener('click', function() {
+        navigator.clipboard.writeText(JSON.stringify(currentData, null, 2)).then(() => {
+            this.textContent = 'Copied!';
+            setTimeout(() => this.textContent = 'Copy', 2000);
+        });
+    });
+
+    // Download data button
+    document.getElementById('download-data-btn').addEventListener('click', function() {
+        const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'extracted_data.json';
+        a.click();
+        window.URL.revokeObjectURL(url);
+    });
+
+    // Save utility button
+    const saveUtilityBtn = document.getElementById('save-utility-btn');
+    if (saveUtilityBtn) {
+        saveUtilityBtn.addEventListener('click', function() {
+            // Try to parse from #extra-info panel first
+            let utilityName = '';
+            let description = '';
+            const extraInfoDiv = document.getElementById('extra-info');
+            if (extraInfoDiv) {
+                // Look for <div><strong>utility_name:</strong> <pre>...</pre></div> etc.
+                const divs = extraInfoDiv.querySelectorAll('div');
+                divs.forEach(div => {
+                    const strong = div.querySelector('strong');
+                    const pre = div.querySelector('pre');
+                    if (strong && pre) {
+                        const key = strong.textContent.trim().replace(':', '').toLowerCase();
+                        if (key === 'utility_name') utilityName = pre.textContent.trim();
+                        if (key === 'description') description = pre.textContent.trim();
+                    }
+                });
+            }
+            // Fallback to previous logic if not found
+            if (!utilityName) {
+                let extraInfo = window.currentExtraInfo || {};
+                if ((!extraInfo.python_code_function_name || !extraInfo.utility_name) && window.currentData && window.currentData.extra_info) {
+                    extraInfo = window.currentData.extra_info;
+                }
+                const functionName = extraInfo.python_code_function_name || 'extract_data';
+                utilityName = (extraInfo.utility_name && extraInfo.utility_name.trim()) ? extraInfo.utility_name.trim() : '';
+                if (!utilityName) {
+                    utilityName = functionName.replace(/^extract_/, '').replace(/_/g, ' ').replace(/ to .*/, '').trim().replace(/\s+/g, '_').toLowerCase();
+                }
+                if (!description) description = extraInfo.description || '';
+            }
+            // Always fill prompt with function name if available
+            let functionName = '';
+            if (window.currentExtraInfo && window.currentExtraInfo.python_code_function_name) {
+                functionName = window.currentExtraInfo.python_code_function_name;
+            } else if (window.currentData && window.currentData.extra_info && window.currentData.extra_info.python_code_function_name) {
+                functionName = window.currentData.extra_info.python_code_function_name;
+            } else {
+                functionName = 'extract_data';
+            }
+            document.getElementById('utility-name').value = utilityName;
+            document.getElementById('utility-description').value = description;
+            const modal = new bootstrap.Modal(document.getElementById('saveUtilityModal'));
+            modal.show();
+        });
+    }
+
+    // Save utility submit
+    document.getElementById('save-utility-submit').addEventListener('click', async function() {
+        const name = document.getElementById('utility-name').value;
+        const description = document.getElementById('utility-description').value;
+        const prompt = document.getElementById('utility-prompt').value;
+
+        try {
+            const response = await fetch('/save_web_parse_utility', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    code: currentCode,
+                    name: name,
+                    description: description,
+                    prompt: prompt
+                })
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                alert('Utility saved successfully!');
+                bootstrap.Modal.getInstance(document.getElementById('saveUtilityModal')).hide();
+            } else {
+                alert('Error saving utility: ' + result.error);
+            }
+        } catch (err) {
+            alert('Error saving utility: ' + err.message);
+        }
+    });
+
+    // Download CSV button
+    if (downloadCsvBtn) {
+        downloadCsvBtn.addEventListener('click', function() {
+            window.open('/download_web_parse_csv', '_blank');
+        });
+    }
+
+    // Copy plan button
+    if (copyPlanBtn) {
+        copyPlanBtn.addEventListener('click', function() {
+            if (currentPlan) {
+                navigator.clipboard.writeText(JSON.stringify(currentPlan, null, 2)).then(() => {
+                    copyPlanBtn.textContent = 'Copied!';
+                    setTimeout(() => copyPlanBtn.textContent = 'Copy', 1500);
+                });
+            }
+        });
+    }
+
+    // View JSON button for plan
+    const viewJsonBtn = document.getElementById('view-json-btn');
+    if (viewJsonBtn) {
+        viewJsonBtn.addEventListener('click', function() {
+            const structuredView = document.getElementById('plan-structured-view');
+            const jsonView = document.getElementById('plan-json-view');
+            
+            if (jsonView.classList.contains('d-none')) {
+                // Show JSON view
+                structuredView.classList.add('d-none');
+                jsonView.classList.remove('d-none');
+                viewJsonBtn.textContent = 'View Structured';
+            } else {
+                // Show structured view
+                jsonView.classList.add('d-none');
+                structuredView.classList.remove('d-none');
+                viewJsonBtn.textContent = 'View JSON';
+            }
+        });
+    }
+
+    // Results notification modal buttons
+    const saveUtilityFromModalBtn = document.getElementById('save-utility-from-modal-btn');
+    if (saveUtilityFromModalBtn) {
+        saveUtilityFromModalBtn.addEventListener('click', function() {
+            // Use the same logic as the existing save utility button
+            // Try to parse from #extra-info panel first
+            let utilityName = '';
+            let description = '';
+            const extraInfoDiv = document.getElementById('extra-info');
+            if (extraInfoDiv) {
+                // Look for <div><strong>utility_name:</strong> <pre>...</pre></div> etc.
+                const divs = extraInfoDiv.querySelectorAll('div');
+                divs.forEach(div => {
+                    const strong = div.querySelector('strong');
+                    const pre = div.querySelector('pre');
+                    if (strong && pre) {
+                        const key = strong.textContent.trim().replace(':', '').toLowerCase();
+                        if (key === 'utility_name') utilityName = pre.textContent.trim();
+                        if (key === 'description') description = pre.textContent.trim();
+                    }
+                });
+            }
+            // Fallback to previous logic if not found
+            if (!utilityName) {
+                let extraInfo = window.currentExtraInfo || {};
+                if ((!extraInfo.python_code_function_name || !extraInfo.utility_name) && window.currentData && window.currentData.extra_info) {
+                    extraInfo = window.currentData.extra_info;
+                }
+                const functionName = extraInfo.python_code_function_name || 'extract_data';
+                utilityName = (extraInfo.utility_name && extraInfo.utility_name.trim()) ? extraInfo.utility_name.trim() : '';
+                if (!utilityName) {
+                    utilityName = functionName.replace(/^extract_/, '').replace(/_/g, ' ').replace(/ to .*/, '').trim().replace(/\s+/g, '_').toLowerCase();
+                }
+                if (!description) description = extraInfo.description || '';
+            }
+            // Always fill prompt with function name if available
+            let functionName = '';
+            if (window.currentExtraInfo && window.currentExtraInfo.python_code_function_name) {
+                functionName = window.currentExtraInfo.python_code_function_name;
+            } else if (window.currentData && window.currentData.extra_info && window.currentData.extra_info.python_code_function_name) {
+                functionName = window.currentData.extra_info.python_code_function_name;
+            } else {
+                functionName = 'extract_data';
+            }
+            document.getElementById('utility-name').value = utilityName;
+            document.getElementById('utility-description').value = description;
+            document.getElementById('utility-prompt').value = functionName;
+            
+            // Close the modal first
+            bootstrap.Modal.getInstance(document.getElementById('resultsNotificationModal')).hide();
+            // Then open the save utility modal
+            const saveModal = new bootstrap.Modal(document.getElementById('saveUtilityModal'));
+            saveModal.show();
+        });
+    }
+
+    const viewFullResultsBtn = document.getElementById('view-full-results-btn');
+    if (viewFullResultsBtn) {
+        viewFullResultsBtn.addEventListener('click', function() {
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('resultsNotificationModal')).hide();
+            // Switch to results tab
+            const resultsTab = document.getElementById('results-tab');
+            if (resultsTab) {
+                const tab = new bootstrap.Tab(resultsTab);
+                tab.show();
+            }
+        });
+    }
+
+    // Floating results buttons
+    const floatingViewResultsBtn = document.getElementById('floating-view-results-btn');
+    function updateFloatingResultsCount() {
+        const count = (Array.isArray(currentData) && currentData.length) ? currentData.length : 0;
+        if (floatingViewResultsBtn) {
+            floatingViewResultsBtn.innerHTML = `<i class="bi bi-table me-2"></i>View Results (${count})`;
+        }
+    }
+    
+    // Add event listener for floating view results button
+    if (floatingViewResultsBtn) {
+        floatingViewResultsBtn.addEventListener('click', function() {
+            // Populate the fullscreen modal with current data
+            populateFullscreenResultsModal();
+            // Show the fullscreen results modal
+            const modal = new bootstrap.Modal(document.getElementById('fullscreenResultsModal'));
+            modal.show();
+        });
+    }
+    
+    // Call this function whenever currentData is updated
+    // Add after currentData is set in the 'complete' event handler:
+    // updateFloatingResultsCount();
+    // ...
+    // In the 'complete' event handler, after setting currentData:
+    // currentData = data.extracted_data || data.result;
+    // updateFloatingResultsCount();
+    // ...
+    // Also call updateFloatingResultsCount() after closing the notification modal and showing the floating button
+    // notificationModal._element.addEventListener('hidden.bs.modal', function() {
+    //     ...
+    //     updateFloatingResultsCount();
+    // });
+
+    const floatingSaveUtilityBtn = document.getElementById('floating-save-utility-btn');
+    if (floatingSaveUtilityBtn) {
+        floatingSaveUtilityBtn.addEventListener('click', function() {
+            // Use the same logic as the existing save utility button
+            // Try to parse from #extra-info panel first
+            let utilityName = '';
+            let description = '';
+            const extraInfoDiv = document.getElementById('extra-info');
+            if (extraInfoDiv) {
+                // Look for <div><strong>utility_name:</strong> <pre>...</pre></div> etc.
+                const divs = extraInfoDiv.querySelectorAll('div');
+                divs.forEach(div => {
+                    const strong = div.querySelector('strong');
+                    const pre = div.querySelector('pre');
+                    if (strong && pre) {
+                        const key = strong.textContent.trim().replace(':', '').toLowerCase();
+                        if (key === 'utility_name') utilityName = pre.textContent.trim();
+                        if (key === 'description') description = pre.textContent.trim();
+                    }
+                });
+            }
+            // Fallback to previous logic if not found
+            if (!utilityName) {
+                let extraInfo = window.currentExtraInfo || {};
+                if ((!extraInfo.python_code_function_name || !extraInfo.utility_name) && window.currentData && window.currentData.extra_info) {
+                    extraInfo = window.currentData.extra_info;
+                }
+                const functionName = extraInfo.python_code_function_name || 'extract_data';
+                utilityName = (extraInfo.utility_name && extraInfo.utility_name.trim()) ? extraInfo.utility_name.trim() : '';
+                if (!utilityName) {
+                    utilityName = functionName.replace(/^extract_/, '').replace(/_/g, ' ').replace(/ to .*/, '').trim().replace(/\s+/g, '_').toLowerCase();
+                }
+                if (!description) description = extraInfo.description || '';
+            }
+            // Always fill prompt with function name if available
+            let functionName = '';
+            if (window.currentExtraInfo && window.currentExtraInfo.python_code_function_name) {
+                functionName = window.currentExtraInfo.python_code_function_name;
+            } else if (window.currentData && window.currentData.extra_info && window.currentData.extra_info.python_code_function_name) {
+                functionName = window.currentData.extra_info.python_code_function_name;
+            } else {
+                functionName = 'extract_data';
+            }
+            document.getElementById('utility-name').value = utilityName;
+            document.getElementById('utility-description').value = description;
+            document.getElementById('utility-prompt').value = functionName;
+            
+            // Open the save utility modal
+            const saveModal = new bootstrap.Modal(document.getElementById('saveUtilityModal'));
+            saveModal.show();
+        });
+    }
+
+    // Plan rendering functions
+    function renderStructuredPlan(plan) {
+        // Render extraction steps
+        const extractionSteps = document.getElementById('extraction-steps');
+        if (extractionSteps && plan.extraction_steps) {
+            extractionSteps.innerHTML = '';
+            plan.extraction_steps.forEach((step, index) => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item d-flex align-items-start';
+                item.innerHTML = `
+                    <span class="badge bg-primary me-3 mt-1">${index + 1}</span>
+                    <div class="flex-grow-1">${step}</div>
+                `;
+                extractionSteps.appendChild(item);
+            });
+        }
+
+        // Render required pages
+        const requiredPages = document.getElementById('required-pages');
+        if (requiredPages && plan.required_pages) {
+            requiredPages.innerHTML = '';
+            plan.required_pages.forEach(page => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <i class="bi bi-link-45deg me-2 text-primary"></i>
+                    <a href="${page}" target="_blank" class="text-decoration-none">${page}</a>
+                `;
+                requiredPages.appendChild(item);
+            });
+        }
+
+        // Render data patterns
+        const dataPatterns = document.getElementById('data-patterns');
+        if (dataPatterns && plan.data_patterns) {
+            dataPatterns.innerHTML = '';
+            plan.data_patterns.forEach(pattern => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                let patternHtml = `
+                    <div class="mb-2">
+                        <strong>Element:</strong> <code>${pattern.element}</code>
+                        ${pattern.class ? `<strong>Class:</strong> <code>${pattern.class}</code>` : ''}
+                    </div>
+                `;
+                
+                if (pattern.children) {
+                    patternHtml += '<div class="ms-3"><strong>Children:</strong><ul class="mb-0 mt-1">';
+                    pattern.children.forEach(child => {
+                        patternHtml += `
+                            <li>
+                                <code>${child.element}</code>
+                                ${child.class ? ` (class: <code>${child.class}</code>)` : ''}
+                                ${child.fields ? `<br><small class="text-muted">Fields: ${Object.keys(child.fields).join(', ')}</small>` : ''}
+                            </li>
+                        `;
+                    });
+                    patternHtml += '</ul></div>';
+                }
+                
+                if (pattern.fields) {
+                    patternHtml += '<div class="mt-2"><strong>Fields:</strong><ul class="mb-0">';
+                    Object.entries(pattern.fields).forEach(([key, value]) => {
+                        patternHtml += `<li><code>${key}</code>: ${value}</li>`;
+                    });
+                    patternHtml += '</ul></div>';
+                }
+                
+                item.innerHTML = patternHtml;
+                dataPatterns.appendChild(item);
+            });
+        }
+
+        // Render pagination strategy
+        const paginationStrategy = document.getElementById('pagination-strategy');
+        if (paginationStrategy && plan.pagination_strategy) {
+            paginationStrategy.innerHTML = `
+                <i class="bi bi-info-circle me-2"></i>
+                ${plan.pagination_strategy}
+            `;
+        }
+
+        // Render validation rules
+        const validationRules = document.getElementById('validation-rules');
+        if (validationRules && plan.validation_rules) {
+            validationRules.innerHTML = '';
+            plan.validation_rules.forEach(rule => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                item.innerHTML = `
+                    <i class="bi bi-shield-check me-2 text-success"></i>
+                    ${rule}
+                `;
+                validationRules.appendChild(item);
+            });
+        }
+
+        // Render already extracted fields
+        const alreadyExtractedFields = document.getElementById('already-extracted-fields');
+        if (alreadyExtractedFields && plan.already_extracted_fields) {
+            alreadyExtractedFields.innerHTML = '';
+            if (plan.already_extracted_fields.length === 0) {
+                const item = document.createElement('div');
+                item.className = 'list-group-item text-muted';
+                item.innerHTML = '<i class="bi bi-dash me-2"></i>No fields extracted yet';
+                alreadyExtractedFields.appendChild(item);
+            } else {
+                plan.already_extracted_fields.forEach(field => {
+                    const item = document.createElement('div');
+                    item.className = 'list-group-item text-success';
+                    item.innerHTML = `
+                        <i class="bi bi-check-circle me-2"></i>
+                        <code>${field}</code>
+                    `;
+                    alreadyExtractedFields.appendChild(item);
+                });
+            }
+        }
+
+        // Render to be extracted fields
+        const toBeExtractedFields = document.getElementById('to-be-extracted-fields');
+        if (toBeExtractedFields && plan.to_be_extracted_fields) {
+            toBeExtractedFields.innerHTML = '';
+            plan.to_be_extracted_fields.forEach(field => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item text-primary';
+                item.innerHTML = `
+                    <i class="bi bi-clock me-2"></i>
+                    <code>${field}</code>
+                `;
+                toBeExtractedFields.appendChild(item);
+            });
+        }
+
+        // Render required data
+        const requiredData = document.getElementById('required-data');
+        if (requiredData && plan.required_data) {
+            requiredData.innerHTML = '';
+            plan.required_data.forEach(dataItem => {
+                const item = document.createElement('div');
+                item.className = 'list-group-item';
+                let dataHtml = '';
+                Object.entries(dataItem).forEach(([key, description]) => {
+                    dataHtml += `
+                        <div class="mb-2">
+                            <strong><code>${key}</code>:</strong> ${description}
+                        </div>
+                    `;
+                });
+                item.innerHTML = dataHtml;
+                requiredData.appendChild(item);
+            });
+        }
+    }
+
+    // Show plan notification
+    function showPlanNotification() {
+        // Show browser notification if user is on another tab
+        if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('📋 Extraction Plan Ready!', {
+                body: 'The AI has created a detailed extraction plan. Check the Plan tab to review.',
+                icon: '/static/favicon.ico',
+                tag: 'plan-ready'
+            });
+        }
+        
+        // Highlight the Plan tab
+        const planTab = document.getElementById('plan-tab');
+        if (planTab) {
+            planTab.classList.add('text-primary', 'fw-bold');
+            // Remove highlight after 5 seconds
+            setTimeout(() => {
+                planTab.classList.remove('text-primary', 'fw-bold');
+            }, 5000);
+        }
+    }
+
+    // Tab management functions
+    function enableTab(tabId, badgeText = 'Ready', badgeColor = 'bg-secondary') {
+        const tab = document.getElementById(tabId);
+        const badge = document.getElementById(tabId + '-badge');
+        
+        if (tab) {
+            tab.classList.remove('disabled');
+            tab.disabled = false;
+        }
+        
+        if (badge) {
+            badge.textContent = badgeText;
+            badge.className = `badge ${badgeColor} ms-1`;
+            badge.style.display = 'inline';
+        }
+    }
+
+    function disableTab(tabId) {
+        const tab = document.getElementById(tabId);
+        const badge = document.getElementById(tabId + '-badge');
+        
+        if (tab) {
+            tab.classList.add('disabled');
+            tab.disabled = true;
+        }
+        
+        if (badge) {
+            badge.style.display = 'none';
+        }
+    }
+
+    function showLiveBadge(tabId) {
+        const badge = document.getElementById(tabId + '-badge');
+        if (badge) {
+            badge.textContent = 'Live';
+            badge.className = 'badge bg-success ms-1';
+            badge.style.display = 'inline';
+        }
+    }
+
+    function showProcessingBadge(tabId) {
+        const badge = document.getElementById(tabId + '-badge');
+        if (badge) {
+            badge.textContent = 'Processing...';
+            badge.className = 'badge bg-warning ms-1';
+            badge.style.display = 'inline';
+        }
+    }
+
+    // Tree update functions (from original template)
+    function updateTreeIncrementally(treeData) {
+        currentTreeData = treeData;
+        
+        if (updateTimeout) {
+            clearTimeout(updateTimeout);
+        }
+        
+        updateTimeout = setTimeout(() => {
+            performTreeUpdate(treeData);
+        }, 50);
+    }
+    
+    function performTreeUpdate(treeData) {
+        if (!treeData) return;
+        
+        try {
+            if (!treeView.querySelector('ul')) {
+                treeView.innerHTML = `<ul>${renderTree(treeData)}</ul>`;
+                cacheTreeNodes(treeData);
+            } else {
+                updateTreeNodes(treeData);
+            }
+        } catch (error) {
+            console.error('Tree update error:', error);
+            treeView.innerHTML = `<ul>${renderTree(treeData)}</ul>`;
+            cacheTreeNodes(treeData);
+        }
+    }
+    
+    function cacheTreeNodes(node, parentElement = null) {
+        if (!node) return;
+        
+        const nodeElement = parentElement || treeView.querySelector(`[data-url="${node.url}"]`);
+        if (nodeElement) {
+            treeNodeCache.set(node.url, nodeElement);
+            
+            const toggleStates = {};
+            const toggles = nodeElement.querySelectorAll('[class*="-toggle"]');
+            toggles.forEach(toggle => {
+                const panelId = toggle.getAttribute('data-node-id');
+                if (panelId) {
+                    const panel = document.getElementById(panelId);
+                    if (panel) {
+                        toggleStates[panelId] = panel.style.display !== 'none';
+                    }
+                }
+            });
+            
+            if (Object.keys(toggleStates).length > 0) {
+                nodeElement.toggleStates = toggleStates;
+            }
+        }
+        
+        if (node.children && node.children.length > 0) {
+            node.children.forEach(child => {
+                const childElement = nodeElement ? 
+                    nodeElement.querySelector(`[data-url="${child.url}"]`) : null;
+                cacheTreeNodes(child, childElement);
+            });
+        }
+    }
+    
+    function updateTreeNodes(node, parentElement = null) {
+        if (!node) return;
+        
+        let nodeElement = treeNodeCache.get(node.url);
+        
+        if (!nodeElement) {
+            const newNodeHtml = renderTree(node);
+            if (parentElement) {
+                const parentUl = parentElement.querySelector('ul') || 
+                    parentElement.appendChild(document.createElement('ul'));
+                parentUl.insertAdjacentHTML('beforeend', newNodeHtml);
+                nodeElement = parentUl.lastElementChild;
+            } else {
+                treeView.innerHTML = `<ul>${newNodeHtml}</ul>`;
+                nodeElement = treeView.querySelector('li');
+            }
+            treeNodeCache.set(node.url, nodeElement);
+        } else {
+            updateNodeContent(nodeElement, node);
+        }
+        
+        if (node.children && node.children.length > 0) {
+            const childrenContainer = nodeElement.querySelector('ul');
+            if (!childrenContainer) {
+                nodeElement.appendChild(document.createElement('ul'));
+            }
+            
+            node.children.forEach(child => {
+                updateTreeNodes(child, nodeElement);
+            });
+        }
+    }
+    
+    function updateNodeContent(nodeElement, nodeData) {
+        if (!nodeElement || !nodeData) return;
+
+        const prevToggles = {
+            summery: !!nodeElement.querySelector('.tree-summery-toggle'),
+            python_code: !!nodeElement.querySelector('.tree-code-toggle'),
+            code_execution_result: !!nodeElement.querySelector('.tree-result-toggle'),
+            code_execution_error: !!nodeElement.querySelector('.tree-error-toggle'),
+            analysis_data: !!nodeElement.querySelector('.tree-analysis-toggle'),
+        };
+        const newToggles = {
+            summery: !!(nodeData.summery && nodeData.summery.length > 0),
+            python_code: !!(nodeData.python_code && nodeData.python_code.length > 0),
+            code_execution_result: !!(nodeData.code_execution_result && JSON.stringify(nodeData.code_execution_result).length > 2),
+            code_execution_error: !!(nodeData.code_execution_error && nodeData.code_execution_error.length > 0),
+            analysis_data: !!(nodeData.analysis_data && Object.keys(nodeData.analysis_data).length > 0),
+        };
+        
+        let shouldRerender = false;
+        for (const key of Object.keys(newToggles)) {
+            if (newToggles[key] && !prevToggles[key]) {
+                shouldRerender = true;
+                break;
+            }
+        }
+        if (shouldRerender) {
+            const parent = nodeElement.parentElement;
+            const newNodeHtml = renderTree(nodeData);
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = newNodeHtml;
+            const newNodeElement = tempDiv.firstElementChild;
+            parent.replaceChild(newNodeElement, nodeElement);
+            treeNodeCache.set(nodeData.url, newNodeElement);
+            restoreToggleStates(newNodeElement);
+            return;
+        }
+
+        nodeElement.className = `tree-node ${nodeData.status || 'pending'}`;
+
+        const statusColor = getStatusColor(nodeData.status);
+        const titleElement = nodeElement.querySelector('.node-title');
+        if (titleElement) {
+            titleElement.style.color = statusColor;
+        }
+
+        const progressElement = nodeElement.querySelector('.node-progress');
+        if (progressElement && nodeData.progress !== undefined) {
+            progressElement.style.width = `${nodeData.progress}%`;
+            progressElement.setAttribute('aria-valuenow', nodeData.progress);
+        }
+
+        const statusElement = nodeElement.querySelector('.node-status');
+        if (statusElement && nodeData.status_message) {
+            statusElement.textContent = nodeData.status_message;
+        }
+
+        const scoreElement = nodeElement.querySelector('.node-score');
+        if (scoreElement && nodeData.relevance_score !== undefined) {
+            scoreElement.textContent = `(score: ${nodeData.relevance_score.toFixed(2)})`;
+        }
+
+        const typeElement = nodeElement.querySelector('.node-type');
+        if (typeElement && nodeData.page_type) {
+            typeElement.textContent = `[${nodeData.page_type}]`;
+        }
+
+        const exclusiveFieldsElement = nodeElement.querySelector('.exclusive-fields');
+        if (exclusiveFieldsElement && nodeData.exclusive_fields) {
+            const spanElement = exclusiveFieldsElement.querySelector('span');
+            if (spanElement) {
+                spanElement.textContent = nodeData.exclusive_fields.join(', ');
+            }
+        }
+
+        if (nodeData.status === 'processing') {
+            const titleElement = nodeElement.querySelector('.node-title');
+            if (titleElement && !titleElement.querySelector('.loading-dots')) {
+                titleElement.innerHTML += '<span class="loading-dots"></span>';
+            }
+        } else {
+            const loadingDots = nodeElement.querySelector('.loading-dots');
+            if (loadingDots) {
+                loadingDots.remove();
+            }
+        }
+
+        updateTogglePanels(nodeElement, nodeData);
+        restoreToggleStates(nodeElement);
+    }
+    
+    function updateTogglePanels(nodeElement, nodeData) {
+        if (!nodeElement || !nodeData) return;
+        
+        if (nodeData.summery) {
+            const summeryPanel = nodeElement.querySelector('.tree-summery-panel');
+            if (summeryPanel) {
+                const contentDiv = summeryPanel.querySelector('div:last-child');
+                if (contentDiv) {
+                    contentDiv.textContent = nodeData.summery;
+                }
+            }
+        }
+        
+        if (nodeData.python_code) {
+            const codePanel = nodeElement.querySelector('.tree-code-panel');
+            if (codePanel) {
+                const preElement = codePanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = nodeData.python_code;
+                }
+            }
+        }
+        
+        if (nodeData.code_execution_result) {
+            const resultPanel = nodeElement.querySelector('.tree-result-panel');
+            if (resultPanel) {
+                const preElement = resultPanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = JSON.stringify(nodeData.code_execution_result, null, 2);
+                }
+            }
+        }
+        
+        if (nodeData.analysis_data) {
+            const analysisPanel = nodeElement.querySelector('.tree-analysis-panel');
+            if (analysisPanel) {
+                const preElement = analysisPanel.querySelector('pre');
+                if (preElement) {
+                    preElement.textContent = JSON.stringify(nodeData.analysis_data, null, 2);
+                }
+            }
+        }
+    }
+
+    function getStatusColor(status) {
+        switch (status) {
+            case 'completed':
+            case 'done':
+                return '#28a745';
+            case 'processing':
+                return '#007bff';
+            case 'error':
+                return '#dc3545';
+            case 'pending':
+            default:
+                return '#ffc107';
+        }
+    }
+
+    function renderTree(node, depth = 0, nodeIdPrefix = 'tree-node-') {
+        if (!node) return '';
+        
+        const nodeId = node.url ? node.url.replace(/[^a-zA-Z0-9]/g, '_') : `node_${Math.random().toString(36).substr(2, 6)}`;
+        const stablePrefix = `tree-${nodeId}`;
+        
+        let childrenHtml = '';
+        if (node.children && node.children.length > 0) {
+            childrenHtml = `<ul style='margin-left: 1em;'>${node.children.map((child, idx) => renderTree(child, depth + 1, stablePrefix + '-')).join('')}</ul>`;
+        }
+        
+        const statusColor = getStatusColor(node.status);
+        const progressBar = node.progress !== undefined ? 
+            `<div class="progress" style="height: 4px; margin-top: 2px;">
+                <div class="node-progress progress-bar" role="progressbar" style="width: ${node.progress}%; background-color: ${statusColor};" 
+                     aria-valuenow="${node.progress}" aria-valuemin="0" aria-valuemax="100"></div>
+             </div>` : '';
+        
+        let exclusiveFieldsHtml = '';
+        if (node.exclusive_fields && node.exclusive_fields.length > 0) {
+            exclusiveFieldsHtml = `<div class="exclusive-fields" style='font-size:0.85em; color:#888; margin-top:2px;'>Exclusive fields: <span style='color:#555;'>${node.exclusive_fields.join(', ')}</span></div>`;
+        }
+        
+        let urlHtml = '';
+        if (node.url) {
+            urlHtml = `<div style='font-size:0.85em; color:#888;'><a href='${node.url}' target='_blank' style='color:#888; text-decoration:underline;'>${node.url}</a></div>`;
+        }
+        // Add HTML size display
+        let htmlSizeHtml = '';
+        if (node.html) {
+            htmlSizeHtml = `<div style='font-size:0.85em; color:#888;'>HTML size: ${node.html.length} bytes</div>`;
+        } else {
+            htmlSizeHtml = `<div style='font-size:0.85em; color:#888;'>HTML size: 0 bytes</div>`;
+        }
+        
+        const statusMessage = node.status_message ? 
+            `<div class="node-status" style='font-size:0.85em; color:#666; margin-top:2px;'>${escapeHtml(node.status_message)}</div>` : '';
+
+        let summeryToggleHtml = '';
+        let summeryPanelHtml = '';
+        const summeryId = stablePrefix + '-summery';
+        if (node.summery && node.summery.length > 0) {
+            summeryToggleHtml = `<a href='#' class='tree-summery-toggle' data-node-id='${summeryId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Summary]</a>`;
+            summeryPanelHtml = `<div id='${summeryId}' class='tree-summery-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Summary:</b></div>
+                <div style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:120px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.summery)}</div>
+            </div>`;
+        }
+        
+        let codeToggleHtml = '';
+        let codePanelHtml = '';
+        const codeId = stablePrefix + '-code';
+        if (node.python_code && node.python_code.length > 0) {
+            codeToggleHtml = `<a href='#' class='tree-code-toggle' data-node-id='${codeId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Python Code]</a>`;
+            codePanelHtml = `<div id='${codeId}' class='tree-code-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${codeId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Python Code:</b></div>
+                <pre id='${codeId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.python_code)}</pre>
+            </div>`;
+        }
+
+        let resultToggleHtml = '';
+        let resultPanelHtml = '';
+        const resultId = stablePrefix + '-result';
+        if (node.code_execution_result && JSON.stringify(node.code_execution_result).length > 2) {
+            resultToggleHtml = `<a href='#' class='tree-result-toggle' data-node-id='${resultId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Output]</a>`;
+            resultPanelHtml = `<div id='${resultId}' class='tree-result-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${resultId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Execution Result:</b></div>
+                <pre id='${resultId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:200px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.code_execution_result, null, 2))}</pre>
+            </div>`;
+        }
+        
+        let errorToggleHtml = '';
+        let errorPanelHtml = '';
+        const errorId = stablePrefix + '-error';
+        if (node.code_execution_error && node.code_execution_error.length > 0) {
+            errorToggleHtml = `<a href='#' class='tree-error-toggle' data-node-id='${errorId}' style='font-size:0.85em; color:#dc3545; margin-left:8px;'>[Show Error]</a>`;
+            errorPanelHtml = `<div id='${errorId}' class='tree-error-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Execution Error:</b></div>
+                <pre style='background:#f8f9fa; color:#dc3545; border:1px solid #eee; border-radius:4px; max-height:120px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.code_execution_error)}</pre>
+            </div>`;
+        }
+        
+        let analysisToggleHtml = '';
+        let analysisPanelHtml = '';
+        const analysisId = stablePrefix + '-analysis';
+        if (node.analysis_data && Object.keys(node.analysis_data).length > 0) {
+            analysisToggleHtml = `<a href='#' class='tree-analysis-toggle' data-node-id='${analysisId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Analysis JSON]</a>`;
+            analysisPanelHtml = `<div id='${analysisId}' class='tree-analysis-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${analysisId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Analysis Data (JSON):</b></div>
+                <pre id='${analysisId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(JSON.stringify(node.analysis_data, null, 2))}</pre>
+            </div>`;
+        }
+        
+        let markdownToggleHtml = '';
+        let markdownPanelHtml = '';
+        const markdownId = stablePrefix + '-markdown';
+        if (node.markdown && node.markdown.length > 0) {
+            markdownToggleHtml = `<a href='#' class='tree-markdown-toggle' data-node-id='${markdownId}' style='font-size:0.85em; color:#007bff; margin-left:8px;'>[Show Markdown]</a>`;
+            markdownPanelHtml = `<div id='${markdownId}' class='tree-markdown-panel' style='display:none; margin-top:4px; margin-bottom:4px;'>
+                <button class='btn btn-sm btn-outline-secondary tree-copy-btn' data-copy-target='${markdownId}-pre' style='float:right; margin-bottom:4px;'>Copy</button>
+                <div style='font-size:0.85em; color:#444; margin-bottom:2px;'><b>Markdown:</b></div>
+                <pre id='${markdownId}-pre' style='background:#f8f9fa; color:#222; border:1px solid #eee; border-radius:4px; max-height:300px; overflow:auto; font-size:0.9em; padding:6px;'>${escapeHtml(node.markdown)}</pre>
+            </div>`;
+        }
+        
+        return `<li data-url="${node.url || ''}" data-node-id="${nodeId}" class="tree-node ${node.status || 'pending'}" style='margin-bottom: 0.5em;'>
+            <span class="node-title" style='font-weight:bold; color:${statusColor}'>${node.label || node.url}</span>
+            <span class="node-type" style='color: #888; font-size: 0.9em;'> [${node.page_type || ''}]</span>
+            <span class="node-score" style='color: #aaa; font-size: 0.8em;'> (score: ${node.relevance_score?.toFixed(2) || '0.00'})</span>
+            ${exclusiveFieldsHtml}
+            ${urlHtml}
+            ${htmlSizeHtml}
+            ${statusMessage}
+            ${progressBar}
+            ${markdownToggleHtml}
+            ${analysisToggleHtml}
+            ${summeryToggleHtml}
+            ${codeToggleHtml}
+            ${resultToggleHtml}
+            ${markdownPanelHtml}
+            ${analysisPanelHtml}
+            ${summeryPanelHtml}
+            ${codePanelHtml}
+            ${resultPanelHtml}
+            ${errorToggleHtml}
+            ${errorPanelHtml}
+            ${childrenHtml}
+        </li>`;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text.replace(/&/g, "&amp;")
+                   .replace(/</g, "&lt;")
+                   .replace(/>/g, "&gt;")
+                   .replace(/\"/g, '&quot;')
+                   .replace(/'/g, '&#39;');
+    }
+
+    function restoreToggleStates(nodeElement) {
+        if (!nodeElement || !nodeElement.toggleStates) return;
+        
+        Object.entries(nodeElement.toggleStates).forEach(([panelId, isVisible]) => {
+            const panel = document.getElementById(panelId);
+            const toggle = nodeElement.querySelector(`[data-node-id="${panelId}"]`);
+            
+            if (panel && toggle) {
+                if (isVisible) {
+                    panel.style.display = 'block';
+                    if (toggle.classList.contains('tree-summery-toggle')) {
+                        toggle.textContent = '[Hide Summary]';
+                    } else if (toggle.classList.contains('tree-code-toggle')) {
+                        toggle.textContent = '[Hide Python Code]';
+                    } else if (toggle.classList.contains('tree-result-toggle')) {
+                        toggle.textContent = '[Hide Output]';
+                    } else if (toggle.classList.contains('tree-error-toggle')) {
+                        toggle.textContent = '[Hide Error]';
+                    } else if (toggle.classList.contains('tree-analysis-toggle')) {
+                        toggle.textContent = '[Hide Analysis JSON]';
+                    }
+                } else {
+                    panel.style.display = 'none';
+                    if (toggle.classList.contains('tree-summery-toggle')) {
+                        toggle.textContent = '[Show Summary]';
+                    } else if (toggle.classList.contains('tree-code-toggle')) {
+                        toggle.textContent = '[Show Python Code]';
+                    } else if (toggle.classList.contains('tree-result-toggle')) {
+                        toggle.textContent = '[Show Output]';
+                    } else if (toggle.classList.contains('tree-error-toggle')) {
+                        toggle.textContent = '[Show Error]';
+                    } else if (toggle.classList.contains('tree-analysis-toggle')) {
+                        toggle.textContent = '[Show Analysis JSON]';
+                    }
+                }
+            }
+        });
+    }
+
+    // Toggle event handlers
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('tree-code-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Python Code]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Python Code]';
+                }
+            }
+        }
+        if (e.target && e.target.classList.contains('tree-result-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Output]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Output]';
+                }
+            }
+        }
+        if (e.target && e.target.classList.contains('tree-summery-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Summary]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Summary]';
+                }
+            }
+        }
+        if (e.target && e.target.classList.contains('tree-analysis-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Analysis JSON]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Analysis JSON]';
+                }
+            }
+        }
+        if (e.target && e.target.classList.contains('tree-copy-btn')) {
+            e.preventDefault();
+            const preId = e.target.getAttribute('data-copy-target');
+            const pre = document.getElementById(preId);
+            if (pre) {
+                const text = pre.innerText;
+                navigator.clipboard.writeText(text).then(() => {
+                    e.target.textContent = 'Copied!';
+                    setTimeout(() => e.target.textContent = 'Copy', 1500);
+                });
+            }
+        }
+        if (e.target && e.target.classList.contains('tree-markdown-toggle')) {
+            e.preventDefault();
+            const nodeId = e.target.getAttribute('data-node-id');
+            const panel = document.getElementById(nodeId);
+            if (panel) {
+                if (panel.style.display === 'none') {
+                    panel.style.display = 'block';
+                    e.target.textContent = '[Hide Markdown]';
+                } else {
+                    panel.style.display = 'none';
+                    e.target.textContent = '[Show Markdown]';
+                }
+            }
+        }
+    });
+
+    // Improve with AI button logic
+    const improveBtn = document.getElementById('improve-instructions-btn');
+    const spinner = document.getElementById('improve-spinner');
+    if (improveBtn && spinner) {
+        improveBtn.addEventListener('click', async function() {
+            const textarea = document.getElementById('instructions');
+            if (!textarea) return;
+            const original = textarea.value;
+            if (!original.trim()) return;
+            spinner.classList.remove('d-none');
+            improveBtn.disabled = true;
+            try {
+                const resp = await fetch('/improve_prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: original })
+                });
+                const data = await resp.json();
+                if (data && data.improved_prompt) {
+                    textarea.value = data.improved_prompt;
+                }
+            } catch (err) {
+                alert('AI improvement failed.');
+            } finally {
+                spinner.classList.add('d-none');
+                improveBtn.disabled = false;
+            }
+        });
+    }
+
+    // Button state management
+    function setParsingState(isParsing) {
+        const parseBtn = document.getElementById('parse-btn');
+        const parseBtnText = document.getElementById('parse-btn-text');
+        const parseBtnSpinner = document.getElementById('parse-btn-spinner');
+        const stopBtn = document.getElementById('stop-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        
+        if (isParsing) {
+            // Disable start button and show spinner
+            parseBtn.disabled = true;
+            parseBtnText.textContent = 'Parsing...';
+            parseBtnSpinner.classList.remove('d-none');
+            
+            // Show stop button
+            stopBtn.classList.remove('d-none');
+            
+            // Disable reset button
+            resetBtn.disabled = true;
+            
+            // Disable all form inputs
+            disableFormInputs(true);
+        } else {
+            // Enable start button and hide spinner
+            parseBtn.disabled = false;
+            parseBtnText.textContent = 'Start Parsing';
+            parseBtnSpinner.classList.add('d-none');
+            
+            // Hide stop button
+            stopBtn.classList.add('d-none');
+            
+            // Enable reset button
+            resetBtn.disabled = false;
+            
+            // Enable all form inputs
+            disableFormInputs(false);
+        }
+    }
+
+    // Disable/enable form inputs
+    function disableFormInputs(disable) {
+        const formInputs = form.querySelectorAll('input, textarea, select, button[type="submit"]');
+        formInputs.forEach(input => {
+            if (input.id !== 'stop-btn') { // Don't disable the stop button
+                input.disabled = disable;
+            }
+        });
+        
+        // Also disable preset buttons
+        presetBtns.forEach(btn => {
+            btn.disabled = disable;
+        });
+    }
+
+    // Stop parsing function
+    function stopParsing() {
+        if (currentEventSource) {
+            currentEventSource.close();
+            currentEventSource = null;
+        }
+        setParsingState(false);
+        setGlobalProgress(0, false);
+        
+        // Show stopped message
+        if (status) {
+            status.textContent = '⏹️ Parsing stopped by user';
+            status.className = 'alert alert-warning';
+            status.classList.remove('d-none');
+        }
+    }
+
+    // Stop button event listener
+    const stopBtn = document.getElementById('stop-btn');
+    if (stopBtn) {
+        stopBtn.addEventListener('click', function() {
+            // Show confirmation modal
+            const modal = new bootstrap.Modal(document.getElementById('stopConfirmationModal'));
+            modal.show();
+        });
+    }
+
+    // Confirm stop button event listener
+    const confirmStopBtn = document.getElementById('confirm-stop-btn');
+    if (confirmStopBtn) {
+        confirmStopBtn.addEventListener('click', function() {
+            // Hide the modal
+            bootstrap.Modal.getInstance(document.getElementById('stopConfirmationModal')).hide();
+            // Stop the parsing
+            stopParsing();
+        });
+    }
+
+    // Fullscreen results modal functions
+    function populateFullscreenResultsModal() {
+        // Populate results table
+        const resultsTable = document.getElementById('fullscreen-results-table');
+        const resultsCountBadge = document.getElementById('results-count-badge');
+        
+        if (currentData && currentData.length > 0) {
+            // Update count badge
+            if (resultsCountBadge) {
+                resultsCountBadge.textContent = `${currentData.length} items`;
+            }
+            
+            // Create full table with all data
+            const allKeys = new Set();
+            currentData.forEach(item => {
+                Object.keys(item).forEach(key => allKeys.add(key));
+            });
+            const keys = Array.from(allKeys);
+            
+            let tableHtml = '<table class="table table-striped table-hover">';
+            // Headers
+            tableHtml += '<thead class="table-dark"><tr>';
+            keys.forEach(key => {
+                tableHtml += `<th>${key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</th>`;
+            });
+            tableHtml += '</tr></thead>';
+            // Rows
+            tableHtml += '<tbody>';
+            currentData.forEach(item => {
+                tableHtml += '<tr>';
+                keys.forEach(key => {
+                    tableHtml += `<td>${item[key] || ''}</td>`;
+                });
+                tableHtml += '</tr>';
+            });
+            tableHtml += '</tbody></table>';
+            
+            if (resultsTable) {
+                resultsTable.innerHTML = tableHtml;
+            }
+        } else {
+            if (resultsTable) {
+                resultsTable.innerHTML = '<div class="text-center text-muted py-4">No data extracted</div>';
+            }
+            if (resultsCountBadge) {
+                resultsCountBadge.textContent = '0 items';
+            }
+        }
+    }
+
+    // Fullscreen modal button event listeners
+    const copyResultsBtn = document.getElementById('copy-results-btn');
+    if (copyResultsBtn) {
+        copyResultsBtn.addEventListener('click', function() {
+            if (currentData) {
+                navigator.clipboard.writeText(JSON.stringify(currentData, null, 2)).then(() => {
+                    this.innerHTML = '<i class="bi bi-check"></i> Copied!';
+                    setTimeout(() => {
+                        this.innerHTML = '<i class="bi bi-clipboard"></i> Copy';
+                    }, 2000);
+                });
+            }
+        });
+    }
+
+    const downloadResultsBtn = document.getElementById('download-results-btn');
+    if (downloadResultsBtn) {
+        downloadResultsBtn.addEventListener('click', function() {
+            if (currentData) {
+                const blob = new Blob([JSON.stringify(currentData, null, 2)], { type: 'application/json' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'extracted_data.json';
+                a.click();
+                window.URL.revokeObjectURL(url);
+            }
+        });
+    }
+
+    // Page Usefulness Error Modal Functions
+    function showPageUsefulnessErrorModal(errorMessage) {
+        const modal = new bootstrap.Modal(document.getElementById('pageUsefulnessErrorModal'));
+        const errorContent = document.getElementById('page-usefulness-error-content');
+        const pageAnalysisSummary = document.getElementById('page-analysis-summary');
+        
+        // Parse the error message to extract useful information
+        let errorDetails = '';
+        let skippedPages = [];
+        let navigationPages = [];
+        let targetUrl = '';
+        let requiredData = '';
+        let additionalInstructions = '';
+        
+        // Extract information from the error message
+        const lines = errorMessage.split('\n');
+        lines.forEach(line => {
+            if (line.includes('Target URL:')) {
+                targetUrl = line.replace('Target URL:', '').trim();
+            } else if (line.includes('Required data to extract:')) {
+                requiredData = line.replace('Required data to extract:', '').trim();
+            } else if (line.includes('Additional instructions:')) {
+                additionalInstructions = line.replace('Additional instructions:', '').trim();
+            } else if (line.includes('Skipped pages:')) {
+                // Parse skipped pages
+                const skippedStart = lines.indexOf(line);
+                for (let i = skippedStart + 1; i < lines.length; i++) {
+                    const pageLine = lines[i];
+                    if (pageLine.includes('Navigation pages:') || pageLine.includes('... and')) {
+                        break;
+                    }
+                    if (pageLine.trim().startsWith('-')) {
+                        const pageInfo = pageLine.replace('-', '').trim();
+                        const match = pageInfo.match(/(.+) \((.+)\): (.+)/);
+                        if (match) {
+                            skippedPages.push({
+                                url: match[1].trim(),
+                                pageType: match[2].trim(),
+                                reason: match[3].trim()
+                            });
+                        }
+                    }
+                }
+            } else if (line.includes('Navigation pages:')) {
+                // Parse navigation pages
+                const navStart = lines.indexOf(line);
+                for (let i = navStart + 1; i < lines.length; i++) {
+                    const pageLine = lines[i];
+                    if (pageLine.includes('... and')) {
+                        break;
+                    }
+                    if (pageLine.trim().startsWith('-')) {
+                        const pageInfo = pageLine.replace('-', '').trim();
+                        const match = pageInfo.match(/(.+) \((.+)\): (.+)/);
+                        if (match) {
+                            navigationPages.push({
+                                url: match[1].trim(),
+                                pageType: match[2].trim(),
+                                reason: match[3].trim()
+                            });
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Build error content
+        errorDetails = `
+            <div class="alert alert-info">
+                <h6 class="alert-heading">Analysis Details:</h6>
+                <div class="row">
+                    <div class="col-md-6">
+                        <strong>Target URL:</strong><br>
+                        <code>${targetUrl || 'Not specified'}</code>
+                    </div>
+                    <div class="col-md-6">
+                        <strong>Required Data:</strong><br>
+                        <code>${requiredData || 'Not specified'}</code>
+                    </div>
+                </div>
+                ${additionalInstructions ? `
+                <div class="mt-2">
+                    <strong>Additional Instructions:</strong><br>
+                    <code>${additionalInstructions}</code>
+                </div>
+                ` : ''}
+            </div>
+        `;
+        
+        // Build page analysis summary
+        let summaryHtml = '';
+        
+        if (skippedPages.length > 0) {
+            summaryHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card border-warning">
+                        <div class="card-header bg-warning text-dark">
+                            <i class="bi bi-x-circle me-2"></i>
+                            Skipped Pages (${skippedPages.length})
+                        </div>
+                        <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                            <ul class="list-unstyled mb-0">
+                                ${skippedPages.slice(0, 5).map(page => `
+                                    <li class="mb-2">
+                                        <div class="fw-bold text-danger">${page.pageType}</div>
+                                        <div class="small text-muted">${page.url}</div>
+                                        <div class="small">${page.reason}</div>
+                                    </li>
+                                `).join('')}
+                                ${skippedPages.length > 5 ? `
+                                    <li class="text-muted small">
+                                        ... and ${skippedPages.length - 5} more skipped pages
+                                    </li>
+                                ` : ''}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        if (navigationPages.length > 0) {
+            summaryHtml += `
+                <div class="col-md-6 mb-3">
+                    <div class="card border-info">
+                        <div class="card-header bg-info text-white">
+                            <i class="bi bi-arrow-right-circle me-2"></i>
+                            Navigation Pages (${navigationPages.length})
+                        </div>
+                        <div class="card-body" style="max-height: 200px; overflow-y: auto;">
+                            <ul class="list-unstyled mb-0">
+                                ${navigationPages.slice(0, 5).map(page => `
+                                    <li class="mb-2">
+                                        <div class="fw-bold text-info">${page.pageType}</div>
+                                        <div class="small text-muted">${page.url}</div>
+                                        <div class="small">${page.reason}</div>
+                                    </li>
+                                `).join('')}
+                                ${navigationPages.length > 5 ? `
+                                    <li class="text-muted small">
+                                        ... and ${navigationPages.length - 5} more navigation pages
+                                    </li>
+                                ` : ''}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Update modal content
+        if (errorContent) {
+            errorContent.innerHTML = errorDetails;
+        }
+        
+        if (pageAnalysisSummary) {
+            pageAnalysisSummary.innerHTML = summaryHtml;
+        }
+        
+        // Show the modal
+        modal.show();
+    }
+
+    // Page Usefulness Error Modal Button Event Listeners
+    const viewLogsBtn = document.getElementById('view-logs-btn');
+    if (viewLogsBtn) {
+        viewLogsBtn.addEventListener('click', function() {
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('pageUsefulnessErrorModal')).hide();
+            // Switch to logs tab
+            const logsTab = document.getElementById('logs-tab');
+            if (logsTab) {
+                const tab = new bootstrap.Tab(logsTab);
+                tab.show();
+            }
+        });
+    }
+
+    const tryDifferentUrlBtn = document.getElementById('try-different-url-btn');
+    if (tryDifferentUrlBtn) {
+        tryDifferentUrlBtn.addEventListener('click', function() {
+            // Close the modal
+            bootstrap.Modal.getInstance(document.getElementById('pageUsefulnessErrorModal')).hide();
+            // Focus on the URL input
+            const urlInput = document.getElementById('url');
+            if (urlInput) {
+                urlInput.focus();
+                urlInput.select();
+            }
+        });
+    }
+});
+</script>
+
+<style>
+    /* Tree view optimizations */
+    .tree-view {
+        max-height: 600px;
+        overflow-y: auto;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 10px;
+        background: #fafafa;
+    }
+    
+    .tree-view ul {
+        list-style: none;
+        padding-left: 20px;
+    }
+    
+    .tree-view li {
+        margin-bottom: 8px;
+        padding: 8px;
+        border-radius: 4px;
+        background: white;
+        border: 1px solid #e0e0e0;
+        transition: all 0.2s ease;
+    }
+    
+    .tree-view li:hover {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .tree-view li.processing {
+        border-left: 4px solid #007bff;
+        background: #f8f9ff;
+    }
+    
+    .tree-view li.completed {
+        border-left: 4px solid #28a745;
+        background: #f8fff8;
+    }
+    
+    .tree-view li.error {
+        border-left: 4px solid #dc3545;
+        background: #fff8f8;
+    }
+    
+    .tree-view li.pending {
+        border-left: 4px solid #ffc107;
+        background: #fffef8;
+    }
+    
+    /* Progress bar styling */
+    .progress {
+        height: 4px;
+        margin-top: 4px;
+        background-color: #e9ecef;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+    
+    .progress-bar {
+        transition: width 0.3s ease;
+    }
+    
+    /* Node content styling */
+    .node-title {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 2px;
+    }
+    
+    .node-type {
+        color: #888;
+        font-size: 0.9em;
+    }
+    
+    .node-score {
+        color: #aaa;
+        font-size: 0.8em;
+    }
+    
+    .node-status {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 2px;
+        font-style: italic;
+    }
+    
+    /* Toggle buttons */
+    .tree-toggle {
+        font-size: 0.85em;
+        color: #007bff;
+        text-decoration: none;
+        margin-left: 8px;
+        cursor: pointer;
+    }
+    
+    .tree-toggle:hover {
+        text-decoration: underline;
+    }
+    
+    /* Code panels */
+    .tree-panel {
+        display: none;
+        margin-top: 4px;
+        margin-bottom: 4px;
+        padding: 8px;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 4px;
+    }
+    
+    .tree-panel pre {
+        background: #f8f9fa;
+        color: #222;
+        border: 1px solid #eee;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow: auto;
+        font-size: 0.9em;
+        padding: 6px;
+        margin: 0;
+    }
+    
+    /* Copy button */
+    .tree-copy-btn {
+        float: right;
+        margin-bottom: 4px;
+        font-size: 0.8em;
+    }
+    
+    /* Loading animation */
+    .loading-dots {
+        display: inline-block;
+        animation: loading-dots 1.5s infinite;
+    }
+    
+    @keyframes loading-dots {
+        0%, 20% { content: ""; }
+        40% { content: "."; }
+        60% { content: ".."; }
+        80%, 100% { content: "..."; }
+    }
+    
+    /* Optimize for performance */
+    .tree-view * {
+        will-change: auto;
+    }
+    
+    .tree-view li {
+        contain: layout style;
+    }
+    
+    /* Modal fixes */
+    .modal {
+        z-index: 3000 !important;
+    }
+    
+    .modal-backdrop {
+        z-index: 2999 !important;
+    }
+    
+    .modal-dialog {
+        z-index: 3001 !important;
+    }
+    
+    /* Ensure modals are visible and properly layered */
+    .modal.show {
+        display: block !important;
+        background-color: rgba(0, 0, 0, 0.5) !important;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .tree-view {
+            max-height: 400px;
+        }
+        
+        .tree-view ul {
+            padding-left: 10px;
+        }
+        
+        .tree-view li {
+            padding: 6px;
+            margin-bottom: 6px;
+        }
+    }
+    
+    /* Page Usefulness Error Modal Styling */
+    #pageUsefulnessErrorModal .modal-dialog {
+        max-width: 800px;
+    }
+    
+    #pageUsefulnessErrorModal .modal-header {
+        border-bottom: 2px solid #ffc107;
+    }
+    
+    #pageUsefulnessErrorModal .alert-info {
+        background-color: #f8f9fa;
+        border-color: #dee2e6;
+        color: #495057;
+    }
+    
+    #pageUsefulnessErrorModal .card {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: box-shadow 0.2s ease;
+    }
+    
+    #pageUsefulnessErrorModal .card:hover {
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    }
+    
+    #pageUsefulnessErrorModal .card-header {
+        font-weight: 600;
+        border-bottom: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item {
+        border-left: none;
+        border-right: none;
+        padding: 0.75rem 1rem;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item:first-child {
+        border-top: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item:last-child {
+        border-bottom: none;
+    }
+    
+    #pageUsefulnessErrorModal .list-group-item i {
+        width: 20px;
+        text-align: center;
+    }
+    
+    #pageUsefulnessErrorModal .text-danger {
+        color: #dc3545 !important;
+    }
+    
+    #pageUsefulnessErrorModal .text-info {
+        color: #17a2b8 !important;
+    }
+    
+    #pageUsefulnessErrorModal .text-muted {
+        color: #6c757d !important;
+    }
+    
+    #pageUsefulnessErrorModal .small {
+        font-size: 0.875em;
+    }
+    
+    #pageUsefulnessErrorModal .fw-bold {
+        font-weight: 600 !important;
+    }
+    
+    #pageUsefulnessErrorModal code {
+        background-color: #f8f9fa;
+        color: #e83e8c;
+        padding: 0.2em 0.4em;
+        border-radius: 0.25rem;
+        font-size: 0.875em;
+    }
+    
+    #pageUsefulnessErrorModal .modal-footer {
+        border-top: 1px solid #dee2e6;
+        padding: 1rem;
+    }
+    
+    #pageUsefulnessErrorModal .btn {
+        border-radius: 0.375rem;
+        font-weight: 500;
+    }
+    
+    #pageUsefulnessErrorModal .btn-outline-secondary:hover {
+        background-color: #6c757d;
+        border-color: #6c757d;
+        color: white;
+    }
+    
+    #pageUsefulnessErrorModal .btn-outline-primary:hover {
+        background-color: #0d6efd;
+        border-color: #0d6efd;
+        color: white;
+    }
+    
+    /* Animation for modal appearance */
+    #pageUsefulnessErrorModal.fade .modal-dialog {
+        transition: transform 0.3s ease-out;
+        transform: translate(0, -50px);
+    }
+    
+    #pageUsefulnessErrorModal.show .modal-dialog {
+        transform: none;
+    }
+</style>
+{% endblock %} 

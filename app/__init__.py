@@ -1,66 +1,45 @@
 import os
+import random
+import re
 import shlex
 import shutil
 import subprocess
 import tempfile
-import csv
-import re
+from pathlib import Path
 from typing import List
 import asyncio
 import json
 import base64
 import random
 import datetime
-from utils import (
-    push_lead_to_dhisana_webhook,
-    linkedin_search_to_csv,
-    apollo_info,
-    check_email_zero_bounce,
-    find_users_by_name_and_keywords,
-    find_user_by_job_title,
-    find_company_info,
-    find_contact_with_findymail,
-    call_openai_llm,
-    score_lead,
-    generate_email,
-    extract_from_webpage,
-    common,
-)
-from pathlib import Path
+from utils import (apollo_info, call_openai_llm, check_email_zero_bounce,
+                   common, extract_from_webpage, find_company_info,
+                   find_contact_with_findymail, find_user_by_job_title,
+                   find_users_by_name_and_keywords, generate_email,
+                   linkedin_search_to_csv, push_lead_to_dhisana_webhook,
+                   score_lead, codegen_barbarika_web_parsing)
+
+from utils.common import openai_client_sync
 
 try:
-    from flask import (
-        Flask,
-        render_template,
-        request,
-        redirect,
-        url_for,
-        flash,
-        send_from_directory,
-        session,
-        jsonify,
-    )
+    from flask import (Flask, flash, jsonify, redirect, render_template,
+                       request, send_from_directory, session, url_for, Response, stream_with_context)
 except Exception:  # pragma: no cover - fallback for test stubs
-    from flask import (
-        Flask,
-        render_template,
-        request,
-        redirect,
-        url_for,
-        flash,
-        send_from_directory,
-        jsonify,
-    )
+    from flask import (Flask, flash, jsonify, redirect, render_template,
+                       request, send_from_directory, url_for, Response)
 
     session = {}
-from dotenv import dotenv_values, set_key
 import openai
+from dotenv import dotenv_values, set_key
 try:
     import numpy as np
 except Exception:  # pragma: no cover - optional
     np = None
 import logging
+
 import faiss
+import threading
+import queue
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,18 +51,18 @@ UTILS_DIR = os.path.join(os.path.dirname(__file__), "..", "utils")
 # Cache paths for utility embeddings index and codes
 # Directory for user-generated utilities: prefer /data mount if available, else use in-repo folder
 # Directory for user-generated utilities (create gtm_utility at repo root)
-USER_UTIL_DIR = Path(__file__).resolve().parents[1] / 'gtm_utility'
+USER_UTIL_DIR = Path(__file__).resolve().parents[1] / "gtm_utility"
 USER_UTIL_DIR.mkdir(parents=True, exist_ok=True)
 
 # Data directory for persistent files and FAISS cache; prefer mounted /data in container
 ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = Path('/data') if Path('/data').is_dir() else ROOT / 'data'
+DATA_DIR = Path("/data") if Path("/data").is_dir() else ROOT / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 # Cache paths for utility embeddings index and codes under the data folder
-FAISS_CACHE_DIR = DATA_DIR / 'faiss'
-EMBED_INDEX_PATH = FAISS_CACHE_DIR / 'utility_embeddings.index'
-EMBED_CODES_PATH = FAISS_CACHE_DIR / 'utility_embeddings.json'
+FAISS_CACHE_DIR = DATA_DIR / "faiss"
+EMBED_INDEX_PATH = FAISS_CACHE_DIR / "utility_embeddings.index"
+EMBED_CODES_PATH = FAISS_CACHE_DIR / "utility_embeddings.json"
 
 UTILITY_INDEX: faiss.IndexFlatIP | None = None
 UTILITY_CODES: list[str] = []
@@ -107,7 +86,7 @@ UTILITY_TITLES = {
     "apollo_info": "Enrich Lead With Apollo.io",
     "fetch_html_playwright": "Scrape Website HTML (Playwright)",
     "extract_companies_from_image": "Extract Companies from Image",
-    "extract_from_webpage": "Extract Leads From Website",
+    "extract_from_webpage": "scrape and extract leads from website",
     "generate_image": "Generate Image",
     "get_website_information": "Get website information",
     "score_lead": "Score Leads",
@@ -140,7 +119,6 @@ UTILITY_TAGS = {
     "fetch_html_playwright": ["find"],
     "extract_companies_from_image": ["find"],
     "extract_from_webpage": ["find"],
-
     # Enrich leads
     "apollo_info": ["enrich"],
     "check_email_zero_bounce": ["enrich"],
@@ -149,10 +127,8 @@ UTILITY_TAGS = {
     "call_openai_llm": ["enrich"],
     "generate_email": ["route"],
     "generate_image": ["enrich"],
-
     # Score leads
     "score_lead": ["score"],
-
     # Route leads
     "push_lead_to_dhisana_webhook": ["route"],
     "push_company_to_dhisana_webhook": ["route"],
@@ -344,13 +320,30 @@ UTILITY_PARAMETERS = {
         {"name": "--lead", "label": "Extract One Lead", "type": "boolean"},
         {"name": "--leads", "label": "Extract Multiple Leads", "type": "boolean"},
         {"name": "--company", "label": "Extract One Company", "type": "boolean"},
-        {"name": "--companies", "label": "Extract Multiple Companies", "type": "boolean"},
-        {"name": "--initial_actions", "label": "Actions to do on Website Load, first time. Like select filters"},
+        {
+            "name": "--companies",
+            "label": "Extract Multiple Companies",
+            "type": "boolean",
+        },
+        {
+            "name": "--initial_actions",
+            "label": "Actions to do on Website Load, first time. Like select filters",
+        },
         {"name": "--page_actions", "label": "Actions to do When each page loads."},
-        {"name": "--parse_instructions", "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded"},
-        {"name": "--pagination_actions", "label": "Instructions on how to move to next page and extract more leads"},
+        {
+            "name": "--parse_instructions",
+            "label": "Custom instructions on how to extracts leads or company from the webpage that is loaded",
+        },
+        {
+            "name": "--pagination_actions",
+            "label": "Instructions on how to move to next page and extract more leads",
+        },
         {"name": "--max_pages", "label": "Maximum number of pages to navigate"},
-        {"name": "--show_ux", "label": "Show website UX during parsing", "type": "boolean"},
+        {
+            "name": "--show_ux",
+            "label": "Show website UX during parsing",
+            "type": "boolean",
+        },
     ],
     "generate_email": [
         {
@@ -657,7 +650,9 @@ def run_utility():
 
         def build_cmd(values: dict[str, str]) -> list[str]:
             module_prefix = (
-                "gtm_utility" if (USER_UTIL_DIR / f"{util_name}.py").exists() else "utils"
+                "gtm_utility"
+                if (USER_UTIL_DIR / f"{util_name}.py").exists()
+                else "utils"
             )
             cmd = ["python", "-m", f"{module_prefix}.{util_name}"]
             if is_custom and not uploaded:
@@ -695,8 +690,7 @@ def run_utility():
             elif util_name == "extract_from_webpage":
                 out_path = common.make_temp_csv_filename(util_name)
                 if not any(
-                    f in cmd
-                    for f in ("--lead", "--leads", "--company", "--companies")
+                    f in cmd for f in ("--lead", "--leads", "--company", "--companies")
                 ):
                     cmd.append("--leads")
                 cmd.extend(["--output_csv", out_path])
@@ -912,6 +906,7 @@ def run_utility():
                         fieldnames=fieldnames + [status_field, "command", "output"],
                     )
                     writer.writeheader()
+
                     for row in rows:
                         cmd = build_cmd(row)
                         status, cmd_str, out_text = run_cmd(cmd, bool(show_ux_flag))
@@ -990,15 +985,10 @@ def run_utility():
     )
 
 
-@app.route("/settings", methods=["GET", "POST"])
+@app.route("/settings")
 def settings():
+    """Display environment variables without allowing edits."""
     env_vars = load_env()
-    if request.method == "POST":
-        for key in env_vars:
-            value = request.form.get(key, "")
-            set_key(ENV_FILE, key, value)
-        flash("Settings saved.")
-        return redirect(url_for("settings"))
     return render_template("settings.html", env_vars=env_vars)
 
 
@@ -1121,15 +1111,13 @@ def push_to_dhisana():
 
 def embed_text(text: str) -> np.ndarray:
     """Return the LLM embedding for the given text."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-    client = openai.OpenAI(api_key=api_key)
+    client = openai_client_sync()
     response = client.embeddings.create(
         input=text,
         model="text-embedding-ada-002",
     )
     return np.array(response.data[0].embedding)
+
 
 def build_utility_embeddings() -> None:
     """Load or build utility embeddings and FAISS index cache."""
@@ -1138,7 +1126,7 @@ def build_utility_embeddings() -> None:
     if EMBED_INDEX_PATH.exists() and EMBED_CODES_PATH.exists():
         try:
             UTILITY_INDEX = faiss.read_index(str(EMBED_INDEX_PATH))
-            with open(EMBED_CODES_PATH, 'r', encoding='utf-8') as f:
+            with open(EMBED_CODES_PATH, "r", encoding="utf-8") as f:
                 UTILITY_CODES = json.load(f)
             return
         except Exception:
@@ -1148,18 +1136,18 @@ def build_utility_embeddings() -> None:
     codes: list[str] = []
     embeds: list[np.ndarray] = []
     for fname in os.listdir(UTILS_DIR):
-        if not fname.endswith('.py') or fname == 'common.py':
+        if not fname.endswith(".py") or fname in ['common.py', "codegen_barbarika_web_parsing.py"]:
             continue
         path = os.path.join(UTILS_DIR, fname)
-        with open(path, 'r', encoding='utf-8') as f:
+        with open(path, "r", encoding="utf-8") as f:
             code = f.read()
         embeds.append(embed_text(code[:2000]).astype(np.float32))
         codes.append(code)
     # Also scan user-generated utilities on Desktop
     if USER_UTIL_DIR.is_dir():
-        for user_path in USER_UTIL_DIR.glob('*.py'):
+        for user_path in USER_UTIL_DIR.glob("*.py"):
             try:
-                code = user_path.read_text(encoding='utf-8')
+                code = user_path.read_text(encoding="utf-8")
             except Exception:
                 continue
             embeds.append(embed_text(code[:2000]).astype(np.float32))
@@ -1180,13 +1168,15 @@ def build_utility_embeddings() -> None:
     try:
         EMBED_INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
         faiss.write_index(UTILITY_INDEX, str(EMBED_INDEX_PATH))
-        with open(EMBED_CODES_PATH, 'w', encoding='utf-8') as f:
+        with open(EMBED_CODES_PATH, "w", encoding="utf-8") as f:
             json.dump(UTILITY_CODES, f)
     except Exception:
         pass
 
+
 build_utility_embeddings()
 load_custom_parameters()
+
 
 def get_top_k_utilities(prompt: str, k: int) -> list[str]:
     """Return the top-k utility code snippets for the given prompt."""
@@ -1201,7 +1191,9 @@ def generate_utility():
     user_prompt = request.form["prompt"]
     top_examples = get_top_k_utilities(user_prompt, k=5)
     prompt_lines = []
-    prompt_lines.append("# User wants to build a new GTM utility with the following details:")
+    prompt_lines.append(
+        "# User wants to build a new GTM utility with the following details:"
+    )
     prompt_lines.append(f"# {user_prompt}")
     prompt_lines.append(
         "# The utility should accept command line arguments and also provide a *_from_csv* function that reads the same parameters from a CSV file."
@@ -1232,8 +1224,8 @@ def generate_utility():
         "httpx\n"
         "openai\n"
         "pydantic>=2.0\n"
-        "playwright==1.42.0\n"
-        "playwright-stealth\n"
+        "playwright==1.52.0\n"
+        "playwright-stealth>=2.0.0\n"
         "aiohttp\n"
         "beautifulsoup4\n"
         "aiosmtplib\n"
@@ -1246,10 +1238,10 @@ def generate_utility():
     prompt_lines.append(
         "# arguments to mail will be like in example below, output_file is always a parameter. input arguments like --person_title etc are custom parameters that can be passed as input the to script\n"
         "def main() -> None:\n"
-        "    parser = argparse.ArgumentParser(description=\"Search people in Apollo.io\")\n"
-        "    parser.add_argument(\"output_file\", help=\"CSV file to create\")\n"
-        "    parser.add_argument(\"--person_titles\", default=\"\", help=\"Comma separated job titles\")\n"
-        "    parser.add_argument(\"--person_locations\", default=\"\", help=\"Comma separated locations\")"
+        '    parser = argparse.ArgumentParser(description="Search people in Apollo.io")\n'
+        '    parser.add_argument("output_file", help="CSV file to create")\n'
+        '    parser.add_argument("--person_titles", default="", help="Comma separated job titles")\n'
+        '    parser.add_argument("--person_locations", default="", help="Comma separated locations")'
     )
     prompt_lines.append(
         "# Use standard names for lead and company properties in output like full_name, first_name, last_name, user_linkedin_url, email, organization_linkedin_url, website, job_tiltle, lead_location, primary_domain_of_organization"
@@ -1258,7 +1250,7 @@ def generate_utility():
         "# Use user_linkedin_url property to represent ursers linked in url"
     )
     prompt_lines.append(
-        "# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open(\"w\", newline=\"\", encoding=\"utf-8\") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n"
+        '# Always write the output to the csv in the output_file specific like below converting the json to csv format. \nfieldnames: List[str] = []\n    for row in results:\n        for key in row:\n            if key not in fieldnames:\n                fieldnames.append(key)\n\n    with out_path.open("w", newline="", encoding="utf-8") as fh:\n        writer = csv.DictWriter(fh, fieldnames=fieldnames)\n        writer.writeheader()\n        for row in results:\n            writer.writerow(row)\n'
     )
     prompt_lines.append(
         "# The app passes the output_path implicitly using the tool name and current date_time; do not ask the user for this value."
@@ -1277,13 +1269,10 @@ def generate_utility():
     logging.info("OpenAI prompt being sent:\n%s", codex_prompt)
 
     try:
-        client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+        client = openai_client_sync()
         model_name = os.getenv("MODEL_TO_GENERATE_UTILITY", "o3")
-        response = client.responses.create(
-            model=model_name,
-            input=codex_prompt
-        )
-        prev_response_id = getattr(response, 'id', None)
+        response = client.responses.create(model=model_name, input=codex_prompt)
+        prev_response_id = getattr(response, "id", None)
         # Only handle the new format: response.output is a list of ResponseOutputMessage
         code = None
         if (
@@ -1313,11 +1302,14 @@ def generate_utility():
     # ask the LLM to correct up to 10 retries.
     for attempt in range(10):
         try:
-            compile(code, '<generated>', 'exec')
+            compile(code, "<generated>", "exec")
             break
         except Exception as compile_err:
-            logging.warning("Generated code failed to compile (attempt %d): %s",
-                            attempt + 1, compile_err)
+            logging.warning(
+                "Generated code failed to compile (attempt %d): %s",
+                attempt + 1,
+                compile_err,
+            )
             commented_code = "\n".join(f"# {line}" for line in code.splitlines())
             correction_prompt = (
                 codex_prompt
@@ -1330,14 +1322,18 @@ def generate_utility():
                 input=correction_prompt,
                 previous_response_id=prev_response_id,
             )
-            prev_response_id = getattr(response, 'id', prev_response_id)
+            prev_response_id = getattr(response, "id", prev_response_id)
             # Extract corrected code same as before
             new_code = None
             if hasattr(response, "output") and isinstance(response.output, list):
                 for msg in response.output:
                     if hasattr(msg, "content") and isinstance(msg.content, list):
                         for c in msg.content:
-                            if hasattr(c, "text") and isinstance(c.text, str) and c.text.strip():
+                            if (
+                                hasattr(c, "text")
+                                and isinstance(c.text, str)
+                                and c.text.strip()
+                            ):
                                 new_code = c.text.strip()
                                 break
                         if new_code:
@@ -1351,13 +1347,10 @@ def generate_utility():
         logging.error(err_msg)
         return jsonify({"success": False, "error": err_msg}), 500
 
-    return jsonify({
-        "success": True,
-        "code": code
-    })
+    return jsonify({"success": True, "code": code})
 
 
-@app.route('/save_utility', methods=['POST'])
+@app.route("/save_utility", methods=["POST"])
 def save_utility():
     try:
         data = request.get_json(force=True)
@@ -1385,21 +1378,31 @@ def save_utility():
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(code)
 
-        param_pattern = re.compile(r"add_argument\(\s*['\"]([^'\"]+)['\"](.*?)\)")
-        help_pattern = re.compile(r"help\s*=\s*['\"]([^'\"]+)['\"]")
+        # Improved regex to handle help parameter anywhere in add_argument call
+        param_pattern = re.compile(
+            r'add_argument\(\s*["\']([^"\']+)["\'](?:.|\n)*?help\s*=\s*(f?["\'].*?["\'])',
+            re.DOTALL
+        )
         params: list[dict[str, str]] = []
-        skip_args = {"output_file", "--output_file", "input_file", "--input_file", "csv_file", "--csv_file"}
+        skip_args = {
+            "output_file",
+            "--output_file",
+            "input_file",
+            "--input_file",
+            "csv_file",
+            "--csv_file",
+        }
         for match in param_pattern.finditer(code):
             arg_name = match.group(1)
             if arg_name in skip_args:
                 continue
-            rest = match.group(2)
-            help_match = help_pattern.search(rest)
-            label = (
-                help_match.group(1)
-                if help_match
-                else arg_name.lstrip("-").replace("_", " ").capitalize()
-            )
+            help_text = match.group(2)
+            # Remove leading f and quotes
+            if help_text.startswith('f'):
+                help_text = help_text[1:]
+            if help_text.startswith('"') or help_text.startswith("'"):
+                help_text = help_text[1:-1]
+            label = help_text if help_text else arg_name.lstrip("-").replace("_", " ").capitalize()
             params.append({"name": arg_name, "label": label})
 
         meta = {"name": name, "description": desc, "prompt": prompt, "params": params}
@@ -1410,8 +1413,185 @@ def save_utility():
             UTILITY_PARAMETERS[base] = params
             load_custom_parameters()
 
-        logging.info("save_utility: wrote file %s", file_path)
+        logging.info(f"save_utility: wrote file {file_path}, params: {params}, name :{name}")
         return jsonify({"success": True, "file_path": str(file_path)})
     except Exception as e:
-        logging.error('Error saving utility to file: %s', e)
-        return jsonify({'success': False, 'error': str(e)}), 500
+        logging.error("Error saving utility to file: %s", e)
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/web_parse_utility', methods=['GET', 'POST'])
+def web_parse_utility():
+    def run_generate(url, fields, max_depth, pagination, instructions, llm_input_type='html', max_pages=10, llm_model='default'):
+        logging.basicConfig(level=logging.INFO)
+        logger = logging.getLogger(__name__)
+        if not url:
+            return json.dumps({'error': 'URL is required'})
+        tree_update_queue = queue.Queue()
+
+        def tree_update_callback(tree_json):
+            tree_update_queue.put({'type': 'tree_update', 'tree': tree_json})
+
+        def log_update_callback(msg):
+            logger.info(msg)
+            tree_update_queue.put({'type': 'log', 'message': f"{datetime.datetime.now().strftime('%H:%M:%S')}:{msg}"})
+
+        requirement = codegen_barbarika_web_parsing.UserRequirement(
+            target_url=url,
+            max_depth=max_depth,
+            pagination=pagination,
+            additional_instructions=instructions
+        )
+        parser = codegen_barbarika_web_parsing.WebParser(
+            requirement,
+            log_update_callback=log_update_callback,
+            tree_update_callback=tree_update_callback
+        )
+        parser.extra_info = {
+            'max_pages': max_pages,
+            'llm_model': llm_model
+        }
+
+        def run_crawl():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                tree_update_queue.put({'type': 'log', 'message': 'Analyzing requirements...'})
+                plan = loop.run_until_complete(parser.analyze_requirement())
+                tree_update_queue.put({'type': 'plan', 'plan': plan})
+                parser.plan = plan
+                # Pass the llm_input_type to build_page_tree
+                use_markdown_for_llm = llm_input_type == 'markdown'
+                loop.run_until_complete(parser.build_page_tree(use_markdown_for_llm=use_markdown_for_llm))
+                tree_update_queue.put({'type': 'log', 'message': 'Generating extraction code...'})
+                loop.run_until_complete(parser.generate_extraction_code())
+                # Emit generated code to UI before execution
+                tree_update_queue.put({'type': 'code_generated', 'code': parser.generated_code})
+                tree_update_queue.put({'type': 'log', 'message': 'Executing generated code...'})
+                result = loop.run_until_complete(parser.execute_generated_code(url))
+                # Defensive assignment and logging
+                if not parser.generated_code and 'code' in result:
+                    parser.generated_code = result['code']
+                if (not result.get('extracted_data') or len(result.get('extracted_data', [])) == 0) and 'data' in result:
+                    result['extracted_data'] = result['data']
+                logger.info(f"[web_parse_utility] Final generated_code length: {len(parser.generated_code) if parser.generated_code else 0}")
+                logger.info(f"[web_parse_utility] Final extracted_data length: {len(result.get('extracted_data', [])) if result.get('extracted_data') else 0}")
+                completion_data = {
+                    'type': 'complete',
+                    'code': parser.generated_code,
+                    'result': result,
+                    'extracted_data': result.get('extracted_data', []),
+                    'total_items': result.get('total_items', 0),
+                    'execution_success': result.get('execution_success', False),
+                    'csv_file': result.get('csv_file', ''),
+                    'message': result.get('message', ''),
+                    'extra_info': getattr(parser, 'extra_info', {}),
+                    'plan': getattr(parser, 'plan', None)
+                }
+                tree_update_queue.put(completion_data)
+            except Exception as e:
+                error_msg = f"Error: {str(e)}"
+                logger.error(error_msg)
+                tree_update_queue.put({'type': 'error', 'error': error_msg})
+            finally:
+                loop.close()
+
+        def event_stream():
+            crawl_thread = threading.Thread(target=run_crawl, daemon=True)
+            crawl_thread.start()
+            while True:
+                try:
+                    update = tree_update_queue.get(timeout=0.2)
+                    if isinstance(update, dict) and update.get('type') == 'complete':
+                        yield f"data: {json.dumps(update)}\n\n"
+                        break
+                    elif isinstance(update, dict) and update.get('type') == 'error':
+                        yield f"data: {json.dumps(update)}\n\n"
+                        break
+                    elif isinstance(update, dict) and update.get('type') == 'log':
+                        yield f"data: {json.dumps(update)}\n\n"
+                    elif isinstance(update, dict) and update.get('type') == 'plan':
+                        yield f"data: {json.dumps(update)}\n\n"
+                    elif isinstance(update, dict) and update.get('type') == 'tree_update':
+                        yield f"data: {json.dumps(update)}\n\n"
+                    elif isinstance(update, dict) and update.get('type') == 'code_generated':
+                        yield f"data: {json.dumps(update)}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'type': 'tree_update', 'tree': update})}\n\n"
+                except queue.Empty:
+                    if not crawl_thread.is_alive():
+                        break
+                    continue
+        return Response(
+            stream_with_context(event_stream()),
+            mimetype='text/event-stream',
+            headers={
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no',
+                'Content-Type': 'text/event-stream'
+            }
+        )
+
+    if request.method == 'GET':
+        if request.args:
+            url = request.args.get('url')
+            max_depth = int(request.args.get('max_depth', 3))
+            pagination = request.args.get('pagination', 'false').lower() == 'true'
+            instructions = request.args.get('instructions', '')
+            llm_input_type = request.args.get('llm_input_type', 'html')
+            max_pages = int(request.args.get('max_pages', 10))
+            llm_model = request.args.get('llm_model', 'default')
+            return run_generate(url, None, max_depth, pagination, instructions, llm_input_type, max_pages, llm_model)
+        return render_template('web_parse_utility.html')
+    else:
+        data = request.get_json()
+        url = data.get('url')
+        max_depth = int(data.get('max_depth', 3))
+        pagination = data.get('pagination', 'false').lower() == 'true'
+        instructions = data.get('instructions', '')
+        llm_input_type = data.get('llm_input_type', 'html')
+        max_pages = int(data.get('max_pages', 10))
+        llm_model = data.get('llm_model', 'default')
+        return run_generate(url, None, max_depth, pagination, instructions, llm_input_type, max_pages, llm_model)
+
+
+@app.route('/save_web_parse_utility', methods=['POST'])
+def save_web_parse_utility():
+    """Save web parsing utility as a new utility."""
+    try:
+        data = request.get_json()
+        if not data or not all(k in data for k in ['code', 'name', 'description', 'prompt']):
+            return jsonify({'error': 'Missing required fields'}), 400
+
+        # Save the utility using the existing save_utility function
+        try:
+            # Create a temporary request context with the data
+            with app.test_request_context(json=data):
+                # Call save_utility which will get the data from request.get_json()
+                response = save_utility()
+                return response
+        except Exception as e:
+            logging.error('Error in save_utility: %s', str(e))
+            return jsonify({'success': False, 'error': str(e)}), 500
+
+    except Exception as e:
+        logging.error('Error in save_web_parse_utility: %s', str(e))
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/download_web_parse_csv')
+def download_web_parse_csv():
+    """Download the CSV file from the latest web parsing session."""
+    csv_file = session.get('web_parse_csv_file')
+    if not csv_file or not os.path.exists(csv_file):
+        flash("No CSV file found from web parsing session.")
+        return redirect(url_for("run_utility"))
+
+    filename = os.path.basename(csv_file)
+    return send_from_directory(
+        os.path.dirname(csv_file),
+        filename,
+        as_attachment=True,
+        download_name='extracted_data.csv'
+    )
