@@ -19,8 +19,12 @@ import os
 import subprocess
 import tempfile
 import importlib.util
+import time
+import threading
+import queue
+import csv
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, Tuple
 import traceback
 from urllib.parse import urlparse
 
@@ -30,13 +34,22 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 
 from utils import common
-from utils.fetch_html_playwright import _fetch_and_clean, fetch_multiple_html_pages, html_to_markdown, _fetch_and_markdown
+from utils.fetch_html_playwright import (
+    _fetch_and_clean, 
+    fetch_multiple_html_pages, 
+    html_to_markdown, 
+    _fetch_and_markdown
+)
 from utils.common import (
     call_openai_async,
     call_openai_sync,
     openai_client_sync,
     openai_client as openai_client_async,
 )
+
+# =============================================================================
+# CONSTANTS AND CONFIGURATION
+# =============================================================================
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -45,32 +58,72 @@ logger = logging.getLogger(__name__)
 dotenv_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path)
 
-# Load Playwright sample code for LLM prompt context
+# Configuration constants
+MAX_CODE_EXECUTION_ATTEMPTS = 4
+MAX_FINAL_CODE_EXECUTION_ATTEMPTS = 2
+TREE_UPDATE_THROTTLE = 0.05  # 50ms throttle
+CONTENT_TRUNCATE_LENGTH = 500_000
+RESULT_FORMAT_LENGTH = 30_000
+RESULT_TRUNCATE_HEAD = 10_000
+RESULT_TRUNCATE_TAIL = 10_000
+
+# Processing status constants
+class ProcessingStatus:
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    ERROR = "error"
+    SKIPPED = "skipped"
+
+# Relevance score thresholds
+class RelevanceThresholds:
+    HIGH_RELEVANCE = 0.8
+    MEDIUM_RELEVANCE = 0.5
+    LOW_RELEVANCE = 0.3
+
+# =============================================================================
+# UTILITY FUNCTIONS
+# =============================================================================
+
 def _load_playwright_sample() -> str:
     """Load sample Playwright usage code for LLM context."""
     try:
-        playwright_sample = ""
-        extract_webpage_sample = ""
-        
-        # Load fetch_html_playwright.py
         sample_path = Path(__file__).parent / "fetch_html_playwright.py"
         if sample_path.exists():
             with open(sample_path, 'r', encoding='utf-8') as f:
                 sample_code = f.read()
-            playwright_sample = f"Here is playwright usage utils/fetch_html_playwright.py : {sample_code}"
+            return f"Here is playwright usage utils/fetch_html_playwright.py : {sample_code}"
         else:
             logger.warning("utils/fetch_html_playwright.py not found")
-        
-
-        
-        return playwright_sample
+            return ""
     except Exception as e:
         logger.warning(f"Failed to load Playwright sample: {e}")
         return ""
 
-sample_of_playwright_usage = _load_playwright_sample()
+def _load_sample_utility_code() -> str:
+    """Load sample utility code for reference."""
+    try:
+        sample_path = Path(__file__).parent / "linkedin_search_to_csv.py"
+        if sample_path.exists():
+            with open(sample_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        else:
+            logger.warning("utils/linkedin_search_to_csv.py not found")
+            return ""
+    except Exception as e:
+        logger.warning(f"Failed to load sample utility code: {e}")
+        return ""
 
-# Initialize OpenAI clients (global instances for reuse)
+def _format_execution_result(result: Dict[str, Any]) -> str:
+    """Format execution result for inclusion in prompt."""
+    result_str = json.dumps(result, indent=2)
+    if len(result_str) < RESULT_FORMAT_LENGTH:
+        return result_str
+    else:
+        return (result_str[:RESULT_TRUNCATE_HEAD] + "....." + result_str[-RESULT_TRUNCATE_TAIL:])
+
+# Initialize global instances
+sample_of_playwright_usage = _load_playwright_sample()
 openai_async_client = openai_client_async()
 openai_client = openai_client_sync()
 
@@ -85,14 +138,6 @@ class UserRequirement(BaseModel):
     This class defines the parameters needed to extract data from websites,
     including the target URL, data fields to extract, crawling depth,
     and additional instructions for the extraction process.
-    
-    Attributes:
-        target_url: The URL to scrape and analyze
-        data_to_extract: List of field names to extract (auto-generated if None)
-        max_depth: Maximum depth for crawling (default: 3)
-        pagination: Whether to handle pagination (default: False)
-        additional_instructions: Custom instructions for extraction
-        extraction_spec: Detailed extraction specification (auto-generated)
     """
     
     target_url: str
@@ -109,13 +154,28 @@ class UserRequirement(BaseModel):
             self._generate_extraction_spec()
 
     def _generate_extraction_spec(self) -> None:
-        """
-        Use LLM to generate a structured extraction specification.
+        """Use LLM to generate a structured extraction specification."""
+        prompt = self._build_extraction_spec_prompt()
         
-        This method creates a detailed JSON specification for data extraction
-        based on the target URL and additional instructions provided by the user.
-        """
-        prompt = f"""
+        try:
+            spec = call_openai_sync(
+                prompt=prompt,
+                response_format={"type": "json_object"},
+                client=openai_client
+            )
+            spec_data = json.loads(spec)
+            self.data_to_extract = [field["field_name"] for field in spec_data["extraction_fields"]]
+            self.extraction_spec = spec_data
+            logger.info("📋 LLM generated extraction specification")
+            logger.debug(f"Extraction spec: {json.dumps(spec_data, indent=2)}")
+        except Exception as e:
+            logger.error(f"❌ Error generating extraction specification: {str(e)}")
+            self.data_to_extract = []
+            self.extraction_spec = None
+
+    def _build_extraction_spec_prompt(self) -> str:
+        """Build the prompt for extraction specification generation."""
+        return f"""
         Based on the following user requirements, create a structured JSON specification for data extraction:
 
         Target URL: {self.target_url}
@@ -148,24 +208,7 @@ class UserRequirement(BaseModel):
         3. Relevant to the user's requirements
         4. In snake_case format
         5. Include validation rules where appropriate
-        
         """
-
-        try:
-            spec = call_openai_sync(
-                prompt=prompt,
-                response_format={"type": "json_object"},
-                client=openai_client
-            )
-            spec_data = json.loads(spec)
-            self.data_to_extract = [field["field_name"] for field in spec_data["extraction_fields"]]
-            self.extraction_spec = spec_data
-            logger.info("📋 LLM generated extraction specification")
-            logger.debug(f"Extraction spec: {json.dumps(spec_data, indent=2)}")
-        except Exception as e:
-            logger.error(f"❌ Error generating extraction specification: {str(e)}")
-            self.data_to_extract = []
-            self.extraction_spec = None
 
 
 class PageData(BaseModel):
@@ -175,29 +218,6 @@ class PageData(BaseModel):
     This class stores all information about a crawled page, including
     its HTML content, analysis results, generated code, and relationships
     to other pages in the tree.
-    
-    Attributes:
-        url: The page URL
-        html: Raw HTML content
-        json_data: Structured data extracted from the page
-        path: Breadcrumb path from root to this page
-        children: Child pages in the tree
-        parent: Parent page in the tree
-        analysis_data: Results of page analysis
-        to_be_filled_fields: Fields that need to be extracted
-        page_type: Type/category of the page
-        exclusive_fields: Fields unique to this page
-        generated_code: Python code generated for this page
-        code_execution_result: Results of executing the generated code
-        code_execution_error: Any errors during code execution
-        relevance_score: How relevant this page is to the extraction goal
-        processing_status: Current processing status
-        status_message: Detailed status message
-        start_time: When processing started
-        last_update_time: When status was last updated
-        error_details: Detailed error information if any
-        progress: Processing progress (0-100)
-        markdown: Optional markdown content of the HTML
     """
     
     url: str
@@ -214,7 +234,7 @@ class PageData(BaseModel):
     code_execution_result: Optional[Dict[str, Any]] = None
     code_execution_error: Optional[str] = None
     relevance_score: float = 0.0
-    processing_status: str = "pending"  # pending, processing, completed, error
+    processing_status: str = ProcessingStatus.PENDING
     status_message: str = ""
     start_time: Optional[float] = None
     last_update_time: Optional[float] = None
@@ -223,75 +243,18 @@ class PageData(BaseModel):
     markdown: Optional[str] = None
 
 
-class WebParser:
-    """
-    AI-powered web parser for intelligent data extraction.
-    
-    This class orchestrates the entire web parsing process:
-    1. Analyzes user requirements
-    2. Crawls and analyzes web pages
-    3. Generates extraction code
-    4. Executes the generated code
-    
-    The parser uses LLM to understand page structure and generate
-    appropriate extraction code for each page type.
-    """
-    
-    def __init__(
-        self, 
-        requirement: UserRequirement, 
-        log_update_callback: Optional[Callable[[str], None]] = None,
-        tree_update_callback: Optional[Callable[[Dict], None]] = None
-    ):
-        """
-        Initialize the WebParser with user requirements.
-        
-        Args:
-            requirement: User requirements for data extraction
-            log_update_callback: Optional callback for log updates
-            tree_update_callback: Optional callback for tree updates
-        """
-        logger.info(f"🚀 Initializing WebParser with URL: {requirement.target_url}")
-        logger.info(f"📋 Data to extract: {requirement.data_to_extract}")
-        logger.info(f"🔍 Max depth: {requirement.max_depth}")
-        logger.info(f"📄 Pagination: {requirement.pagination}")
-        logger.info(f"📝 Additional instructions: {requirement.additional_instructions}")
-        
-        self.requirement = requirement
-        self.root_url = requirement.target_url
-        self.log_update_callback = log_update_callback or (lambda msg: None)
-        self.tree_update_callback = tree_update_callback or (lambda tree: None)
-        
-        # Internal state
-        self.page_tree: Dict[str, PageData] = {}
-        self.visited_urls: set = set()
-        self.visited_page_types: set = set()
-        self.generated_code: str = ""
-        self.python_code_function_name: str = ""
-        self.plan: Dict[str, Any] = {}
-        self.tree_root: Optional[PageData] = None
-        self.extra_info: Dict[str, Any] = {}
-        
-        # Tree update optimization
-        self.last_tree_update = 0.0
-        self.tree_update_throttle = 0.05  # 50ms throttle (reduced from 100ms)
-        self.pending_tree_update = False
-        
-        # Send initial tree update to show starting state
-        self._update_tree("Initializing WebParser...")
+# =============================================================================
+# PROMPT BUILDERS
+# =============================================================================
 
-    async def analyze_requirement(self) -> Dict[str, Any]:
-        """
-        Analyze user requirement and create extraction plan.
-        
-        Returns:
-            Dictionary containing the extraction plan with steps, required pages,
-            data patterns, and validation rules.
-        """
-        logger.info("📊 Analyzing user requirements...")
-        
+class PromptBuilder:
+    """Handles building various prompts for LLM interactions."""
+    
+    @staticmethod
+    def build_requirement_analysis_prompt(requirement: UserRequirement) -> str:
+        """Build prompt for requirement analysis."""
         pagination_analysis = ""
-        if self.requirement.pagination:
+        if requirement.pagination:
             pagination_analysis = """
         PAGINATION ANALYSIS:
         - Analyze the target URL to determine pagination strategy
@@ -301,14 +264,14 @@ class WebParser:
         - Include pagination-specific extraction steps
         """
         
-        prompt = f"""
+        return f"""
         You are an expert web scraping architect. Your task is to analyze a web scraping requirement and create a comprehensive, actionable extraction plan in JSON format.
         
-        Here is the user requirement: {self.requirement.additional_instructions}
-        Target URL: {self.requirement.target_url}
-        Data to Extract: {self.requirement.data_to_extract}
-        Max Depth: {self.requirement.max_depth}
-        Pagination: {self.requirement.pagination}
+        Here is the user requirement: {requirement.additional_instructions}
+        Target URL: {requirement.target_url}
+        Data to Extract: {requirement.data_to_extract}
+        Max Depth: {requirement.max_depth}
+        Pagination: {requirement.pagination}
 
         Create a plan in JSON format:
         {{
@@ -329,385 +292,36 @@ class WebParser:
             {pagination_analysis}
         """
 
-        try:
-            plan = call_openai_sync(
-                prompt=prompt,
-                response_format={"type": "json_object"},
-                client=openai_client
-            )
-            plan_data = json.loads(plan)
-            logger.info("✅ Requirement analysis complete")
-            logger.debug(f"Plan: {json.dumps(plan_data, indent=2)}")
-            logger.info(f"📋 Extraction steps: {len(plan_data.get('extraction_steps', []))}")
-            return plan_data
-        except Exception as e:
-            logger.error(f"❌ Error analyzing requirements: {str(e)}")
-            raise
-
-    async def analyze_page_directly(
-        self, 
-        html: str, 
-        markdown: Optional[str],
-        url: str, 
-        parent_page: Optional[PageData] = None,
-        use_markdown_for_llm: bool = False
-    ) -> Dict[str, Any]:
-        """
-        Analyze HTML or Markdown directly and return comprehensive analysis data.
-        Args:
-            html: Raw HTML content to analyze
-            markdown: Markdown version of the HTML
-            url: URL of the page being analyzed
-            parent_page: Parent page in the tree (if any)
-            use_markdown_for_llm: If True, use markdown for LLM input, else use HTML
-        Returns:
-            Dictionary containing analysis results including structured data,
-            page type, relevance score, and generated code.
-        """
-        logger.info(f"🔍 Analyzing page directly: {url} (use_markdown_for_llm={use_markdown_for_llm})")
-        self.log_update_callback(f"🔍 Analyzing page directly: {url} calling llm (use_markdown_for_llm={use_markdown_for_llm})")
-        self._update_tree(f"Analyzing page structure: {url}", url)
-
-        # TODO: To experiment with markdown, set use_markdown_for_llm=True in fetch_and_process_page
-        content = markdown if use_markdown_for_llm and markdown else html
-        content_type = "markdown" if use_markdown_for_llm and markdown else "html"
-        prompt = self._build_page_analysis_prompt(content, url, parent_page, content_type=content_type)
-
-        try:
-            # Send update before LLM call
-            self._update_tree(f"Calling LLM for analysis: {url}", url)
-            analysis = call_openai_sync(
-                prompt=prompt,
-                response_format={"type": "json_object"},
-                client=openai_client
-            )
-            analysis_data = json.loads(analysis)
-        except json.JSONDecodeError as e:
-            logger.error(f"❌ JSON decode error: {e}")
-            self._update_tree(f"Retrying analysis with different model: {url}", url)
-            analysis = call_openai_sync(
-                prompt=prompt,
-                model="gpt-4o-mini",
-                response_format={"type": "json_object"},
-                client=openai_client
-            )
-            analysis_data = json.loads(analysis)
-
-        logger.info("✅ Page analysis complete")
-        self.log_update_callback("✅ Page analysis complete")
-        logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
-        logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
-
-        # Check page usefulness assessment
-        usefulness_assessment = analysis_data.get('page_usefulness_assessment', {})
-        is_useful_page = usefulness_assessment.get('is_useful_page', True)
-        needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
-        skip_processing = usefulness_assessment.get('skip_processing', False)
-        skip_reason = usefulness_assessment.get('skip_reason', '')
-        
-        # Log page usefulness assessment
-        logger.info(f"📊 Page usefulness assessment:")
-        logger.info(f"   - Is useful page: {is_useful_page}")
-        logger.info(f"   - Needs code generation: {needs_code_generation}")
-        logger.info(f"   - Skip processing: {skip_processing}")
-        if skip_reason:
-            logger.info(f"   - Skip reason: {skip_reason}")
-        
-        # Send real-time update with analysis data (including python_code)
-        self._update_tree_with_analysis_data(url, analysis_data, "Page analysis complete")
-
-        # Handle code execution based on page usefulness
-        code_execution_result = None
-        code_execution_error = None
-        
-        if skip_processing:
-            logger.info(f"⏭️ Skipping code generation and execution for {url}: {skip_reason}")
-            self.log_update_callback(f"⏭️ Skipping processing for {url}: {skip_reason}")
-            self._update_tree(f"Skipped processing: {skip_reason}", url)
-            code_execution_error = f"Page skipped: {skip_reason}"
-        elif not needs_code_generation:
-            logger.info(f"📝 No code generation needed for {url} (navigation/intermediate page)")
-            self.log_update_callback(f"📝 No code generation needed for {url}")
-            self._update_tree(f"No code generation needed (navigation page)", url)
-            code_execution_error = "No code generation needed for this page type"
-        else:
-            # Execute and validate generated code only if needed
-            logger.info(f"🔧 Executing generated code for {url}")
-            self.log_update_callback(f"🔧 Executing generated code for {url}")
-            code_execution_result, code_execution_error = await self._execute_generated_code(
-                analysis_data, url
-            )
-
-        # Update plan with available fields
-        self._update_tree(f"Updating extraction plan: {url}", url)
-        self._update_plan_with_fields(analysis_data)
-
-        # Filter next pages to visit
-        next_pages_to_visit = self._filter_next_pages(analysis_data)
-
-        # Send final update with all data including execution results
-        final_result = {
-            "structured_data": analysis_data.get("structured_data", {}),
-            "main_content_areas": analysis_data.get("main_content_areas", []),
-            "navigation_elements": analysis_data.get("navigation_elements", []),
-            "patterns_identified": analysis_data.get("patterns_identified", []),
-            "next_pages_to_visit": next_pages_to_visit,
-            "page_type": analysis_data.get("page_type", "unknown"),
-            "relevance_score": analysis_data.get("relevance_score", 0),
-            "available_fields": analysis_data.get("available_fields", []),
-            "generic_name_of_page": analysis_data.get("generic_name_of_page", ""),
-            "python_code": analysis_data.get("python_code"),
-            "python_code_function_name": analysis_data.get("python_code_function_name", "extract_data"),
-            "exclusive_fields": analysis_data.get("exclusive_fields", []),
-            "code_execution_result": code_execution_result,
-            "code_execution_error": code_execution_error,
-            "summery": analysis_data.get("summery", ""),
-            "pagination_info": analysis_data.get("pagination_info", {}),
-            "page_usefulness_assessment": usefulness_assessment
-        }
-        
-        # Send real-time update with execution results
-        self._update_tree_with_execution_results(url, final_result, "Analysis complete")
-        
-        return final_result
-
-    def _update_tree_with_analysis_data(self, url: str, analysis_data: Dict[str, Any], message: str) -> None:
-        """Send real-time tree update with analysis data (including python_code)."""
-        if not self.tree_update_callback:
-            return
-            
-        # Find the page in the tree
-        page_data = self.page_tree.get(url)
-        if not page_data:
-            return
-            
-        # Update page data with analysis results
-        page_data.analysis_data = analysis_data
-        page_data.page_type = analysis_data.get("page_type", "unknown")
-        page_data.exclusive_fields = analysis_data.get("exclusive_fields", [])
-        page_data.generated_code = analysis_data.get("python_code")
-        page_data.relevance_score = analysis_data.get("relevance_score", 0)
-        
-        # Update status based on page usefulness assessment
-        usefulness_assessment = analysis_data.get('page_usefulness_assessment', {})
-        skip_processing = usefulness_assessment.get('skip_processing', False)
-        needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
-        
-        if skip_processing:
-            skip_reason = usefulness_assessment.get('skip_reason', 'No reason provided')
-            page_data.processing_status = "skipped"
-            page_data.status_message = f"Skipped: {skip_reason}"
-            page_data.progress = 100  # Mark as complete since it's skipped
-        elif not needs_code_generation:
-            page_data.processing_status = "completed"
-            page_data.status_message = "No code generation needed (navigation page)"
-            page_data.progress = 100  # Mark as complete since no code needed
-        else:
-            page_data.processing_status = "processing"
-            page_data.status_message = message or "Analysis complete, generating code..."
-            page_data.progress = 60  # 60% progress after analysis
-        
-        # Force immediate update for important data
-        self._force_tree_update_with_data(url, message, page_data.progress)
-
-    def _update_tree_with_execution_results(self, url: str, final_result: Dict[str, Any], message: str) -> None:
-        """Send real-time tree update with execution results."""
-        if not self.tree_update_callback:
-            return
-            
-        # Find the page in the tree
-        page_data = self.page_tree.get(url)
-        if not page_data:
-            return
-            
-        # Update page data with execution results
-        page_data.code_execution_result = final_result.get("code_execution_result")
-        page_data.code_execution_error = final_result.get("code_execution_error")
-        
-        # Force immediate update for important data
-        self._force_tree_update_with_data(url, message, 100)  # 100% progress after execution
-
-    def _force_tree_update_with_data(self, url: str, message: str, progress: int) -> None:
-        """Force an immediate tree update with data, bypassing throttling."""
-        if not self.tree_update_callback:
-            return
-            
-        try:
-            # Always try to serialize the tree, even if tree_root is None
-            tree_data = None
-            if self.tree_root:
-                tree_data = self._serialize_tree(self.tree_root)
-            else:
-                # Create a minimal tree structure if no root exists yet
-                tree_data = {
-                    'url': self.root_url,
-                    'page_type': 'initializing',
-                    'relevance_score': 0.0,
-                    'exclusive_fields': [],
-                    'children': [],
-                    'parent_url': None,
-                    'label': 'Initializing...',
-                    'status': 'pending',
-                    'status_message': message or 'Initializing parser...',
-                    'progress': 0,
-                    'processing_time': None,
-                    'last_update': None,
-                    'error_details': None,
-                    'summery': '',
-                    'python_code': '',
-                    'code_execution_result': '',
-                    'code_execution_error': '',
-                    'analysis_data': {}
-                }
-            
-            # Update progress and status message for the specific page
-            if url and progress is not None:
-                self._update_page_progress(tree_data, url, progress)
-                
-            if url and message:
-                self._update_page_status_message(tree_data, url, message)
-                
-            # Force immediate callback
-            self.tree_update_callback(tree_data)
-            
-        except Exception as e:
-            logger.warning(f"Force tree update callback error: {e}")
-            # Try to send a minimal error tree update
-            try:
-                error_tree = {
-                    'url': self.root_url,
-                    'page_type': 'error',
-                    'relevance_score': 0.0,
-                    'exclusive_fields': [],
-                    'children': [],
-                    'parent_url': None,
-                    'label': 'Error occurred',
-                    'status': 'error',
-                    'status_message': f'Force tree update error: {str(e)}',
-                    'progress': 0,
-                    'processing_time': None,
-                    'last_update': None,
-                    'error_details': {'error_type': 'TreeUpdateError', 'error_message': str(e)},
-                    'summery': '',
-                    'python_code': '',
-                    'code_execution_result': '',
-                    'code_execution_error': '',
-                    'analysis_data': {}
-                }
-                self.tree_update_callback(error_tree)
-            except Exception as fallback_error:
-                logger.error(f"Failed to send error tree update: {fallback_error}")
-
-    def _build_page_analysis_prompt(
-        self, 
+    @staticmethod
+    def build_page_analysis_prompt(
         content: str, 
         url: str, 
-        parent_page: Optional[PageData],
-        content_type: str = "html",
+        requirement: UserRequirement,
+        plan: Dict[str, Any],
+        visited_page_types: set,
+        parent_page: Optional[PageData] = None,
+        content_type: str = "html"
     ) -> str:
-        """
-        Build the prompt for page analysis, using either HTML or Markdown as input.
-        Args:
-            content: The HTML or Markdown content to analyze
-            url: The page URL
-            parent_page: The parent PageData (if any)
-            content_type: "html" or "markdown" (for prompt labeling)
-        Returns:
-            The prompt string for the LLM
-        """
-        pagination_instructions = ""
-        if self.requirement.pagination:
-            pagination_instructions = """
-        PAGINATION HANDLING:
-        - If pagination is enabled, look for pagination elements like:
-          * Next/Previous buttons
-          * Page numbers
-          * "Load more" buttons
-          * Infinite scroll indicators
-        - Include pagination URLs in next_pages_to_visit with high relevance scores
-        - Identify pagination patterns and include them in patterns_identified
-        - Add pagination-related fields to available_fields if found
-        - Generate pagination-aware Python code that can handle multiple pages
-        - Populate pagination_info with detailed pagination analysis:
-          * Detect pagination type (url_based, javascript_based, infinite_scroll, load_more, none)
-          * Identify CSS selectors for pagination elements
-          * Extract URL patterns and parameters for URL-based pagination
-          * Determine JavaScript actions needed for dynamic pagination
-          * Estimate total pages and items per page
-          * Identify current page number if possible
-        - **CRITICAL: All pagination_actions must contain valid JavaScript code, NOT natural language descriptions**
-        - **JavaScript examples for pagination_actions:**
-          * click_next: "document.querySelector('.next-button').click()"
-          * scroll_to_load: "window.scrollTo(0, document.body.scrollHeight)"
-          * wait_for_load: "new Promise(resolve => setTimeout(resolve, 2000))"
-        - **DO NOT use natural language like "scroll down to load more companies" - this will cause JavaScript syntax errors**
-        - **CRITICAL: Do NOT use 'await' in JavaScript code - it runs in non-async context in Playwright**
-        - **Use Promise-based waiting instead of await:**
-          * Correct: "new Promise(resolve => setTimeout(resolve, 2000))"
-          * Wrong: "await new Promise(resolve => setTimeout(resolve, 2000))"
-        """
+        """Build the prompt for page analysis."""
+        pagination_instructions = PromptBuilder._get_pagination_instructions(requirement.pagination)
+        content_instructions = PromptBuilder._get_content_type_instructions(content_type)
         
         label = "Markdown Content:" if content_type == "markdown" else "HTML Content:"
         
-        # Build content-type specific instructions
-        if content_type == "markdown":
-            fetch_instructions = """
-        1. For MARKDOWN extraction, use the appropriate fetch method:
-           from utils.fetch_html_playwright import _fetch_and_clean, html_to_markdown
-           html_code = await _fetch_and_clean(url)
-           markdown_code = html_to_markdown(html_code)
-        """
-            parsing_instructions = """
-        4. For MARKDOWN parsing:
-           - Use BeautifulSoup for HTML parsing: soup = BeautifulSoup(html_code, 'html.parser')
-           - Convert to markdown for analysis: markdown_code = html_to_markdown(html_code)
-           - Use markdown parsing libraries or regex for markdown content analysis
-           - Focus on markdown structure (headers, links, lists, etc.) rather than HTML tags
-        """
-            selector_instructions = """
-        15. **IMPORTANT for MARKDOWN parsing:** 
-           - Use markdown parsing libraries like 'markdown' or 'mistune' for structured markdown analysis
-           - Use regex patterns for extracting specific markdown elements (headers, links, lists)
-           - Parse markdown headers using patterns like r'^#+\s+(.+)$'
-           - Extract markdown links using patterns like r'\[([^\]]+)\]\(([^)]+)\)'
-           - Handle markdown lists and other structural elements appropriately
-        """
-            content_specific_instructions = """
-        12. For MARKDOWN extraction, use appropriate parsing methods:
-            - Use regex for markdown pattern matching
-            - Use markdown parsing libraries for structured analysis
-            - Handle markdown-specific elements (headers, links, lists, code blocks)
-        """
-        else:
-            fetch_instructions = """
-        1. Always use _fetch_and_clean with url for fetching HTML code: from utils.fetch_html_playwright import _fetch_and_clean
-           html_code = await _fetch_and_clean(url) # this using Playwright
-        """
-            parsing_instructions = """
-        4. Use BeautifulSoup for parsing
-        """
-            selector_instructions = """
-        15. **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names as these will cause parse errors. If you need to match such classes, use soup.find or soup.find_all with class_ parameter instead.
-        """
-            content_specific_instructions = """
-        12. To match elements that have ALL specified classes (order doesn't matter): soup.find_all('div', class_=['class1', 'class2'])
-        13. Attribute Selectors: Always quote attribute values in CSS selectors: soup.find('div', class_='example-class')
-        """
-
         return f"""
         Analyze this {content_type.upper()} content of a webpage and provide comprehensive analysis in one JSON response.
 
         Context:
         - Target URL: {url}
-        - Required Data to Extract: {self.requirement.data_to_extract}
-        - Additional Instructions: {self.requirement.additional_instructions}
-        - Main Plan: {json.dumps(self.plan, indent=2)}
-        - Already Visited Page Types: {self.visited_page_types}
+        - Required Data to Extract: {requirement.data_to_extract}
+        - Additional Instructions: {requirement.additional_instructions}
+        - Main Plan: {json.dumps(plan, indent=2)}
+        - Already Visited Page Types: {visited_page_types}
         - Parent Page Type: {parent_page.page_type if parent_page else 'None'}
-        - Pagination Enabled: {self.requirement.pagination}
+        - Pagination Enabled: {requirement.pagination}
 
         {label}
-        {content[:500_000]}
+        {content[:CONTENT_TRUNCATE_LENGTH]}
 
         Return a JSON object with the following structure:
         {{
@@ -722,9 +336,8 @@ class WebParser:
                     "label": <page label>,
                     "page_type": <page type>,
                     "identifier": <unique identifier>,
-                    "relevance_score": <from 0.0 to 1.0>
+                    "relevance_score": <from 0.0 to 1.0>,
                     "why": <why this page needed>
-                    
                 }}
             ],
             "page_type": "page type",
@@ -741,7 +354,7 @@ class WebParser:
                 "is_data_page": <boolean - true if page contains actual data to extract>,
                 "is_landing_page": <boolean - true if page is a landing/home page>,
                 "usefulness_reason": <detailed explanation of why page is useful or not>,
-                "skip_processing": <boolean - true if page should be skipped entirely (no code generation, no further processing)>,
+                "skip_processing": <boolean - true if page should be skipped entirely>,
                 "skip_reason": <explanation for why page should be skipped>
             }},
             
@@ -762,9 +375,9 @@ class WebParser:
                     "limit_param": <URL parameter name for limit>
                 }},
                 "pagination_actions": {{
-                    "click_next": <Valid JavaScript code to click next button, e.g., "document.querySelector('.next-button').click()">,
-                    "scroll_to_load": <Valid JavaScript code for infinite scroll, e.g., "window.scrollTo(0, document.body.scrollHeight)">,
-                    "wait_for_load": <Valid JavaScript code to wait for content, e.g., "new Promise(resolve => setTimeout(resolve, 2000))">
+                    "click_next": <Valid JavaScript code to click next button>,
+                    "scroll_to_load": <Valid JavaScript code for infinite scroll>,
+                    "wait_for_load": <Valid JavaScript code to wait for content>
                 }},
                 "total_pages_estimate": <estimated total number of pages>,
                 "items_per_page": <estimated number of items per page>,
@@ -772,6 +385,103 @@ class WebParser:
             }}
         }}
 
+        {PromptBuilder._get_page_usefulness_rules()}
+        {PromptBuilder._get_next_pages_rules()}
+        {pagination_instructions}
+        {PromptBuilder._get_python_code_rules(content_type)}
+        {content_instructions}
+        {PromptBuilder._get_parent_page_context(parent_page)}
+
+        IMPORTANT: 
+        1. Your response MUST be valid JSON
+        2. Ensure all strings are properly quoted and brackets are balanced
+        3. All required fields must be present
+        4. All values must match their specified types
+        5. Relevance scores must be between 0.0 and 1.0
+        6. URLs must be absolute and valid
+        7. Python code must be valid and follow all specified rules
+        8. DO NOT hallucinate any data - only use what exists in the {content_type.upper()}
+        9. Verify all extracted data against the {content_type.upper()} content
+        10. Add validation steps to ensure data accuracy
+        11. {sample_of_playwright_usage}
+        """
+
+    @staticmethod
+    def _get_pagination_instructions(pagination_enabled: bool) -> str:
+        """Get pagination-specific instructions."""
+        if not pagination_enabled:
+            return ""
+            
+        return """
+        PAGINATION HANDLING:
+        - If pagination is enabled, look for pagination elements like:
+          * Next/Previous buttons
+          * Page numbers
+          * "Load more" buttons
+          * Infinite scroll indicators
+        - Include pagination URLs in next_pages_to_visit with high relevance scores
+        - Identify pagination patterns and include them in patterns_identified
+        - Add pagination-related fields to available_fields if found
+        - Generate pagination-aware Python code that can handle multiple pages
+        - Populate pagination_info with detailed pagination analysis
+        - **CRITICAL: All pagination_actions must contain valid JavaScript code, NOT natural language descriptions**
+        - **JavaScript examples for pagination_actions:**
+          * click_next: "document.querySelector('.next-button').click()"
+          * scroll_to_load: "window.scrollTo(0, document.body.scrollHeight)"
+          * wait_for_load: "new Promise(resolve => setTimeout(resolve, 2000))"
+        - **DO NOT use natural language like "scroll down to load more companies" - this will cause JavaScript syntax errors**
+        - **CRITICAL: Do NOT use 'await' in JavaScript code - it runs in non-async context in Playwright**
+        - **Use Promise-based waiting instead of await:**
+          * Correct: "new Promise(resolve => setTimeout(resolve, 2000))"
+          * Wrong: "await new Promise(resolve => setTimeout(resolve, 2000))"
+        """
+
+    @staticmethod
+    def _get_content_type_instructions(content_type: str) -> str:
+        """Get content-type specific instructions."""
+        if content_type == "markdown":
+            return """
+        For MARKDOWN extraction, use the appropriate fetch method:
+           from utils.fetch_html_playwright import _fetch_and_clean, html_to_markdown
+           html_code = await _fetch_and_clean(url)
+           markdown_code = html_to_markdown(html_code)
+        
+        For MARKDOWN parsing:
+           - Use BeautifulSoup for HTML parsing: soup = BeautifulSoup(html_code, 'html.parser')
+           - Convert to markdown for analysis: markdown_code = html_to_markdown(html_code)
+           - Use markdown parsing libraries or regex for markdown content analysis
+           - Focus on markdown structure (headers, links, lists, etc.) rather than HTML tags
+        
+        **IMPORTANT for MARKDOWN parsing:** 
+           - Use markdown parsing libraries like 'markdown' or 'mistune' for structured markdown analysis
+           - Use regex patterns for extracting specific markdown elements (headers, links, lists)
+           - Parse markdown headers using patterns like r'^#+\s+(.+)$'
+           - Extract markdown links using patterns like r'\[([^\]]+)\]\(([^)]+)\)'
+           - Handle markdown lists and other structural elements appropriately
+        
+        For MARKDOWN extraction, use appropriate parsing methods:
+            - Use regex for markdown pattern matching
+            - Use markdown parsing libraries for structured analysis
+            - Handle markdown-specific elements (headers, links, lists, code blocks)
+        """
+        else:
+            return """
+        Always use _fetch_and_clean with url for fetching HTML code: 
+           from utils.fetch_html_playwright import _fetch_and_clean
+           html_code = await _fetch_and_clean(url) # this using Playwright
+        
+        Use BeautifulSoup for parsing
+        
+        **IMPORTANT for BeautifulSoup selectors:** When using BeautifulSoup's select or select_one, always use valid CSS selectors supported by BeautifulSoup's parser. Attribute values must be quoted (e.g., [data-test="post-name-"]), and do NOT use selectors with bracketed class names as these will cause parse errors. If you need to match such classes, use soup.find or soup.find_all with class_ parameter instead.
+        
+        To match elements that have ALL specified classes (order doesn't matter): soup.find_all('div', class_=['class1', 'class2'])
+        Attribute Selectors: Always quote attribute values in CSS selectors: soup.find('div', class_='example-class')
+        """
+
+    @staticmethod
+    def _get_page_usefulness_rules() -> str:
+        """Get page usefulness assessment rules."""
+        return """
         **CRITICAL PAGE USEFULNESS ASSESSMENT RULES:**
         1. **is_useful_page**: Set to true if:
            - Page contains actual data matching required_data_to_extract
@@ -811,7 +521,12 @@ class WebParser:
            - 0.5-0.6: Intermediate pages with some relevance
            - 0.3-0.4: Pages with minimal relevance
            - 0.0-0.2: Pages that should be skipped
+        """
 
+    @staticmethod
+    def _get_next_pages_rules() -> str:
+        """Get next pages to visit rules."""
+        return """
         Rules for next_pages_to_visit:
         1. Provide one url for each page_type, other urls have same html structure so they can call same html parsing function
         2. Provide only full URLs that actually exist in the HTML
@@ -822,26 +537,26 @@ class WebParser:
            - How unique the page type is
            - How deep the page is in the site structure
         6. DO NOT hallucinate URLs or page types - only use what exists in the HTML
-        
-        {pagination_instructions}
+        """
 
+    @staticmethod
+    def _get_python_code_rules(content_type: str) -> str:
+        """Get Python code generation rules."""
+        return f"""
         Rules for python_code:
-        {fetch_instructions}
-        2. Write Python code to extract all required information in structured data
-        3. The function should be async and take a url parameter
-        {parsing_instructions}
-        5. Include proper error handling and logging
-        6. Use type hints for all functions
-        7. Add docstrings for all functions
-        8. Follow PEP 8 style guidelines
-        9. Handle rate limiting and retries
-        10. Include proper exception handling
-        11. DO NOT hallucinate data - only extract what exists in the {content_type.upper()}
-        12. Validate extracted data against {content_type.upper()} content
-        13. Add logging for any assumptions made
-        14. Add verification steps for extracted data
-        {selector_instructions}
-        16. **CRITICAL DEPENDENCY REQUIREMENTS:**
+        1. Write Python code to extract all required information in structured data
+        2. The function should be async and take a url parameter
+        3. Include proper error handling and logging
+        4. Use type hints for all functions
+        5. Add docstrings for all functions
+        6. Follow PEP 8 style guidelines
+        7. Handle rate limiting and retries
+        8. Include proper exception handling
+        9. DO NOT hallucinate data - only extract what exists in the {content_type.upper()}
+        10. Validate extracted data against {content_type.upper()} content
+        11. Add logging for any assumptions made
+        12. Add verification steps for extracted data
+        13. **CRITICAL DEPENDENCY REQUIREMENTS:**
             - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
             - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
             - DO NOT use pydantic[email] or any optional Pydantic dependencies
@@ -851,7 +566,7 @@ class WebParser:
             - Only use standard library imports and basic required packages (asyncio, json, os, argparse, logging, typing, bs4, aiohttp, pydantic)
             - DO NOT import any packages that require additional installation beyond the basic requirements
             - Avoid any imports that might cause "ImportError: package is not installed" errors
-        17. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+        14. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
             - The function MUST return a dictionary (dict), NOT a Pydantic model object
             - If you use Pydantic models for data validation, convert them to dictionaries before returning
             - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
@@ -859,866 +574,30 @@ class WebParser:
             - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
             - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
             - Test that your return value can be serialized with json.dumps() before returning
-            - EXAMPLE: If you create a Pydantic model like:
-              ```python
-              class ExtractedData(BaseModel):
-                  title: str
-                  description: str
-                  url: str
-              
-              # WRONG - returns Pydantic object
-              return ExtractedData(title="test", description="test", url="test")
-              
-              # CORRECT - returns dictionary
-              data = ExtractedData(title="test", description="test", url="test")
-              return data.model_dump()
-              ```
-
-        {f'18. Build upon existing code from parent page: {parent_page.page_type}' if parent_page else ''}
-        {f'19. Parent page code: {parent_page.analysis_data["python_code"]}' if parent_page and parent_page.analysis_data else ''}
-
-        IMPORTANT: 
-        1. Your response MUST be valid JSON
-        2. Ensure all strings are properly quoted and brackets are balanced
-        3. All required fields must be present
-        4. All values must match their specified types
-        5. Relevance scores must be between 0.0 and 1.0
-        6. URLs must be absolute and valid
-        7. Python code must be valid and follow all specified rules
-        8. DO NOT hallucinate any data - only use what exists in the {content_type.upper()}
-        9. Verify all extracted data against the {content_type.upper()} content
-        10. Add validation steps to ensure data accuracy
-        11. {sample_of_playwright_usage}
-        {content_specific_instructions}
         """
 
-    async def _execute_generated_code(
-        self, 
-        analysis_data: Dict[str, Any], 
-        url: str
-    ) -> tuple[Optional[Dict[str, Any]], Optional[str]]:
-        """Execute and validate the generated code for a page."""
-        generated_code = analysis_data.get('python_code')
-        function_name = analysis_data.get('python_code_function_name', 'extract_data')
-
-        if not generated_code:
-            return None, None
-
-        max_attempts = 4
-        current_attempt = 0
-        last_error = None
-
-        while current_attempt < max_attempts:
-            try:
-                current_attempt += 1
-                logger.info(f"🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
-                self.log_update_callback(f"🔄 Attempt {current_attempt}/{max_attempts} to execute code for {url}")
-                self._update_tree(f"Executing code (attempt {current_attempt}/{max_attempts}): {url}", url)
-
-                # Send update before code execution
-                self._update_tree(f"Running generated code: {url}", url)
-
-                result = await self._run_code_module(generated_code, function_name, url)
-                if result:
-                    logger.info(f"✅ Code execution successful for {url}")
-                    self.log_update_callback(f"✅ Code execution successful for {url}")
-                    logger.debug(f"📊 Result: {json.dumps(result, indent=2)}")
-                    
-                    # Send real-time update with execution result
-                    self._update_tree_with_code_result(url, result, None, "Code execution successful")
-                    
-                    return result, None
-                else:
-                    raise Exception("Empty result")
-
-            except Exception as e:
-                last_error = str(e)
-                logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
-                self.log_update_callback(f"❌ Error in attempt {current_attempt}: {last_error}")
-                self._update_tree(f"Code execution failed (attempt {current_attempt}): {url}", url)
-                
-                if current_attempt < max_attempts:
-                    self._update_tree(f"Fixing code (attempt {current_attempt}): {url}", url)
-                    generated_code = await self._fix_generated_code(
-                        generated_code, last_error, function_name, current_attempt
-                    )
-                else:
-                    logger.error(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
-                    self.log_update_callback(f"❌ Max attempts ({max_attempts}) reached. Could not fix the code.")
-                    
-                    # Send real-time update with error
-                    self._update_tree_with_code_result(url, None, last_error, f"Failed after {max_attempts} attempts")
-                    break
-
-        return None, f"Failed after {current_attempt} attempts. Last error: {last_error}"
-
-    async def _run_code_module(
-        self, 
-        code: str, 
-        function_name: str, 
-        url: str
-    ) -> Optional[Dict[str, Any]]:
-        """Run the generated code in a temporary module."""
-        with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as f:
-            try:
-                f.write(code.encode())
-                f.flush()
-
-                spec = importlib.util.spec_from_file_location("page_extractor", f.name)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-
-                if hasattr(module, function_name):
-                    result = await getattr(module, function_name)(url)
-                    
-                    # Validate that the result is JSON serializable
-                    try:
-                        json.dumps(result)
-                        return result
-                    except (TypeError, ValueError) as json_error:
-                        logger.warning(f"⚠️ Result is not JSON serializable: {json_error}")
-                        logger.warning(f"⚠️ Result type: {type(result)}")
-                        
-                        # Try to convert Pydantic models to dictionaries
-                        if hasattr(result, 'model_dump'):
-                            try:
-                                converted_result = result.model_dump()
-                                json.dumps(converted_result)  # Test serialization
-                                logger.info("✅ Converted Pydantic model to dictionary")
-                                return converted_result
-                            except Exception as convert_error:
-                                logger.error(f"❌ Failed to convert Pydantic model: {convert_error}")
-                        elif hasattr(result, 'dict'):
-                            try:
-                                converted_result = result.dict()
-                                json.dumps(converted_result)  # Test serialization
-                                logger.info("✅ Converted Pydantic model to dictionary using .dict()")
-                                return converted_result
-                            except Exception as convert_error:
-                                logger.error(f"❌ Failed to convert Pydantic model using .dict(): {convert_error}")
-                        
-                        # If conversion fails, return a basic structure
-                        logger.warning("⚠️ Returning basic structure due to serialization issues")
-                        return {
-                            "error": "Result not JSON serializable",
-                            "original_type": str(type(result)),
-                            "serialization_error": str(json_error),
-                            "data": str(result) if result else None
-                        }
-                else:
-                    raise AttributeError(f"Function '{function_name}' not found in generated code")
-            finally:
-                try:
-                    os.unlink(f.name)
-                except OSError:
-                    pass
-
-    async def _fix_generated_code(
-        self, 
-        code: str, 
-        error: str, 
-        function_name: str, 
-        attempt: int
-    ) -> str:
-        """Attempt to fix the generated code using LLM."""
-        fix_prompt = f"""
-        Fix the following Python code that failed to execute with error: {error}
-
-        Original code:
-        {code}
-
-        Requirements:
-        1. The code should extract data from the HTML
-        2. It should handle the error: {error}
-        3. It should return a dictionary with the extracted data
-        4. Use BeautifulSoup for parsing
-        5. Previous attempts: {attempt}/4
-        6. The function must be named exactly '{function_name}'
-        7. Include proper error handling and logging
-        8. Use type hints for all functions
-        9. Add docstrings for all functions
-        10. Follow PEP 8 style guidelines
-        11. Handle rate limiting and retries
-        12. Include proper exception handling
-        13. DO NOT hallucinate data - only extract what exists in the HTML
-        14. Add validation steps for extracted data
-        15. Add logging for any assumptions made
-        16. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
-            - The function MUST return a dictionary (dict), NOT a Pydantic model object
-            - If you use Pydantic models for data validation, convert them to dictionaries before returning
-            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
-            - Example: return model.model_dump() instead of return model
-            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
-            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
-            - Test that your return value can be serialized with json.dumps() before returning
-
-        CRITICAL DEPENDENCY REQUIREMENTS:
-        17. **Pydantic Usage Restrictions:**
-            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
-            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
-            - DO NOT use pydantic[email] or any optional Pydantic dependencies
-            - Use str for email fields, not EmailStr
-            - Use str for URL fields, not HttpUrl
-            - Use basic validation with Field() if needed, but avoid complex validators
-        18. **Import Restrictions:**
-            - Only use standard library imports and basic required packages (asyncio, json, os, argparse, logging, typing, bs4, aiohttp, pydantic)
-            - DO NOT import any packages that require additional installation beyond the basic requirements
-            - Avoid any imports that might cause "ImportError: package is not installed" errors
-
-        Return only the fixed Python code without any explanations.
-        IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
-        """
-
-        try:
-            fixed_code = call_openai_sync(
-                prompt=fix_prompt,
-                model="gpt-4.1",
-                response_format={"type": "text"},
-                client=openai_client
-            )
-            logger.info(f"🔄 Generated fixed code for attempt {attempt + 1}")
-            return fixed_code
-        except Exception as fix_error:
-            logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
-            return code
-
-    def _update_plan_with_fields(self, analysis_data: Dict[str, Any]) -> None:
-        """Update the plan with available fields from the analysis."""
-        available_fields = analysis_data.get('available_fields', [])
-        exclusive_fields = list(set(available_fields) - set(self.plan.get("already_extracted_fields", [])))
-        
-        self.plan["already_extracted_fields"] = list(
-            set(self.plan.get("already_extracted_fields", [])).union(set(available_fields))
-        )
-        self.plan['to_be_extracted_fields'] = list(
-            set(self.plan.get('to_be_extracted_fields', [])) - set(self.plan["already_extracted_fields"])
-        )
-
-    def _filter_next_pages(self, analysis_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Filter next pages to visit based on relevance, visited status, and page usefulness assessment."""
-        next_pages_to_visit = analysis_data.get('next_pages_to_visit', [])
-        unvisited_pages = []
-
-        # Parse the root domain
-        root_domain = urlparse(self.root_url).netloc.lower()
-
-        for page in next_pages_to_visit:
-            page_url = page.get("url", "")
-            page_domain = urlparse(page_url).netloc.lower()
-            
-            # Check if page meets basic criteria
-            if (
-                page.get("relevance_score", 0) >= 0.8 and
-                page.get("page_type") not in self.visited_page_types and
-                page_url not in self.visited_urls
-                #     and
-                # page_domain == root_domain
-            ):
-                # Additional check: if this page was already analyzed and marked for skipping,
-                # don't add it to the visit list
-                if page_url in self.page_tree:
-                    existing_page = self.page_tree[page_url]
-                    usefulness_assessment = existing_page.analysis_data.get('page_usefulness_assessment', {}) if existing_page.analysis_data else {}
-                    skip_processing = usefulness_assessment.get('skip_processing', False)
-                    
-                    if skip_processing:
-                        logger.info(f"⏭️ Skipping already analyzed page marked for skipping: {page_url}")
-                        continue
-                
-                unvisited_pages.append(page)
-                self.visited_page_types.add(page["page_type"])
-                self.visited_urls.add(page["url"])
-
-        logger.debug(f"🔗 Next pages to visit: {json.dumps(dict(next_visit_pages=unvisited_pages), indent=2)}")
-        return unvisited_pages
-
-    def _update_tree(self, message: str = None, page_url: str = None, progress: int = None) -> None:
-        """
-        Helper method to update the tree visualization with throttling.
-        
-        Args:
-            message: Optional status message to display
-            page_url: URL of the page being updated
-            progress: Optional progress value (0-100)
-        """
-        if not self.tree_update_callback:
-            return
-            
-        import time
-        current_time = time.time()
-        
-        # Throttle updates to prevent overwhelming the UI
-        if current_time - self.last_tree_update < self.tree_update_throttle:
-            self.pending_tree_update = True
-            return
-            
-        self.last_tree_update = current_time
-        self.pending_tree_update = False
-            
-        try:
-            # Always try to serialize the tree, even if tree_root is None
-            tree_data = None
-            if self.tree_root:
-                tree_data = self._serialize_tree(self.tree_root)
-            else:
-                # Create a minimal tree structure if no root exists yet
-                tree_data = {
-                    'url': self.root_url,
-                    'page_type': 'initializing',
-                    'relevance_score': 0.0,
-                    'exclusive_fields': [],
-                    'children': [],
-                    'parent_url': None,
-                    'label': 'Initializing...',
-                    'status': 'pending',
-                    'status_message': message or 'Initializing parser...',
-                    'progress': 0,
-                    'processing_time': None,
-                    'last_update': None,
-                    'error_details': None,
-                    'summery': '',
-                    'python_code': '',
-                    'code_execution_result': '',
-                    'code_execution_error': '',
-                    'analysis_data': {}
-                }
-            
-            # Only set global status message if no specific page_url is provided
-            if message and not page_url:
-                tree_data['status_message'] = message
-                
-            if page_url and progress is not None:
-                # Update progress in the tree data for the specific page
-                self._update_page_progress(tree_data, page_url, progress)
-                
-            # If we have a specific page_url and message, update that node's status message
-            if page_url and message:
-                self._update_page_status_message(tree_data, page_url, message)
-                
-            self.tree_update_callback(tree_data)
-            
-        except Exception as e:
-            logger.warning(f"Tree update callback error: {e}")
-            # Try to send a minimal error tree update
-            try:
-                error_tree = {
-                    'url': self.root_url,
-                    'page_type': 'error',
-                    'relevance_score': 0.0,
-                    'exclusive_fields': [],
-                    'children': [],
-                    'parent_url': None,
-                    'label': 'Error occurred',
-                    'status': 'error',
-                    'status_message': f'Tree update error: {str(e)}',
-                    'progress': 0,
-                    'processing_time': None,
-                    'last_update': None,
-                    'error_details': {'error_type': 'TreeUpdateError', 'error_message': str(e)},
-                    'summery': '',
-                    'python_code': '',
-                    'code_execution_result': '',
-                    'code_execution_error': '',
-                    'analysis_data': {}
-                }
-                self.tree_update_callback(error_tree)
-            except Exception as fallback_error:
-                logger.error(f"Failed to send error tree update: {fallback_error}")
-    
-    def _update_page_status_message(self, tree_data: Dict[str, Any], page_url: str, message: str) -> None:
-        """Update status message for a specific page in the tree data."""
-        def update_node(node):
-            if node.get('url') == page_url:
-                node['status_message'] = message
-                return True  # Found and updated, stop searching
-            for child in node.get('children', []):
-                if update_node(child):
-                    return True  # Found in child, stop searching
-            return False  # Not found in this branch
-        
-        update_node(tree_data)
-
-    def _update_page_progress(self, tree_data: Dict[str, Any], page_url: str, progress: int) -> None:
-        """Update progress for a specific page in the tree data."""
-        def update_node(node):
-            if node.get('url') == page_url:
-                node['progress'] = progress
-                return True  # Found and updated, stop searching
-            for child in node.get('children', []):
-                if update_node(child):
-                    return True  # Found in child, stop searching
-            return False  # Not found in this branch
-        
-        update_node(tree_data)
-
-    def _update_page_status(self, page: PageData, status: str, message: str, progress: int = None, error: Dict[str, Any] = None) -> None:
-        """
-        Update the status of a page.
-        
-        Args:
-            page: The PageData object to update
-            status: New status (pending, processing, completed, error)
-            message: Status message
-            progress: Optional progress value (0-100)
-            error: Optional error details
-        """
-        import time
-        current_time = time.time()
-        
-        if page.start_time is None:
-            page.start_time = current_time
-        
-        page.processing_status = status
-        page.status_message = message
-        page.last_update_time = current_time
-        
-        if progress is not None:
-            page.progress = progress
-        
-        if error:
-            page.error_details = error
-            page.processing_status = "error"
-        
-        # Only update tree for this specific page, not parent
-        self._update_tree(message, page.url, progress)
-
-    async def fetch_and_process_page(self, url: str, path: Optional[List[str]] = None, parent: PageData|None = None, use_markdown_for_llm: bool = False) -> PageData:
-        """
-        Fetch and process a page, returning PageData with analysis results.
-        
-        Args:
-            url: URL of the page to fetch and process
-            path: Breadcrumb path from root to this page
-            
-        Returns:
-            PageData object containing all analysis and processing results
-        """
-        logger.info(f"📥 Fetching page: {url}")
-        if path is None:
-            path = [url]
-
-        # Create initial page data with pending status
-        page_data = PageData(
-            url=url,
-            html="",
-            json_data={},
-            path=path,
-            children=[],
-            page_type="pending",
-            relevance_score=0.0
-        )
-        if parent:
-            parent.children.append(page_data)
-        page_data.parent = parent
-        
-        # Add to tree immediately to show pending state
-        if self.root_url == url:
-            self.tree_root = page_data
-        self.page_tree[url] = page_data
-        self._update_page_status(page_data, "pending", f"Initializing {url}", 0)
-
-        try:
-            # Fetch HTML
-            self._update_page_status(page_data, "processing", f"Fetching HTML from {url}", 10)
-            html = await _fetch_and_clean(url)
-            logger.info(f"📄 Fetched HTML content ({len(html)} bytes)")
-            page_data.html = html
-            # Convert HTML to Markdown for possible LLM use
-            page_data.markdown = html_to_markdown(html)
-            logger.info(f"HTML length: {len(html)} | Markdown length: {len(page_data.markdown) if page_data.markdown else 0}")
-            self._update_page_status(page_data, "processing", f"HTML fetched ({len(html)} bytes)", 20)
-
-            # Analyze page directly
-            self._update_page_status(page_data, "processing", f"Analyzing page structure", 30)
-            analysis = await self.analyze_page_directly(html=html, markdown=page_data.markdown, url=url, parent_page=parent, use_markdown_for_llm=use_markdown_for_llm)
-            page_data.analysis_data = analysis
-            self._update_page_status(page_data, "processing", f"Page analysis complete", 60)
-
-            # Ensure proper data types
-            structured_data = analysis.get("structured_data", {})
-            if not isinstance(structured_data, dict):
-                logger.warning(f"⚠️ Warning: structured_data is not a dict, converting: {type(structured_data)}")
-                structured_data = {"data": structured_data} if structured_data else {}
-
-            code_execution_result = analysis.get("code_execution_result")
-            if code_execution_result is not None and not isinstance(code_execution_result, dict):
-                logger.warning(f"⚠️ Warning: code_execution_result is not a dict, converting: {type(code_execution_result)}")
-                code_execution_result = {"result": code_execution_result} if code_execution_result else None
-
-            code_execution_error = analysis.get("code_execution_error")
-            if code_execution_error is not None and not isinstance(code_execution_error, str):
-                logger.warning(f"⚠️ Warning: code_execution_error is not a string, converting: {type(code_execution_error)}")
-                code_execution_error = str(code_execution_error) if code_execution_error else None
-
-            # Update page data with results
-            self._update_page_status(page_data, "processing", f"Processing analysis results", 80)
-            page_data.json_data = structured_data
-            page_data.page_type = analysis.get("page_type")
-            page_data.exclusive_fields = analysis.get("exclusive_fields", [])
-            page_data.generated_code = analysis.get("python_code")
-            page_data.code_execution_result = code_execution_result
-            page_data.code_execution_error = code_execution_error
-            page_data.relevance_score = analysis.get("relevance_score", 0)
-
-            # Send real-time update with all the new data
-            self._update_tree_with_page_data(page_data, "Processing analysis results", 80)
-
-            self._update_page_status(page_data, "completed", f"Processing complete", 100)
-            
-            # Force a final tree update to ensure completion is shown
-            self._force_tree_update()
-            
-            return page_data
-
-        except Exception as e:
-            error_details = {
-                "error_type": type(e).__name__,
-                "error_message": str(e),
-                "traceback": traceback.format_exc()
-            }
-            self._update_page_status(
-                page_data, 
-                "error", 
-                f"Error processing page: {str(e)}", 
-                error=error_details
-            )
-            raise
-
-    def _serialize_tree(self, node: Optional[PageData]) -> Optional[Dict[str, Any]]:
-        """
-        Recursively serialize the PageData tree for UI visualization.
-        
-        Args:
-            node: Root node of the tree to serialize
-            
-        Returns:
-            Dictionary representation of the tree for UI consumption
-        """
-        if not node:
-            return None
-
-        import time
-        current_time = time.time()
-        processing_time = (
-            round(current_time - node.start_time, 2)
-            if node.start_time is not None
-            else None
-        )
-        last_update = (
-            round(current_time - node.last_update_time, 2)
-            if node.last_update_time is not None
-            else None
-        )
-        
-        return {
-            'url': node.url,
-            'page_type': node.page_type,
-            'relevance_score': node.relevance_score,
-            'exclusive_fields': node.exclusive_fields,
-            'children': [self._serialize_tree(child) for child in getattr(node, 'children', [])],
-            'parent_url': node.parent.url if node.parent else None,
-            'label': node.analysis_data.get('generic_name_of_page') if node.analysis_data else node.url,
-            'status': node.processing_status,
-            'status_message': node.status_message,
-            'progress': node.progress,
-            'processing_time': processing_time,
-            'last_update': last_update,
-            'error_details': node.error_details,
-            'summery': node.analysis_data.get("summery") if node.analysis_data and "summery" in node.analysis_data else '',
-            'python_code': node.generated_code if node.generated_code else '',
-            'code_execution_result': node.code_execution_result if node.code_execution_result else '',
-            'code_execution_error': node.code_execution_error if node.code_execution_error else '',
-            'analysis_data': node.analysis_data if node.analysis_data else {},
-            'html': node.html,
-            'markdown': node.markdown,
-            'page_usefulness_assessment': node.analysis_data.get('page_usefulness_assessment', {}) if node.analysis_data else {},
-        }
-
-    async def build_page_tree(
-        self, 
-        use_markdown_for_llm: bool = False
-    ) -> None:
-        """
-        Build tree of pages starting from root URL.
-        
-        This method crawls the website starting from the root URL, analyzing
-        each page and building a tree structure of relevant pages.
-        
-        Args:
-            log_update_callback: Optional callback for log updates
-        """
-        self.log_update_callback("🌳 Building page tree...")
-        
-        if not self.plan:
-            plan = await self.analyze_requirement()
-            self.plan = plan
-
-        root_page = await self.fetch_and_process_page(self.root_url, use_markdown_for_llm=use_markdown_for_llm)
-        self.tree_root = root_page
-        self.visited_urls.add(self.root_url)
-
-        async def process_page(page: PageData, depth: int) -> None:
-            """Recursively process pages in the tree."""
-            if depth >= self.requirement.max_depth:
-                msg = f"⏹️ Max Depth Reached: depth={depth} (max_depth={self.requirement.max_depth}). Stopping crawl at {page.url}"
-                logger.info(msg)
-                if self.log_update_callback:
-                    self.log_update_callback(msg)
-                # Also send a tree update with a clear status message
-                self._update_tree(f"⏹️ Max Depth Reached at {page.url} (depth={depth})", page.url)
-                return
-
-            logger.info(f"📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
-            analysis = page.analysis_data
-            page.page_type = analysis["page_type"]
-
-            # Emit tree update after processing this node
-            self._update_tree(f"Processed page: {page.url} (depth {depth})", page.url)
-
-            next_pages_to_visit = analysis.get('next_pages_to_visit', [])
-            if isinstance(next_pages_to_visit, list):
-                logger.info(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
-                for next_page in next_pages_to_visit:
-                    # Prevent fetching child pages if max depth would be exceeded
-                    if depth + 1 >= self.requirement.max_depth:
-                        msg = f"⏹️ Max Depth Reached: would fetch {next_page['url']} at depth {depth+1} (max_depth={self.requirement.max_depth}), skipping fetch."
-                        logger.info(msg)
-                        if self.log_update_callback:
-                            self.log_update_callback(msg)
-                        self._update_tree(msg, page.url)
-                        continue
-                    logger.info(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
-                    child_page = await self.fetch_and_process_page(
-                        next_page['url'],
-                        path=page.path + [next_page['url']],
-                        parent=page,
-                        use_markdown_for_llm=use_markdown_for_llm
-                    )
-                    if child_page.relevance_score >= 0.8:
-                        # Send tree update after each child page is processed
-                        self._update_tree(f"Added child page: {child_page.url}", child_page.url)
-                        await process_page(child_page, depth + 1)
-                    else:
-                        # Send tree update even for low-relevance pages
-                        self._update_tree(f"Skipped low-relevance page: {child_page.url} (score: {child_page.relevance_score})", child_page.url)
-
-        await process_page(root_page, 0)
-        logger.info("✅ Page tree building complete")
-        logger.info(f"📊 Total pages processed: {len(self.page_tree)}")
-        
-        # Send final tree update
-        self._update_tree(f"Page tree building complete - {len(self.page_tree)} pages processed", self.root_url)
-
-    async def generate_extraction_code(self) -> str:
-        """
-        Generate Python code for data extraction from all analyzed pages.
-        
-        This method combines all working code from the page tree and generates
-        a comprehensive extraction utility that can be saved and reused.
-        
-        Returns:
-            Generated Python code as a string
-            
-        Raises:
-            ValueError: If no useful pages are found for code generation
-        """
-        logger.info("💻 Generating extraction code...")
-        self.log_update_callback("💻 Generating extraction code...")
-
-        # First, validate that we have useful pages for code generation
-        useful_pages = []
-        skipped_pages = []
-        navigation_pages = []
-        
-        for url, data in self.page_tree.items():
-            usefulness_assessment = data.analysis_data.get('page_usefulness_assessment', {}) if data.analysis_data else {}
-            skip_processing = usefulness_assessment.get('skip_processing', False)
-            needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
-            
-            if skip_processing:
-                skipped_pages.append({
-                    'url': url,
-                    'page_type': data.page_type,
-                    'reason': usefulness_assessment.get('skip_reason', 'No reason provided')
-                })
-            elif not needs_code_generation:
-                navigation_pages.append({
-                    'url': url,
-                    'page_type': data.page_type,
-                    'reason': 'Navigation/intermediate page - no code generation needed'
-                })
-            else:
-                useful_pages.append({
-                    'url': url,
-                    'page_type': data.page_type,
-                    'has_generated_code': bool(data.generated_code),
-                    'has_execution_result': bool(data.code_execution_result),
-                    'has_execution_error': bool(data.code_execution_error)
-                })
-        
-        # Log page categorization
-        logger.info(f"📊 Page categorization for code generation:")
-        logger.info(f"   - Useful pages (need code generation): {len(useful_pages)}")
-        logger.info(f"   - Skipped pages: {len(skipped_pages)}")
-        logger.info(f"   - Navigation pages: {len(navigation_pages)}")
-        
-        if useful_pages:
-            logger.info(f"   - Useful pages details:")
-            for page in useful_pages:
-                logger.info(f"     * {page['url']} ({page['page_type']}) - Code: {page['has_generated_code']}, Result: {page['has_execution_result']}, Error: {page['has_execution_error']}")
-        
-        if skipped_pages:
-            logger.info(f"   - Skipped pages details:")
-            for page in skipped_pages:
-                logger.info(f"     * {page['url']} ({page['page_type']}) - Reason: {page['reason']}")
-        
-        # Check if we have any pages that actually need code generation
-        if not useful_pages:
-            error_message = "❌ No useful pages found for code generation. "
-            
-            if skipped_pages and navigation_pages:
-                error_message += f"All {len(skipped_pages) + len(navigation_pages)} pages were either skipped or marked as navigation pages. "
-                error_message += f"Skipped pages: {len(skipped_pages)}, Navigation pages: {len(navigation_pages)}. "
-                error_message += "Please check the target URL and extraction requirements."
-            elif skipped_pages:
-                error_message += f"All {len(skipped_pages)} pages were skipped during processing. "
-                error_message += "Common reasons: pages are irrelevant, error pages, login required, or no public data available. "
-                error_message += "Please verify the target URL and extraction requirements."
-            elif navigation_pages:
-                error_message += f"All {len(navigation_pages)} pages were marked as navigation/intermediate pages. "
-                error_message += "No pages contain actual data that requires code generation. "
-                error_message += "Please check if the target URL leads to data pages or adjust extraction requirements."
-            else:
-                error_message += "No pages were processed. Please check the target URL and extraction requirements."
-            
-            # Add detailed information for debugging
-            error_message += f"\n\nTarget URL: {self.requirement.target_url}"
-            error_message += f"\nRequired data to extract: {self.requirement.data_to_extract}"
-            error_message += f"\nAdditional instructions: {self.requirement.additional_instructions}"
-            
-            if skipped_pages:
-                error_message += f"\n\nSkipped pages:"
-                for page in skipped_pages[:5]:  # Show first 5 skipped pages
-                    error_message += f"\n- {page['url']} ({page['page_type']}): {page['reason']}"
-                if len(skipped_pages) > 5:
-                    error_message += f"\n... and {len(skipped_pages) - 5} more skipped pages"
-            
-            if navigation_pages:
-                error_message += f"\n\nNavigation pages:"
-                for page in navigation_pages[:5]:  # Show first 5 navigation pages
-                    error_message += f"\n- {page['url']} ({page['page_type']}): {page['reason']}"
-                if len(navigation_pages) > 5:
-                    error_message += f"\n... and {len(navigation_pages) - 5} more navigation pages"
-            
-            logger.error(error_message)
-            self.log_update_callback(error_message)
-            raise ValueError(error_message)
-
-        # Collect all working code and their results
-        working_codes = []
-        for url, data in self.page_tree.items():
-            if (data.generated_code and 
-                data.code_execution_result and 
-                not data.code_execution_error):
-                working_codes.append({
-                    'url': url,
-                    'code': data.generated_code,
-                    'result': self._format_execution_result(data.code_execution_result),
-                    'page_type': data.page_type,
-                    "children": [child.page_type for child in data.children],
-                    'parent': data.parent.page_type if data.parent else None,
-                    'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None,
-                    'pagination_info': data.analysis_data.get('pagination_info', {}) if data.analysis_data else {}
-                })
-
-        # Check if we have any working code
-        if not working_codes:
-            error_message = "❌ No working code found for code generation. "
-            error_message += f"Found {len(useful_pages)} useful pages but none have successfully generated and executed code. "
-            error_message += "This may indicate issues with the page analysis or code generation process. "
-            error_message += "Please check the page analysis results and try again."
-            
-            # Add details about useful pages that failed
-            error_message += f"\n\nUseful pages that failed code generation:"
-            for page in useful_pages:
-                error_message += f"\n- {page['url']} ({page['page_type']}) - Code: {page['has_generated_code']}, Result: {page['has_execution_result']}, Error: {page['has_execution_error']}"
-            
-            logger.error(error_message)
-            self.log_update_callback(error_message)
-            raise ValueError(error_message)
-
-        # Load sample utility code for reference
-        sample_utility_code = self._load_sample_utility_code()
-
-        prompt = self._build_code_generation_prompt(working_codes, sample_utility_code)
-
-        logger.info(f"prompt len:{len(prompt)}")
-        self.log_update_callback(f"llm call final cogen :prompt len:{len(prompt)}")
-        
-        try:
-            code_gen = await call_openai_async(
-                prompt=prompt,
-                response_format={"type": "json_object"},
-                client=openai_async_client
-            )
-            code_gen = json.loads(code_gen)
-            code = code_gen["python_code"]
-            
-            # Collect extra info for UI
-            self.extra_info = {k: v for k, v in code_gen.items() if k != "python_code"}
-            for k, v in code_gen.items():
-                if k != "python_code":
-                    logger.info(f"{k} : {v}")
-                    self.log_update_callback(f"{k} : {v}")
-            
-            self.python_code_function_name = code_gen.get("python_code_function_name", "extract_data")
-
-            # Clean any markdown formatting
-            code = code.replace("```python", "").replace("```", "").strip()
-            self.generated_code = code
-            
-            # Validate the generated code
-            await self._validate_generated_code(code)
-            
-            self.log_update_callback("✅ Code generation complete")
-            logger.info("✅ Code generation complete")
-            logger.info(f"Generated code: entry function is {self.python_code_function_name}")
-            logger.debug("=" * 50)
-            logger.debug(code)
-            logger.debug("=" * 50)
-            
-            return code
-            
-        except Exception as e:
-            logger.error(f"❌ Error generating extraction code: {str(e)}")
-            raise
-
-    def _format_execution_result(self, result: Dict[str, Any]) -> str:
-        """Format execution result for inclusion in prompt."""
-        result_str = json.dumps(result, indent=2)
-        if len(result_str) < 30_000:
-            return result_str
-        else:
-            return (result_str[:10_000] + "....." + result_str[-10_000:])
-
-    def _load_sample_utility_code(self) -> str:
-        """Load sample utility code for reference."""
-        try:
-            sample_path = Path(__file__).parent / "linkedin_search_to_csv.py"
-            if sample_path.exists():
-                with open(sample_path, 'r', encoding='utf-8') as f:
-                    return f.read()
-            else:
-                logger.warning("utils/linkedin_search_to_csv.py not found")
-                return ""
-        except Exception as e:
-            logger.warning(f"Failed to load sample utility code: {e}")
+    @staticmethod
+    def _get_parent_page_context(parent_page: Optional[PageData]) -> str:
+        """Get parent page context for code generation."""
+        if not parent_page:
             return ""
+        
+        context = f"Build upon existing code from parent page: {parent_page.page_type}"
+        if parent_page.analysis_data and parent_page.analysis_data.get("python_code"):
+            context += f"\nParent page code: {parent_page.analysis_data['python_code']}"
+        
+        return context
 
-    def _build_code_generation_prompt(self, working_codes: List[Dict], sample_utility_code: str) -> str:
-        """Build the prompt for code generation."""
+    @staticmethod
+    def build_code_generation_prompt(
+        working_codes: List[Dict], 
+        sample_utility_code: str, 
+        requirement: UserRequirement,
+        root_url: str
+    ) -> str:
+        """Build the prompt for final code generation."""
         pagination_instructions = ""
-        if self.requirement.pagination:
+        if requirement.pagination:
             pagination_instructions = """
         PAGINATION HANDLING REQUIREMENTS:
         - The generated code MUST handle pagination when enabled
@@ -1732,7 +611,6 @@ class WebParser:
         - Use pagination_info.pagination_patterns for URL-based pagination
         - Use pagination_info.pagination_actions for JavaScript-based pagination
         - Use pagination_actions.wait_for_load for JavaScript-based page_actions if it is JavaScript-based
-        
         - Implement proper pagination state management
         - Add pagination-related CLI arguments if needed
         - Include pagination progress logging
@@ -1740,6 +618,10 @@ class WebParser:
         - Limit pagination to reasonable number of pages (use pagination_info.total_pages_estimate, max 50 by default)
         - Respect pagination_info.items_per_page for batch processing
         """
+        
+        required_data_section = ""
+        if requirement.extraction_spec and requirement.extraction_spec.get('required_data'):
+            required_data_section = f"required_data: {json.dumps(requirement.extraction_spec.get('required_data'), indent=2)}"
         
         return f"""
         User wants to build a new GTM utility with the following details:
@@ -1785,14 +667,12 @@ class WebParser:
         Here is python code for multi_pages pages you need to combine the code to achieve user requirement:
         
         {json.dumps(working_codes, indent=2)}
-        Here is the Target URL : {self.root_url}
-        Here is user requirement: {self.requirement.additional_instructions}
-        Pagination Enabled: {self.requirement.pagination}
+        Here is the Target URL : {root_url}
+        Here is user requirement: {requirement.additional_instructions}
+        Pagination Enabled: {requirement.pagination}
 
-        { "required_data: " +json.dumps(self.requirement.extraction_spec.get('required_data'), indent=2) if self.requirement.extraction_spec.get('required_data') else "" }
+        {required_data_section}
         
-        Here is 
-
         PAGINATION INFORMATION USAGE:
         Each page in the working_codes above contains pagination_info that should be used for pagination handling:
         - If pagination_info.has_pagination is true, implement pagination logic
@@ -1809,11 +689,10 @@ class WebParser:
         Python coding instructions:
         1. Extract data according to the extraction specification above
         2. Use BeautifulSoup for parsing
-        3. The target URL is {self.root_url} - use this URL directly in the code, don't take it as a parameter
-        4. make sure main function should start with {self.page_tree[self.root_url].page_type} {self.root_url}. i mean script start with {self.root_url}
-        5. make sure script is executable in cli
-        6. to get html_code for any url use this code: from utils.fetch_html_playwright import _fetch_and_clean html_code = await _fetch_and_clean(url) # this using Playwright
-        6a. to get markdown_code for any url, first fetch HTML using _fetch_and_clean or fetch_multiple_html_pages, then convert to markdown using html_to_markdown: from utils.fetch_html_playwright import html_to_markdown; markdown_code = html_to_markdown(html_code)
+        3. The target URL is {root_url} - use this URL directly in the code, don't take it as a parameter
+        4. make sure script is executable in cli
+        5. to get html_code for any url use this code: from utils.fetch_html_playwright import _fetch_and_clean html_code = await _fetch_and_clean(url) # this using Playwright
+        6. to get markdown_code for any url, first fetch HTML using _fetch_and_clean or fetch_multiple_html_pages, then convert to markdown using html_to_markdown: from utils.fetch_html_playwright import html_to_markdown; markdown_code = html_to_markdown(html_code)
         7. For fetching HTML from a list of unrelated URLs, use fetch_multiple_html_pages from utils.fetch_html_playwright.py to efficiently batch-fetch all pages in a single browser session. Do not loop over _fetch_and_clean or fetch_html for each URL separately.
         8. For pagination or infinite scroll, set the default value of max_pages (or similar limit) to a small number (e.g., 2 or 3) for easier validation and testing. Allow this to be overridden by the user via CLI argument or function parameter.
         9. Make sure there are no demo code, make production ready code
@@ -1839,22 +718,7 @@ class WebParser:
             - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
             - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
             - Test that your return value can be serialized with json.dumps() before returning
-            - EXAMPLE: If you create a Pydantic model like:
-              ```python
-              class ExtractedData(BaseModel):
-                  title: str
-                  description: str
-                  url: str
-              
-              # WRONG - returns Pydantic object
-              return ExtractedData(title="test", description="test", url="test")
-              
-              # CORRECT - returns dictionary
-              data = ExtractedData(title="test", description="test", url="test")
-              return data.model_dump()
-              ```
-        
-        # ... existing code ...
+
         Required imports:
         - asyncio
         - json
@@ -1888,9 +752,9 @@ class WebParser:
         5. All functions must be properly typed
         6. Include docstrings for all functions
         7. Follow PEP 8 style guidelines
-        9. Handle CLI arguments properly
-        10. Avoid all deprecated packages and functions
-        11. **CRITICAL:** Avoid any imports or field types that require additional packages beyond the basic requirements
+        8. Handle CLI arguments properly
+        9. Avoid all deprecated packages and functions
+        10. **CRITICAL:** Avoid any imports or field types that require additional packages beyond the basic requirements
          
         Use following below code as example for playwright :
         {sample_of_playwright_usage}
@@ -1898,6 +762,907 @@ class WebParser:
         Use following as examples which can help you generate the code required for above GTM utility:
         {sample_utility_code}
         """
+
+
+# =============================================================================
+# CODE EXECUTION AND VALIDATION
+# =============================================================================
+
+class CodeExecutor:
+    """Handles code execution and validation."""
+    
+    @staticmethod
+    async def execute_generated_code(
+        analysis_data: Dict[str, Any], 
+        url: str,
+        log_callback: Optional[Callable[[str], None]] = None
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Execute and validate the generated code for a page."""
+        generated_code = analysis_data.get('python_code')
+        function_name = analysis_data.get('python_code_function_name', 'extract_data')
+
+        if not generated_code:
+            return None, None
+
+        current_attempt = 0
+        last_error = None
+
+        while current_attempt < MAX_CODE_EXECUTION_ATTEMPTS:
+            try:
+                current_attempt += 1
+                if log_callback:
+                    log_callback(f"🔄 Attempt {current_attempt}/{MAX_CODE_EXECUTION_ATTEMPTS} to execute code for {url}")
+
+                result = await CodeExecutor._run_code_module(generated_code, function_name, url)
+                if result:
+                    if log_callback:
+                        log_callback(f"✅ Code execution successful for {url}")
+                    return result, None
+                else:
+                    raise Exception("Empty result")
+
+            except Exception as e:
+                last_error = str(e)
+                logger.error(f"❌ Error in attempt {current_attempt}: {last_error}")
+                
+                if current_attempt < MAX_CODE_EXECUTION_ATTEMPTS:
+                    generated_code = await CodeExecutor._fix_generated_code(
+                        generated_code, last_error, function_name, current_attempt
+                    )
+                else:
+                    logger.error(f"❌ Max attempts ({MAX_CODE_EXECUTION_ATTEMPTS}) reached. Could not fix the code.")
+                    break
+
+        return None, f"Failed after {current_attempt} attempts. Last error: {last_error}"
+
+    @staticmethod
+    async def _run_code_module(code: str, function_name: str, url: str) -> Optional[Dict[str, Any]]:
+        """Run the generated code in a temporary module."""
+        with tempfile.NamedTemporaryFile(suffix='.py', delete=False) as f:
+            try:
+                f.write(code.encode())
+                f.flush()
+
+                spec = importlib.util.spec_from_file_location("page_extractor", f.name)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+
+                if hasattr(module, function_name):
+                    result = await getattr(module, function_name)(url)
+                    
+                    # Validate that the result is JSON serializable
+                    try:
+                        json.dumps(result)
+                        return result
+                    except (TypeError, ValueError) as json_error:
+                        logger.warning(f"⚠️ Result is not JSON serializable: {json_error}")
+                        
+                        # Try to convert Pydantic models to dictionaries
+                        if hasattr(result, 'model_dump'):
+                            try:
+                                converted_result = result.model_dump()
+                                json.dumps(converted_result)  # Test serialization
+                                logger.info("✅ Converted Pydantic model to dictionary")
+                                return converted_result
+                            except Exception as convert_error:
+                                logger.error(f"❌ Failed to convert Pydantic model: {convert_error}")
+                        elif hasattr(result, 'dict'):
+                            try:
+                                converted_result = result.dict()
+                                json.dumps(converted_result)  # Test serialization
+                                logger.info("✅ Converted Pydantic model to dictionary using .dict()")
+                                return converted_result
+                            except Exception as convert_error:
+                                logger.error(f"❌ Failed to convert Pydantic model using .dict(): {convert_error}")
+                        
+                        # If conversion fails, return a basic structure
+                        logger.warning("⚠️ Returning basic structure due to serialization issues")
+                        return {
+                            "error": "Result not JSON serializable",
+                            "original_type": str(type(result)),
+                            "serialization_error": str(json_error),
+                            "data": str(result) if result else None
+                        }
+                else:
+                    raise AttributeError(f"Function '{function_name}' not found in generated code")
+            finally:
+                try:
+                    os.unlink(f.name)
+                except OSError:
+                    pass
+
+    @staticmethod
+    async def _fix_generated_code(code: str, error: str, function_name: str, attempt: int) -> str:
+        """Attempt to fix the generated code using LLM."""
+        fix_prompt = f"""
+        Fix the following Python code that failed to execute with error: {error}
+
+        Original code:
+        {code}
+
+        Requirements:
+        1. The code should extract data from the HTML
+        2. It should handle the error: {error}
+        3. It should return a dictionary with the extracted data
+        4. Use BeautifulSoup for parsing
+        5. Previous attempts: {attempt}/{MAX_CODE_EXECUTION_ATTEMPTS}
+        6. The function must be named exactly '{function_name}'
+        7. Include proper error handling and logging
+        8. Use type hints for all functions
+        9. Add docstrings for all functions
+        10. Follow PEP 8 style guidelines
+        11. Handle rate limiting and retries
+        12. Include proper exception handling
+        13. DO NOT hallucinate data - only extract what exists in the HTML
+        14. Add validation steps for extracted data
+        15. Add logging for any assumptions made
+        16. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
+            - The function MUST return a dictionary (dict), NOT a Pydantic model object
+            - If you use Pydantic models for data validation, convert them to dictionaries before returning
+            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
+            - Example: return model.model_dump() instead of return model
+            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
+            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
+            - Test that your return value can be serialized with json.dumps() before returning
+
+        Return only the fixed Python code without any explanations.
+        IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
+        """
+
+        try:
+            fixed_code = call_openai_sync(
+                prompt=fix_prompt,
+                model="gpt-4.1",
+                response_format={"type": "text"},
+                client=openai_client
+            )
+            logger.info(f"🔄 Generated fixed code for attempt {attempt + 1}")
+            return fixed_code
+        except Exception as fix_error:
+            logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
+            return code
+
+
+# =============================================================================
+# TREE MANAGEMENT
+# =============================================================================
+
+class TreeManager:
+    """Manages tree updates and serialization."""
+    
+    def __init__(self, tree_update_callback: Optional[Callable[[Dict], None]] = None):
+        self.tree_update_callback = tree_update_callback or (lambda tree: None)
+        self.last_tree_update = 0.0
+        self.pending_tree_update = False
+
+    def update_tree(self, tree_root: Optional[PageData], message: str = None, page_url: str = None, progress: int = None) -> None:
+        """Helper method to update the tree visualization with throttling."""
+        if not self.tree_update_callback:
+            return
+            
+        current_time = time.time()
+        
+        # Throttle updates to prevent overwhelming the UI
+        if current_time - self.last_tree_update < TREE_UPDATE_THROTTLE:
+            self.pending_tree_update = True
+            return
+            
+        self.last_tree_update = current_time
+        self.pending_tree_update = False
+            
+        try:
+            tree_data = self._serialize_tree(tree_root) if tree_root else self._create_minimal_tree(message)
+            
+            # Update specific page data if provided
+            if page_url and progress is not None:
+                self._update_page_progress(tree_data, page_url, progress)
+                
+            if page_url and message:
+                self._update_page_status_message(tree_data, page_url, message)
+                
+            self.tree_update_callback(tree_data)
+            
+        except Exception as e:
+            logger.warning(f"Tree update callback error: {e}")
+            self._send_error_tree_update(str(e))
+
+    def _serialize_tree(self, node: Optional[PageData]) -> Optional[Dict[str, Any]]:
+        """Recursively serialize the PageData tree for UI visualization."""
+        if not node:
+            return None
+
+        current_time = time.time()
+        processing_time = (
+            round(current_time - node.start_time, 2)
+            if node.start_time is not None
+            else None
+        )
+        last_update = (
+            round(current_time - node.last_update_time, 2)
+            if node.last_update_time is not None
+            else None
+        )
+        
+        return {
+            'url': node.url,
+            'page_type': node.page_type,
+            'relevance_score': node.relevance_score,
+            'exclusive_fields': node.exclusive_fields,
+            'children': [self._serialize_tree(child) for child in getattr(node, 'children', [])],
+            'parent_url': node.parent.url if node.parent else None,
+            'label': node.analysis_data.get('generic_name_of_page') if node.analysis_data else node.url,
+            'status': node.processing_status,
+            'status_message': node.status_message,
+            'progress': node.progress,
+            'processing_time': processing_time,
+            'last_update': last_update,
+            'error_details': node.error_details,
+            'summery': node.analysis_data.get("summery") if node.analysis_data and "summery" in node.analysis_data else '',
+            'python_code': node.generated_code if node.generated_code else '',
+            'code_execution_result': node.code_execution_result if node.code_execution_result else '',
+            'code_execution_error': node.code_execution_error if node.code_execution_error else '',
+            'analysis_data': node.analysis_data if node.analysis_data else {},
+            'html': node.html,
+            'markdown': node.markdown,
+            'page_usefulness_assessment': node.analysis_data.get('page_usefulness_assessment', {}) if node.analysis_data else {},
+        }
+
+    def _create_minimal_tree(self, message: str) -> Dict[str, Any]:
+        """Create a minimal tree structure when no root exists."""
+        return {
+            'url': 'initializing',
+            'page_type': 'initializing',
+            'relevance_score': 0.0,
+            'exclusive_fields': [],
+            'children': [],
+            'parent_url': None,
+            'label': 'Initializing...',
+            'status': ProcessingStatus.PENDING,
+            'status_message': message or 'Initializing parser...',
+            'progress': 0,
+            'processing_time': None,
+            'last_update': None,
+            'error_details': None,
+            'summery': '',
+            'python_code': '',
+            'code_execution_result': '',
+            'code_execution_error': '',
+            'analysis_data': {}
+        }
+
+    def _update_page_progress(self, tree_data: Dict[str, Any], page_url: str, progress: int) -> None:
+        """Update progress for a specific page in the tree data."""
+        def update_node(node):
+            if node.get('url') == page_url:
+                node['progress'] = progress
+                return True
+            for child in node.get('children', []):
+                if update_node(child):
+                    return True
+            return False
+        
+        update_node(tree_data)
+
+    def _update_page_status_message(self, tree_data: Dict[str, Any], page_url: str, message: str) -> None:
+        """Update status message for a specific page in the tree data."""
+        def update_node(node):
+            if node.get('url') == page_url:
+                node['status_message'] = message
+                return True
+            for child in node.get('children', []):
+                if update_node(child):
+                    return True
+            return False
+        
+        update_node(tree_data)
+
+    def _send_error_tree_update(self, error_message: str) -> None:
+        """Send an error tree update."""
+        try:
+            error_tree = {
+                'url': 'error',
+                'page_type': 'error',
+                'relevance_score': 0.0,
+                'exclusive_fields': [],
+                'children': [],
+                'parent_url': None,
+                'label': 'Error occurred',
+                'status': ProcessingStatus.ERROR,
+                'status_message': f'Tree update error: {error_message}',
+                'progress': 0,
+                'processing_time': None,
+                'last_update': None,
+                'error_details': {'error_type': 'TreeUpdateError', 'error_message': error_message},
+                'summery': '',
+                'python_code': '',
+                'code_execution_result': '',
+                'code_execution_error': '',
+                'analysis_data': {}
+            }
+            self.tree_update_callback(error_tree)
+        except Exception as fallback_error:
+            logger.error(f"Failed to send error tree update: {fallback_error}")
+
+    def force_tree_update(self, tree_root: Optional[PageData]) -> None:
+        """Force an immediate tree update, bypassing throttling."""
+        if self.pending_tree_update:
+            self.pending_tree_update = False
+            self.update_tree(tree_root)
+
+
+# =============================================================================
+# MAIN WEB PARSER CLASS
+# =============================================================================
+
+class WebParser:
+    """
+    AI-powered web parser for intelligent data extraction.
+    
+    This class orchestrates the entire web parsing process:
+    1. Analyzes user requirements
+    2. Crawls and analyzes web pages
+    3. Generates extraction code
+    4. Executes the generated code
+    
+    The parser uses LLM to understand page structure and generate
+    appropriate extraction code for each page type.
+    """
+    
+    def __init__(
+        self, 
+        requirement: UserRequirement, 
+        log_update_callback: Optional[Callable[[str], None]] = None,
+        tree_update_callback: Optional[Callable[[Dict], None]] = None
+    ):
+        """Initialize the WebParser with user requirements."""
+        logger.info(f"🚀 Initializing WebParser with URL: {requirement.target_url}")
+        logger.info(f"📋 Data to extract: {requirement.data_to_extract}")
+        logger.info(f"🔍 Max depth: {requirement.max_depth}")
+        logger.info(f"📄 Pagination: {requirement.pagination}")
+        logger.info(f"📝 Additional instructions: {requirement.additional_instructions}")
+        
+        self.requirement = requirement
+        self.root_url = requirement.target_url
+        self.log_update_callback = log_update_callback or (lambda msg: None)
+        
+        # Internal state
+        self.page_tree: Dict[str, PageData] = {}
+        self.visited_urls: set = set()
+        self.visited_page_types: set = set()
+        self.generated_code: str = ""
+        self.python_code_function_name: str = ""
+        self.plan: Dict[str, Any] = {}
+        self.tree_root: Optional[PageData] = None
+        self.extra_info: Dict[str, Any] = {}
+        
+        # Tree management
+        self.tree_manager = TreeManager(tree_update_callback)
+        
+        # Send initial tree update to show starting state
+        self.tree_manager.update_tree(None, "Initializing WebParser...")
+
+    async def analyze_requirement(self) -> Dict[str, Any]:
+        """Analyze user requirement and create extraction plan."""
+        logger.info("📊 Analyzing user requirements...")
+        
+        prompt = PromptBuilder.build_requirement_analysis_prompt(self.requirement)
+
+        try:
+            plan = call_openai_sync(
+                prompt=prompt,
+                response_format={"type": "json_object"},
+                client=openai_client
+            )
+            plan_data = json.loads(plan)
+            logger.info("✅ Requirement analysis complete")
+            logger.debug(f"Plan: {json.dumps(plan_data, indent=2)}")
+            logger.info(f"📋 Extraction steps: {len(plan_data.get('extraction_steps', []))}")
+            return plan_data
+        except Exception as e:
+            logger.error(f"❌ Error analyzing requirements: {str(e)}")
+            raise
+
+    async def analyze_page_directly(
+        self, 
+        html: str, 
+        markdown: Optional[str],
+        url: str, 
+        parent_page: Optional[PageData] = None,
+        use_markdown_for_llm: bool = False
+    ) -> Dict[str, Any]:
+        """Analyze HTML or Markdown directly and return comprehensive analysis data."""
+        logger.info(f"🔍 Analyzing page directly: {url} (use_markdown_for_llm={use_markdown_for_llm})")
+        self.log_update_callback(f"🔍 Analyzing page directly: {url} calling llm (use_markdown_for_llm={use_markdown_for_llm})")
+        self.tree_manager.update_tree(self.tree_root, f"Analyzing page structure: {url}", url)
+
+        content = markdown if use_markdown_for_llm and markdown else html
+        content_type = "markdown" if use_markdown_for_llm and markdown else "html"
+        
+        prompt = PromptBuilder.build_page_analysis_prompt(
+            content, url, self.requirement, self.plan, 
+            self.visited_page_types, parent_page, content_type
+        )
+
+        try:
+            # Send update before LLM call
+            self.tree_manager.update_tree(self.tree_root, f"Calling LLM for analysis: {url}", url)
+            analysis = call_openai_sync(
+                prompt=prompt,
+                response_format={"type": "json_object"},
+                client=openai_client
+            )
+            analysis_data = json.loads(analysis)
+        except json.JSONDecodeError as e:
+            logger.error(f"❌ JSON decode error: {e}")
+            self.tree_manager.update_tree(self.tree_root, f"Retrying analysis with different model: {url}", url)
+            analysis = call_openai_sync(
+                prompt=prompt,
+                model="gpt-4o-mini",
+                response_format={"type": "json_object"},
+                client=openai_client
+            )
+            analysis_data = json.loads(analysis)
+
+        logger.info("✅ Page analysis complete")
+        self.log_update_callback("✅ Page analysis complete")
+        logger.info(f"📄 Page type: {analysis_data.get('page_type', 'unknown')}")
+        logger.info(f"🎯 Relevance score: {analysis_data.get('relevance_score', 0)}")
+
+        # Handle code execution based on page usefulness
+        code_execution_result, code_execution_error = await self._handle_code_execution(analysis_data, url)
+
+        # Update plan with available fields
+        self._update_plan_with_fields(analysis_data)
+
+        # Filter next pages to visit
+        next_pages_to_visit = self._filter_next_pages(analysis_data)
+
+        # Build final result
+        final_result = self._build_analysis_result(analysis_data, next_pages_to_visit, code_execution_result, code_execution_error)
+        
+        return final_result
+
+    async def _handle_code_execution(self, analysis_data: Dict[str, Any], url: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+        """Handle code execution based on page usefulness assessment."""
+        usefulness_assessment = analysis_data.get('page_usefulness_assessment', {})
+        skip_processing = usefulness_assessment.get('skip_processing', False)
+        needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
+        skip_reason = usefulness_assessment.get('skip_reason', '')
+        
+        # Log page usefulness assessment
+        logger.info(f"📊 Page usefulness assessment:")
+        logger.info(f"   - Skip processing: {skip_processing}")
+        logger.info(f"   - Needs code generation: {needs_code_generation}")
+        if skip_reason:
+            logger.info(f"   - Skip reason: {skip_reason}")
+        
+        if skip_processing:
+            logger.info(f"⏭️ Skipping code generation and execution for {url}: {skip_reason}")
+            self.log_update_callback(f"⏭️ Skipping processing for {url}: {skip_reason}")
+            self.tree_manager.update_tree(self.tree_root, f"Skipped processing: {skip_reason}", url)
+            return None, f"Page skipped: {skip_reason}"
+        elif not needs_code_generation:
+            logger.info(f"📝 No code generation needed for {url} (navigation/intermediate page)")
+            self.log_update_callback(f"📝 No code generation needed for {url}")
+            self.tree_manager.update_tree(self.tree_root, f"No code generation needed (navigation page)", url)
+            return None, "No code generation needed for this page type"
+        else:
+            # Execute and validate generated code only if needed
+            logger.info(f"🔧 Executing generated code for {url}")
+            self.log_update_callback(f"🔧 Executing generated code for {url}")
+            return await CodeExecutor.execute_generated_code(analysis_data, url, self.log_update_callback)
+
+    def _build_analysis_result(
+        self, 
+        analysis_data: Dict[str, Any], 
+        next_pages_to_visit: List[Dict[str, Any]], 
+        code_execution_result: Optional[Dict[str, Any]], 
+        code_execution_error: Optional[str]
+    ) -> Dict[str, Any]:
+        """Build the final analysis result."""
+        return {
+            "structured_data": analysis_data.get("structured_data", {}),
+            "main_content_areas": analysis_data.get("main_content_areas", []),
+            "navigation_elements": analysis_data.get("navigation_elements", []),
+            "patterns_identified": analysis_data.get("patterns_identified", []),
+            "next_pages_to_visit": next_pages_to_visit,
+            "page_type": analysis_data.get("page_type", "unknown"),
+            "relevance_score": analysis_data.get("relevance_score", 0),
+            "available_fields": analysis_data.get("available_fields", []),
+            "generic_name_of_page": analysis_data.get("generic_name_of_page", ""),
+            "python_code": analysis_data.get("python_code"),
+            "python_code_function_name": analysis_data.get("python_code_function_name", "extract_data"),
+            "exclusive_fields": analysis_data.get("exclusive_fields", []),
+            "code_execution_result": code_execution_result,
+            "code_execution_error": code_execution_error,
+            "summery": analysis_data.get("summery", ""),
+            "pagination_info": analysis_data.get("pagination_info", {}),
+            "page_usefulness_assessment": analysis_data.get('page_usefulness_assessment', {})
+        }
+
+    def _update_plan_with_fields(self, analysis_data: Dict[str, Any]) -> None:
+        """Update the plan with available fields from the analysis."""
+        available_fields = analysis_data.get('available_fields', [])
+        
+        self.plan["already_extracted_fields"] = list(
+            set(self.plan.get("already_extracted_fields", [])).union(set(available_fields))
+        )
+        self.plan['to_be_extracted_fields'] = list(
+            set(self.plan.get('to_be_extracted_fields', [])) - set(self.plan["already_extracted_fields"])
+        )
+
+    def _filter_next_pages(self, analysis_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Filter next pages to visit based on relevance, visited status, and page usefulness assessment."""
+        next_pages_to_visit = analysis_data.get('next_pages_to_visit', [])
+        unvisited_pages = []
+
+        for page in next_pages_to_visit:
+            page_url = page.get("url", "")
+            
+            # Check if page meets basic criteria
+            if (
+                page.get("relevance_score", 0) >= RelevanceThresholds.HIGH_RELEVANCE and
+                page.get("page_type") not in self.visited_page_types and
+                page_url not in self.visited_urls
+            ):
+                # Additional check: if this page was already analyzed and marked for skipping,
+                # don't add it to the visit list
+                if page_url in self.page_tree:
+                    existing_page = self.page_tree[page_url]
+                    usefulness_assessment = existing_page.analysis_data.get('page_usefulness_assessment', {}) if existing_page.analysis_data else {}
+                    skip_processing = usefulness_assessment.get('skip_processing', False)
+                    
+                    if skip_processing:
+                        logger.info(f"⏭️ Skipping already analyzed page marked for skipping: {page_url}")
+                        continue
+                
+                unvisited_pages.append(page)
+                self.visited_page_types.add(page["page_type"])
+                self.visited_urls.add(page["url"])
+
+        logger.debug(f"🔗 Next pages to visit: {json.dumps(dict(next_visit_pages=unvisited_pages), indent=2)}")
+        return unvisited_pages
+
+    def _update_page_status(self, page: PageData, status: str, message: str, progress: int = None, error: Dict[str, Any] = None) -> None:
+        """Update the status of a page."""
+        current_time = time.time()
+        
+        if page.start_time is None:
+            page.start_time = current_time
+        
+        page.processing_status = status
+        page.status_message = message
+        page.last_update_time = current_time
+        
+        if progress is not None:
+            page.progress = progress
+        
+        if error:
+            page.error_details = error
+            page.processing_status = ProcessingStatus.ERROR
+        
+        # Update tree for this specific page
+        self.tree_manager.update_tree(self.tree_root, message, page.url, progress)
+
+    async def fetch_and_process_page(
+        self, 
+        url: str, 
+        path: Optional[List[str]] = None, 
+        parent: Optional[PageData] = None, 
+        use_markdown_for_llm: bool = False
+    ) -> PageData:
+        """Fetch and process a page, returning PageData with analysis results."""
+        logger.info(f"📥 Fetching page: {url}")
+        if path is None:
+            path = [url]
+
+        # Create initial page data with pending status
+        page_data = PageData(
+            url=url,
+            html="",
+            json_data={},
+            path=path,
+            children=[],
+            page_type="pending",
+            relevance_score=0.0
+        )
+        if parent:
+            parent.children.append(page_data)
+        page_data.parent = parent
+        
+        # Add to tree immediately to show pending state
+        if self.root_url == url:
+            self.tree_root = page_data
+        self.page_tree[url] = page_data
+        self._update_page_status(page_data, ProcessingStatus.PENDING, f"Initializing {url}", 0)
+
+        try:
+            # Fetch HTML
+            self._update_page_status(page_data, ProcessingStatus.PROCESSING, f"Fetching HTML from {url}", 10)
+            html = await _fetch_and_clean(url)
+            logger.info(f"📄 Fetched HTML content ({len(html)} bytes)")
+            page_data.html = html
+            # Convert HTML to Markdown for possible LLM use
+            page_data.markdown = html_to_markdown(html)
+            logger.info(f"HTML length: {len(html)} | Markdown length: {len(page_data.markdown) if page_data.markdown else 0}")
+            self._update_page_status(page_data, ProcessingStatus.PROCESSING, f"HTML fetched ({len(html)} bytes)", 20)
+
+            # Analyze page directly
+            self._update_page_status(page_data, ProcessingStatus.PROCESSING, f"Analyzing page structure", 30)
+            analysis = await self.analyze_page_directly(html=html, markdown=page_data.markdown, url=url, parent_page=parent, use_markdown_for_llm=use_markdown_for_llm)
+            page_data.analysis_data = analysis
+            self._update_page_status(page_data, ProcessingStatus.PROCESSING, f"Page analysis complete", 60)
+
+            # Ensure proper data types
+            structured_data = analysis.get("structured_data", {})
+            if not isinstance(structured_data, dict):
+                logger.warning(f"⚠️ Warning: structured_data is not a dict, converting: {type(structured_data)}")
+                structured_data = {"data": structured_data} if structured_data else {}
+
+            code_execution_result = analysis.get("code_execution_result")
+            if code_execution_result is not None and not isinstance(code_execution_result, dict):
+                logger.warning(f"⚠️ Warning: code_execution_result is not a dict, converting: {type(code_execution_result)}")
+                code_execution_result = {"result": code_execution_result} if code_execution_result else None
+
+            code_execution_error = analysis.get("code_execution_error")
+            if code_execution_error is not None and not isinstance(code_execution_error, str):
+                logger.warning(f"⚠️ Warning: code_execution_error is not a string, converting: {type(code_execution_error)}")
+                code_execution_error = str(code_execution_error) if code_execution_error else None
+
+            # Update page data with results
+            self._update_page_status(page_data, ProcessingStatus.PROCESSING, f"Processing analysis results", 80)
+            page_data.json_data = structured_data
+            page_data.page_type = analysis.get("page_type")
+            page_data.exclusive_fields = analysis.get("exclusive_fields", [])
+            page_data.generated_code = analysis.get("python_code")
+            page_data.code_execution_result = code_execution_result
+            page_data.code_execution_error = code_execution_error
+            page_data.relevance_score = analysis.get("relevance_score", 0)
+
+            self._update_page_status(page_data, ProcessingStatus.COMPLETED, f"Processing complete", 100)
+            
+            # Force a final tree update to ensure completion is shown
+            self.tree_manager.force_tree_update(self.tree_root)
+            
+            return page_data
+
+        except Exception as e:
+            error_details = {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "traceback": traceback.format_exc()
+            }
+            self._update_page_status(
+                page_data, 
+                ProcessingStatus.ERROR, 
+                f"Error processing page: {str(e)}", 
+                error=error_details
+            )
+            raise
+
+    async def build_page_tree(self, use_markdown_for_llm: bool = False) -> None:
+        """Build tree of pages starting from root URL."""
+        self.log_update_callback("🌳 Building page tree...")
+        
+        if not self.plan:
+            plan = await self.analyze_requirement()
+            self.plan = plan
+
+        root_page = await self.fetch_and_process_page(self.root_url, use_markdown_for_llm=use_markdown_for_llm)
+        self.tree_root = root_page
+        self.visited_urls.add(self.root_url)
+
+        async def process_page(page: PageData, depth: int) -> None:
+            """Recursively process pages in the tree."""
+            if depth >= self.requirement.max_depth:
+                msg = f"⏹️ Max Depth Reached: depth={depth} (max_depth={self.requirement.max_depth}). Stopping crawl at {page.url}"
+                logger.info(msg)
+                self.log_update_callback(msg)
+                self.tree_manager.update_tree(self.tree_root, f"⏹️ Max Depth Reached at {page.url} (depth={depth})", page.url)
+                return
+
+            logger.info(f"📑 Processing page at depth {depth}: {page.url} : score: {page.relevance_score}")
+            analysis = page.analysis_data
+            page.page_type = analysis["page_type"]
+
+            # Emit tree update after processing this node
+            self.tree_manager.update_tree(self.tree_root, f"Processed page: {page.url} (depth {depth})", page.url)
+
+            next_pages_to_visit = analysis.get('next_pages_to_visit', [])
+            if isinstance(next_pages_to_visit, list):
+                logger.info(f"🔗 Found {len(next_pages_to_visit)} valid next pages to visit")
+                for next_page in next_pages_to_visit:
+                    # Prevent fetching child pages if max depth would be exceeded
+                    if depth + 1 >= self.requirement.max_depth:
+                        msg = f"⏹️ Max Depth Reached: would fetch {next_page['url']} at depth {depth+1} (max_depth={self.requirement.max_depth}), skipping fetch."
+                        logger.info(msg)
+                        self.log_update_callback(msg)
+                        self.tree_manager.update_tree(self.tree_root, msg, page.url)
+                        continue
+                    logger.info(f"📥 Processing next page: {next_page['label']}::({next_page['relevance_score']}):: {next_page['why']}")
+                    child_page = await self.fetch_and_process_page(
+                        next_page['url'],
+                        path=page.path + [next_page['url']],
+                        parent=page,
+                        use_markdown_for_llm=use_markdown_for_llm
+                    )
+                    if child_page.relevance_score >= RelevanceThresholds.HIGH_RELEVANCE:
+                        # Send tree update after each child page is processed
+                        self.tree_manager.update_tree(self.tree_root, f"Added child page: {child_page.url}", child_page.url)
+                        await process_page(child_page, depth + 1)
+                    else:
+                        # Send tree update even for low-relevance pages
+                        self.tree_manager.update_tree(self.tree_root, f"Skipped low-relevance page: {child_page.url} (score: {child_page.relevance_score})", child_page.url)
+
+        await process_page(root_page, 0)
+        logger.info("✅ Page tree building complete")
+        logger.info(f"📊 Total pages processed: {len(self.page_tree)}")
+        
+        # Send final tree update
+        self.tree_manager.update_tree(self.tree_root, f"Page tree building complete - {len(self.page_tree)} pages processed", self.root_url)
+
+    async def generate_extraction_code(self) -> str:
+        """Generate Python code for data extraction from all analyzed pages."""
+        logger.info("💻 Generating extraction code...")
+        self.log_update_callback("💻 Generating extraction code...")
+
+        # Validate that we have useful pages for code generation
+        useful_pages, skipped_pages, navigation_pages = self._categorize_pages()
+        
+        if not useful_pages:
+            error_message = self._build_no_useful_pages_error(useful_pages, skipped_pages, navigation_pages)
+            logger.error(error_message)
+            self.log_update_callback(error_message)
+            raise ValueError(error_message)
+
+        # Collect all working code and their results
+        working_codes = self._collect_working_codes()
+
+        # Check if we have any working code
+        if not working_codes:
+            error_message = self._build_no_working_code_error(useful_pages)
+            logger.error(error_message)
+            self.log_update_callback(error_message)
+            raise ValueError(error_message)
+
+        # Load sample utility code for reference
+        sample_utility_code = _load_sample_utility_code()
+
+        prompt = PromptBuilder.build_code_generation_prompt(working_codes, sample_utility_code, self.requirement, self.root_url)
+
+        logger.info(f"prompt len:{len(prompt)}")
+        self.log_update_callback(f"llm call final cogen :prompt len:{len(prompt)}")
+        
+        try:
+            code_gen = await call_openai_async(
+                prompt=prompt,
+                response_format={"type": "json_object"},
+                client=openai_async_client
+            )
+            code_gen = json.loads(code_gen)
+            code = code_gen["python_code"]
+            
+            # Collect extra info for UI
+            self.extra_info = {k: v for k, v in code_gen.items() if k != "python_code"}
+            for k, v in code_gen.items():
+                if k != "python_code":
+                    logger.info(f"{k} : {v}")
+                    self.log_update_callback(f"{k} : {v}")
+            
+            self.python_code_function_name = code_gen.get("python_code_function_name", "extract_data")
+
+            # Clean any markdown formatting
+            code = code.replace("```python", "").replace("```", "").strip()
+            self.generated_code = code
+            
+            # Validate the generated code
+            await self._validate_generated_code(code)
+            
+            self.log_update_callback("✅ Code generation complete")
+            logger.info("✅ Code generation complete")
+            logger.info(f"Generated code: entry function is {self.python_code_function_name}")
+            logger.debug("=" * 50)
+            logger.debug(code)
+            logger.debug("=" * 50)
+            
+            return code
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating extraction code: {str(e)}")
+            raise
+
+    def _categorize_pages(self) -> Tuple[List[Dict], List[Dict], List[Dict]]:
+        """Categorize pages for code generation validation."""
+        useful_pages = []
+        skipped_pages = []
+        navigation_pages = []
+        
+        for url, data in self.page_tree.items():
+            usefulness_assessment = data.analysis_data.get('page_usefulness_assessment', {}) if data.analysis_data else {}
+            skip_processing = usefulness_assessment.get('skip_processing', False)
+            needs_code_generation = usefulness_assessment.get('needs_code_generation', True)
+            
+            if skip_processing:
+                skipped_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'reason': usefulness_assessment.get('skip_reason', 'No reason provided')
+                })
+            elif not needs_code_generation:
+                navigation_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'reason': 'Navigation/intermediate page - no code generation needed'
+                })
+            else:
+                useful_pages.append({
+                    'url': url,
+                    'page_type': data.page_type,
+                    'has_generated_code': bool(data.generated_code),
+                    'has_execution_result': bool(data.code_execution_result),
+                    'has_execution_error': bool(data.code_execution_error)
+                })
+        
+        return useful_pages, skipped_pages, navigation_pages
+
+    def _build_no_useful_pages_error(self, useful_pages: List[Dict], skipped_pages: List[Dict], navigation_pages: List[Dict]) -> str:
+        """Build error message when no useful pages are found."""
+        error_message = "❌ No useful pages found for code generation. "
+        
+        if skipped_pages and navigation_pages:
+            error_message += f"All {len(skipped_pages) + len(navigation_pages)} pages were either skipped or marked as navigation pages. "
+            error_message += f"Skipped pages: {len(skipped_pages)}, Navigation pages: {len(navigation_pages)}. "
+            error_message += "Please check the target URL and extraction requirements."
+        elif skipped_pages:
+            error_message += f"All {len(skipped_pages)} pages were skipped during processing. "
+            error_message += "Common reasons: pages are irrelevant, error pages, login required, or no public data available. "
+            error_message += "Please verify the target URL and extraction requirements."
+        elif navigation_pages:
+            error_message += f"All {len(navigation_pages)} pages were marked as navigation/intermediate pages. "
+            error_message += "No pages contain actual data that requires code generation. "
+            error_message += "Please check if the target URL leads to data pages or adjust extraction requirements."
+        else:
+            error_message += "No pages were processed. Please check the target URL and extraction requirements."
+        
+        # Add detailed information for debugging
+        error_message += f"\n\nTarget URL: {self.requirement.target_url}"
+        error_message += f"\nRequired data to extract: {self.requirement.data_to_extract}"
+        error_message += f"\nAdditional instructions: {self.requirement.additional_instructions}"
+        
+        return error_message
+
+    def _build_no_working_code_error(self, useful_pages: List[Dict]) -> str:
+        """Build error message when no working code is found."""
+        error_message = "❌ No working code found for code generation. "
+        error_message += f"Found {len(useful_pages)} useful pages but none have successfully generated and executed code. "
+        error_message += "This may indicate issues with the page analysis or code generation process. "
+        error_message += "Please check the page analysis results and try again."
+        
+        # Add details about useful pages that failed
+        error_message += f"\n\nUseful pages that failed code generation:"
+        for page in useful_pages:
+            error_message += f"\n- {page['url']} ({page['page_type']}) - Code: {page['has_generated_code']}, Result: {page['has_execution_result']}, Error: {page['has_execution_error']}"
+        
+        return error_message
+
+    def _collect_working_codes(self) -> List[Dict]:
+        """Collect all working code and their results."""
+        working_codes = []
+        for url, data in self.page_tree.items():
+            if (data.generated_code and 
+                data.code_execution_result and 
+                not data.code_execution_error):
+                working_codes.append({
+                    'url': url,
+                    'code': data.generated_code,
+                    'result': _format_execution_result(data.code_execution_result),
+                    'page_type': data.page_type,
+                    "children": [child.page_type for child in data.children],
+                    'parent': data.parent.page_type if data.parent else None,
+                    'page_name': data.analysis_data.get('generic_name_of_page') if data.analysis_data else None,
+                    'pagination_info': data.analysis_data.get('pagination_info', {}) if data.analysis_data else {}
+                })
+        return working_codes
 
     async def _validate_generated_code(self, code: str) -> None:
         """Validate the generated code by attempting to compile it."""
@@ -1946,65 +1711,14 @@ class WebParser:
         5. Follow all the requirements from the original prompt
         6. The main function MUST be named '{self.python_code_function_name}'
 
-        CRITICAL REQUIREMENTS TO PREVENT COMMON ISSUES:
-        7. **Pydantic Usage Restrictions:**
-            - Use ONLY basic Pydantic BaseModel with standard field types (str, int, bool, float, List, Dict, Optional)
-            - DO NOT use EmailStr, HttpUrl, or any other Pydantic field types that require additional packages
-            - DO NOT use pydantic[email] or any optional Pydantic dependencies
-            - Use str for email fields, not EmailStr
-            - Use str for URL fields, not HttpUrl
-            - Use basic validation with Field() if needed, but avoid complex validators
-        8. **Import Restrictions:**
-            - Only use standard library imports and the explicitly listed required imports
-            - DO NOT import any packages that require additional installation beyond the basic requirements
-            - Avoid any imports that might cause "ImportError: package is not installed" errors
-        9. **CRITICAL JSON SERIALIZATION REQUIREMENTS:**
-            - All functions that return data MUST return dictionaries (dict), NOT Pydantic model objects
-            - If you use Pydantic models for data validation, convert them to dictionaries before returning
-            - Use .model_dump() or .dict() method to convert Pydantic models to dictionaries
-            - Example: return model.model_dump() instead of return model
-            - All returned data must be JSON serializable (dict, list, str, int, float, bool, None)
-            - DO NOT return Pydantic model objects directly as they cause "Object of type X is not JSON serializable" errors
-            - Test that your return value can be serialized with json.dumps() before returning
-            - The main extraction function must return a list of dictionaries, not Pydantic model objects
-            - EXAMPLE: If you create a Pydantic model like:
-              ```python
-              class ExtractedData(BaseModel):
-                  title: str
-                  description: str
-                  url: str
-              
-              # WRONG - returns Pydantic object
-              return ExtractedData(title="test", description="test", url="test")
-              
-              # CORRECT - returns dictionary
-              data = ExtractedData(title="test", description="test", url="test")
-              return data.model_dump()
-              ```
-        10. Proper CLI argument handling:
-            - Use argparse.ArgumentParser() correctly
-            - Define all expected arguments with proper types
-            - Handle the case when no arguments are provided
-            - Use parser.parse_args() to parse arguments
-            - Add proper help text for all arguments
-        11. Avoid deprecated packages:
-            - DO NOT use pkg_resources (use importlib.metadata instead)
-            - DO NOT use any deprecated imports or functions
-            - Use modern Python 3.8+ syntax
-        12. Proper script structure:
-            - Include if __name__ == "__main__": block
-            - Handle both direct execution and import scenarios
-            - Use asyncio.run() for async main functions
-            - Proper error handling in main function
-
         Return only the fixed Python code without any explanations.
         IMPORTANT: Return ONLY the Python code without any markdown formatting or ```python tags.
         """
-
+        
         try:
             fixed_code = call_openai_sync(
                 prompt=fix_prompt,
-                model="gpt-4.1",
+                model="gpt-4o-mini",
                 response_format={"type": "text"},
                 client=openai_client
             )
@@ -2014,29 +1728,20 @@ class WebParser:
             logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
 
     async def execute_generated_code(self, url: str) -> Dict[str, Any]:
-        """
-        Execute the generated code for a specific URL.
-        
-        Args:
-            url: URL to execute the generated code against
-            
-        Returns:
-            Dictionary containing execution results and extracted data
-        """
+        """Execute the generated code for a specific URL."""
         logger.info(f"▶️ Executing generated code for URL: {url}")
         if not self.generated_code:
             raise ValueError("No code generated yet")
 
-        max_attempts = 2
         current_attempt = 0
         last_error = None
         current_code = self.generated_code
 
-        while current_attempt < max_attempts:
+        while current_attempt < MAX_FINAL_CODE_EXECUTION_ATTEMPTS:
             try:
                 current_attempt += 1
-                logger.info(f"🔄 Attempt {current_attempt}/{max_attempts} to execute code")
-                self.log_update_callback(f"🔄 Attempt {current_attempt}/{max_attempts} to execute code")
+                logger.info(f"🔄 Attempt {current_attempt}/{MAX_FINAL_CODE_EXECUTION_ATTEMPTS} to execute code")
+                self.log_update_callback(f"🔄 Attempt {current_attempt}/{MAX_FINAL_CODE_EXECUTION_ATTEMPTS} to execute code")
 
                 result = await self._execute_code_subprocess(current_code, url)
                 if result.get("extracted_data"):
@@ -2052,7 +1757,7 @@ class WebParser:
             except Exception as e:
                 last_error = str(e)
                 logger.error(f"❌ Error during execution: {last_error}")
-                if current_attempt >= max_attempts:
+                if current_attempt >= MAX_FINAL_CODE_EXECUTION_ATTEMPTS:
                     return {
                         "extracted_data": [],
                         "total_items": 0,
@@ -2088,9 +1793,6 @@ class WebParser:
                 cmd = ["python", script_path, out_path]
                 self.log_update_callback(f"cmd: {cmd}")
 
-                import threading
-                import queue
-
                 def stream_reader(pipe, cb, q):
                     try:
                         for line in iter(pipe.readline, ''):
@@ -2124,7 +1826,6 @@ class WebParser:
                 extracted_data = []
                 if os.path.exists(out_path):
                     logger.info(f"read the CSV file to get the actual extracted data: {out_path}")
-                    import csv
                     try:
                         with open(out_path, 'r', newline='', encoding='utf-8') as csvfile:
                             reader = csv.DictReader(csvfile)
@@ -2242,232 +1943,3 @@ class WebParser:
         except Exception as fix_error:
             logger.error(f"❌ Failed to generate fixed code: {str(fix_error)}")
             return code
-
-    def _force_tree_update(self) -> None:
-        """Force an immediate tree update, bypassing throttling."""
-        if self.pending_tree_update:
-            self.pending_tree_update = False
-            self._update_tree()
-
-    def _update_tree_with_code_result(self, url: str, result: Optional[Dict[str, Any]], error: Optional[str], message: str) -> None:
-        """Send real-time tree update with code execution results."""
-        if not self.tree_update_callback:
-            return
-            
-        # Find the page in the tree
-        page_data = self.page_tree.get(url)
-        if not page_data:
-            return
-            
-        # Update page data with execution results
-        page_data.code_execution_result = result
-        page_data.code_execution_error = error
-        
-        # Force immediate update for important data
-        self._force_tree_update_with_data(url, message, 90)  # 90% progress after code execution
-
-    def _update_tree_with_page_data(self, page_data: PageData, message: str, progress: int) -> None:
-        """Send real-time tree update with page data."""
-        if not self.tree_update_callback:
-            return
-            
-        # Update page data with progress
-        page_data.progress = progress
-        
-        # Send tree update with page data
-        self._update_tree(message, page_data.url, progress)
-
-
-# =============================================================================
-# UTILITY FUNCTIONS
-# =============================================================================
-
-def web_parse_to_json(
-    url: str,
-    data_to_extract: Optional[List[str]] = None,
-    max_depth: int = 3,
-    pagination: bool = False,
-    additional_instructions: str = "",
-    output_file: str = "output.json"
-) -> Dict[str, Any]:
-    """
-    Parse a website and save the extracted data to a JSON file.
-    
-    This is a convenience function that creates a UserRequirement, initializes
-    a WebParser, and runs the complete extraction pipeline.
-    
-    Args:
-        url: Target URL to parse
-        data_to_extract: List of fields to extract (auto-generated if None)
-        max_depth: Maximum crawl depth (default: 3)
-        pagination: Whether to handle pagination (default: False)
-        additional_instructions: Custom extraction instructions
-        output_file: Output JSON file path (default: "output.json")
-        
-    Returns:
-        Dictionary containing extraction results
-        
-    Raises:
-        Exception: If parsing fails
-    """
-    requirement = UserRequirement(
-        target_url=url,
-        data_to_extract=data_to_extract,
-        max_depth=max_depth,
-        pagination=pagination,
-        additional_instructions=additional_instructions
-    )
-
-    parser = WebParser(requirement)
-
-    try:
-        # Build page tree and generate code
-        asyncio.run(parser.build_page_tree())
-        asyncio.run(parser.generate_extraction_code())
-
-        # Execute the generated code
-        result = asyncio.run(parser.execute_generated_code(url))
-
-        # Convert to CSV if specified in the extraction spec
-        if (requirement.extraction_spec and 
-            requirement.extraction_spec["output_format"]["type"] == "csv"):
-            csv_file = output_file.replace(".json", ".csv")
-            import pandas as pd
-            df = pd.DataFrame(result.get("extracted_data", []))
-            df.to_csv(csv_file, index=False)
-            logger.info(f"✅ Results saved to CSV: {csv_file}")
-
-        # Save results to JSON file
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, indent=2)
-
-        logger.info(f"Successfully parsed website and saved results to {output_file}")
-        return result
-    except Exception as e:
-        logger.error(f"Error parsing website: {str(e)}")
-        raise
-
-
-def web_parse_to_json_from_csv(input_file: str, output_file: str) -> None:
-    """
-    Run web parsing from a CSV and aggregate results.
-    
-    The input_file must contain these columns:
-    - url: Target URL to parse
-    - data_to_extract: Comma-separated list of fields to extract (optional)
-    - max_depth: Maximum crawl depth (optional)
-    - pagination: Whether to enable pagination (optional)
-    - additional_instructions: Custom extraction instructions (optional)
-    
-    Args:
-        input_file: Path to input CSV file
-        output_file: Path to output JSON file
-        
-    Raises:
-        ValueError: If input CSV is missing required columns
-        Exception: If processing fails
-    """
-    import csv
-
-    with open(input_file, newline="", encoding="utf-8-sig") as fh:
-        reader = csv.DictReader(fh)
-        fieldnames = reader.fieldnames or []
-        if "url" not in fieldnames:
-            raise ValueError("Input CSV must contain a 'url' column")
-        rows = list(reader)
-
-    aggregated_results = []
-    for row in rows:
-        url = row.get("url", "").strip()
-        if not url:
-            continue
-
-        data_to_extract = None
-        if "data_to_extract" in row and row["data_to_extract"]:
-            data_to_extract = [f.strip() for f in row["data_to_extract"].split(",")]
-
-        max_depth = 3
-        if "max_depth" in row and row["max_depth"]:
-            try:
-                max_depth = int(row["max_depth"])
-            except ValueError:
-                pass
-
-        pagination = False
-        if "pagination" in row and row["pagination"]:
-            pagination = row["pagination"].lower() in ("true", "1", "yes")
-
-        additional_instructions = row.get("additional_instructions", "").strip()
-
-        try:
-            result = web_parse_to_json(
-                url=url,
-                data_to_extract=data_to_extract,
-                max_depth=max_depth,
-                pagination=pagination,
-                additional_instructions=additional_instructions,
-                output_file=None  # Don't save individual results
-            )
-            if result:
-                aggregated_results.append(result)
-        except Exception as e:
-            logger.error(f"Error processing URL {url}: {str(e)}")
-            continue
-
-    # Save aggregated results
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(aggregated_results, f, indent=2)
-
-    logger.info(f"Wrote {len(aggregated_results)} results to {output_file}")
-
-
-def main() -> None:
-    """
-    Main entry point for command-line usage.
-    
-    Parses command line arguments and runs the web parser.
-    """
-    parser = argparse.ArgumentParser(
-        description="Web Parser Tool - Extract structured data from websites using AI-powered analysis"
-    )
-    parser.add_argument("url", help="Target URL to parse")
-    parser.add_argument(
-        "-f", "--fields",
-        nargs="+",
-        help="Specific fields to extract (optional)"
-    )
-    parser.add_argument(
-        "-d", "--max-depth",
-        type=int,
-        default=3,
-        help="Maximum depth for crawling (default: 3)"
-    )
-    parser.add_argument(
-        "-p", "--pagination",
-        action="store_true",
-        help="Enable pagination support"
-    )
-    parser.add_argument(
-        "-i", "--instructions",
-        default="",
-        help="Additional instructions for data extraction"
-    )
-    parser.add_argument(
-        "-o", "--output",
-        default="output.json",
-        help="Output JSON file (default: output.json)"
-    )
-    args = parser.parse_args()
-
-    web_parse_to_json(
-        url=args.url,
-        data_to_extract=args.fields,
-        max_depth=args.max_depth,
-        pagination=args.pagination,
-        additional_instructions=args.instructions,
-        output_file=args.output
-    )
-
-
-if __name__ == "__main__":
-    main()
